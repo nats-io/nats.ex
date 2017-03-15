@@ -13,4 +13,11 @@ defmodule Neato.ParserTest do
     assert parser_state.partial == ""
     assert parsed_message == {:msg, "topic", 13, "test\r\nline"}
   end
+
+  test "parsing multiple messages" do
+    {parser_state, [msg1,msg2]} = Parser.new |> Parser.parse("MSG t1 1 3\r\nwat\r\nMSG t2 2 4\r\ndawg\r\n")
+    assert parser_state.partial == ""
+    assert msg1 == {:msg, "t1", 1, "wat"}
+    assert msg2 == {:msg, "t2", 2, "dawg"}
+  end
 end
