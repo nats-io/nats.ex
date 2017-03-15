@@ -7,4 +7,10 @@ defmodule Neato.ParserTest do
     assert parser_state.partial == ""
     assert parsed_message == {:msg, "topic", 13, "test"}
   end
+
+  test "parsing a complete message with newlines in it" do
+    {parser_state, [parsed_message]} = Parser.new |> Parser.parse("MSG topic 13 10\r\ntest\r\nline\r\n")
+    assert parser_state.partial == ""
+    assert parsed_message == {:msg, "topic", 13, "test\r\nline"}
+  end
 end
