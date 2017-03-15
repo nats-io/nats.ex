@@ -5,6 +5,7 @@
 defmodule Neato do
   use GenServer
   require Logger
+  alias Neato.Parser
 
   @default_connection_settings %{
     host: 'localhost',
@@ -28,20 +29,20 @@ defmodule Neato do
     {:ok, tcp} = :gen_tcp.connect(connection_settings.host, connection_settings.port, connection_settings.tcp_opts)
     case perform_handshake(tcp) do
       :ok ->
-        {:ok, %{tcp: tcp, connection_settings: connection_settings, state: :waiting_for_message, next_sid: 1, receivers: %{}}}
+        parser = Parser.new
+        {:ok, %{tcp: tcp, connection_settings: connection_settings, next_sid: 1, receivers: %{}, parser: parser}}
       {:error, reason} ->
         :gen_tcp.close(tcp)
         {:error, reason}
     end
   end
 
-  def handle_info({:tcp, tcp, "MSG "<>rest}, %{tcp: tcp, state: :waiting_for_message}=state) do
-    [cmd | msg_chunks] = String.split(rest, "\r\n")
-    [topic, sid_str, size_str] = String.split(cmd, " ")
-    msg = Enum.join(msg_chunks, "\r\n") |> String.strip
-    sid = String.to_integer(sid_str)
-    send state.receivers[sid], {:msg, topic, msg}
-    {:noreply, state}
+  def handle_info({:tcp, tcp, data}, %{tcp: tcp, parser: parser}=state) do
+    {new_parser, messages} = Parser.parse(parser, data)
+    Enum.each(messages, fn({:msg, topic, sid, body}) ->
+      send state.receivers[sid], {:msg, topic, body}
+    end)
+    {:noreply, %{state | parser: new_parser}}
   end
   def handle_info(other, state) do
     Logger.error "#{__MODULE__} received unexpected message: #{inspect other}"
