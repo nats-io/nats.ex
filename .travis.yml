@@ -1,0 +1,13 @@
+language: elixir
+otp_release:
+ - 18.3
+ - 19.2
+elixir:
+ - 1.4.2
+branches:
+  only:
+    - master
+before_install:
+ - wget https://github.com/nats-io/gnatsd/releases/download/v0.9.6/gnatsd-v0.9.6-linux-amd64.zip
+ - unzip gnatsd-v0.9.6-linux-amd64.zip
+ - ./gnatsd-v0.9.6-linux-amd64/gnatsd &
