@@ -24,6 +24,8 @@ defmodule Gnat do
 
   def pub(pid, topic, message), do: GenServer.call(pid, {:pub, topic, message})
 
+  def unsub(pid, sid), do: GenServer.call(pid, {:unsub, sid})
+
   def init(connection_settings) do
     connection_settings = Map.merge(@default_connection_settings, connection_settings)
     {:ok, tcp} = :gen_tcp.connect(connection_settings.host, connection_settings.port, connection_settings.tcp_opts)
@@ -58,11 +60,16 @@ defmodule Gnat do
     :ok = :gen_tcp.send(state.tcp, ["SUB ", topic, " #{sid}\r\n"])
     receivers = Map.put(state.receivers, sid, receiver)
     next_state = Map.merge(state, %{receivers: receivers, next_sid: sid + 1})
-    {:reply, :ok, next_state}
+    {:reply, {:ok, sid}, next_state}
   end
   def handle_call({:pub, topic, message}, _from, state) do
     publish_data = [["PUB ", topic, " #{IO.iodata_length(message)}\r\n"], [message, "\r\n"]]
     :ok = :gen_tcp.send(state.tcp, publish_data)
+    {:reply, :ok, state}
+  end
+  def handle_call({:unsub, sid}, _from, state) do
+    unsub_data = ["UNSUB ", Integer.to_string(sid), "\r\n"]
+    :ok = :gen_tcp.send(state.tcp, unsub_data)
     {:reply, :ok, state}
   end
 
