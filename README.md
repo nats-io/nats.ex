@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/mmmries/gnat.svg?branch=master)](https://travis-ci.org/mmmries/gnat)
+
 ![gnat](gnat.png)
 
 # Gnat
