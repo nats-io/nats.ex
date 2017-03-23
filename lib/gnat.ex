@@ -2,10 +2,10 @@
 #  :waiting_for_message => receive PING, send PONG => :waiting_for_message
 #  :waiting_for_message => receive MSG... -> :waiting_for_message
 
-defmodule Neato do
+defmodule Gnat do
   use GenServer
   require Logger
-  alias Neato.Parser
+  alias Gnat.Parser
 
   @default_connection_settings %{
     host: 'localhost',

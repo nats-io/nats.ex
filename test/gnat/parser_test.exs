@@ -1,6 +1,6 @@
-defmodule Neato.ParserTest do
+defmodule Gnat.ParserTest do
   use ExUnit.Case, async: true
-  alias Neato.Parser
+  alias Gnat.Parser
 
   test "parsing a complete message" do
     {parser_state, [parsed_message]} = Parser.new |> Parser.parse("MSG topic 13 4\r\ntest\r\n")

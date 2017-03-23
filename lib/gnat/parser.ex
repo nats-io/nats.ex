@@ -1,11 +1,11 @@
-defmodule Neato.Parser do
+defmodule Gnat.Parser do
   # states: waiting, reading_message
   defstruct [
     partial: "",
     state: :waiting,
   ]
 
-  def new, do: %Neato.Parser{}
+  def new, do: %Gnat.Parser{}
 
   def parse(parser, data) do
     parse(parser, data, [])
