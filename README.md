@@ -1,3 +1,5 @@
+![gnat](gnat.png)
+
 # Gnat
 
 A [nats.io](https://nats.io/) client for elixir.
