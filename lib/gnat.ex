@@ -55,8 +55,8 @@ defmodule Gnat do
     end
   end
 
-  defp process_message({:msg, topic, sid, body}, state) do
-    send state.receivers[sid], {:msg, topic, body}
+  defp process_message({:msg, topic, sid, reply_to, body}, state) do
+    send state.receivers[sid], {:msg, %{topic: topic, body: body, reply_to: reply_to}}
   end
   defp process_message(:ping, state) do
     :gen_tcp.send(state.tcp, "PONG\r\n")

@@ -13,7 +13,16 @@ defmodule GnatTest do
     {:ok, _ref} = Gnat.sub(pid, self(), "test")
     :ok = Gnat.pub(pid, "test", "yo dawg")
 
-    assert_receive {:msg, "test", "yo dawg"}, 1000
+    assert_receive {:msg, %{topic: "test", body: "yo dawg", reply_to: nil}}, 1000
+    :ok = Gnat.stop(pid)
+  end
+
+  test "subscribe receive a message with a reply_to" do
+    {:ok, pid} = Gnat.start_link()
+    {:ok, _ref} = Gnat.sub(pid, self(), "with_reply")
+    :ok = Gnat.pub(pid, "reply_to", "yo dawg", reply_to: "me")
+
+    assert_receive {:msg, %{topic: "test", reply_to: "me", body: "yo dawg"}}, 1000
     :ok = Gnat.stop(pid)
   end
 
@@ -24,9 +33,9 @@ defmodule GnatTest do
     :ok = Gnat.pub(pid, "test", "message 2")
     :ok = Gnat.pub(pid, "test", "message 3")
 
-    assert_receive {:msg, "test", "message 1"}, 1000
-    assert_receive {:msg, "test", "message 2"}, 1000
-    assert_receive {:msg, "test", "message 3"}, 1000
+    assert_receive {:msg, %{topic: "test", body: "message 1", reply_to: nil}}, 500
+    assert_receive {:msg, %{topic: "test", body: "message 2", reply_to: nil}}, 500
+    assert_receive {:msg, %{topic: "test", body: "message 3", reply_to: nil}}, 500
     :ok = Gnat.stop(pid)
   end
 
@@ -35,7 +44,7 @@ defmodule GnatTest do
     {:ok, pid} = Gnat.start_link()
     {:ok, sub_ref} = Gnat.sub(pid, self(), topic)
     :ok = Gnat.pub(pid, topic, "msg1")
-    assert_receive {:msg, ^topic, "msg1"}, 1000
+    assert_receive {:msg, %{topic: ^topic, body: "msg1"}}, 500
     :ok = Gnat.unsub(pid, sub_ref)
     :ok = Gnat.pub(pid, topic, "msg2")
     receive do
@@ -52,8 +61,8 @@ defmodule GnatTest do
     :ok = Gnat.pub(pid, topic, "msg1")
     :ok = Gnat.pub(pid, topic, "msg2")
     :ok = Gnat.pub(pid, topic, "msg3")
-    assert_receive {:msg, ^topic, "msg1"}, 500
-    assert_receive {:msg, ^topic, "msg2"}, 500
+    assert_receive {:msg, %{topic: ^topic, body: "msg1"}}, 500
+    assert_receive {:msg, %{topic: ^topic, body: "msg2"}}, 500
     receive do
       {:msg, _topic, _msg}=msg -> flunk("Received message after unsubscribe: #{inspect msg}")
       after 200 -> :ok
