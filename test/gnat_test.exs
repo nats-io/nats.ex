@@ -43,4 +43,20 @@ defmodule GnatTest do
       after 200 -> :ok
     end
   end
+
+  test "unsubscribing from a topic after a maximum number of messages" do
+    topic = "testunsub_maxmsg"
+    {:ok, pid} = Gnat.start_link()
+    {:ok, sub_ref} = Gnat.sub(pid, self(), topic)
+    :ok = Gnat.unsub(pid, sub_ref, max_messages: 2)
+    :ok = Gnat.pub(pid, topic, "msg1")
+    :ok = Gnat.pub(pid, topic, "msg2")
+    :ok = Gnat.pub(pid, topic, "msg3")
+    assert_receive {:msg, ^topic, "msg1"}, 500
+    assert_receive {:msg, ^topic, "msg2"}, 500
+    receive do
+      {:msg, _topic, _msg}=msg -> flunk("Received message after unsubscribe: #{inspect msg}")
+      after 200 -> :ok
+    end
+  end
 end

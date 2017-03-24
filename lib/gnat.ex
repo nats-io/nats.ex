@@ -5,7 +5,7 @@
 defmodule Gnat do
   use GenServer
   require Logger
-  alias Gnat.Parser
+  alias Gnat.{Command, Parser}
 
   @default_connection_settings %{
     host: 'localhost',
@@ -24,7 +24,7 @@ defmodule Gnat do
 
   def pub(pid, topic, message), do: GenServer.call(pid, {:pub, topic, message})
 
-  def unsub(pid, sid), do: GenServer.call(pid, {:unsub, sid})
+  def unsub(pid, sid, opts \\ []), do: GenServer.call(pid, {:unsub, sid, opts})
 
   def init(connection_settings) do
     connection_settings = Map.merge(@default_connection_settings, connection_settings)
@@ -67,9 +67,9 @@ defmodule Gnat do
     :ok = :gen_tcp.send(state.tcp, publish_data)
     {:reply, :ok, state}
   end
-  def handle_call({:unsub, sid}, _from, state) do
-    unsub_data = ["UNSUB ", Integer.to_string(sid), "\r\n"]
-    :ok = :gen_tcp.send(state.tcp, unsub_data)
+  def handle_call({:unsub, sid, opts}, _from, state) do
+    command = Command.build(:unsub, sid, opts)
+    :ok = :gen_tcp.send(state.tcp, command)
     {:reply, :ok, state}
   end
 
@@ -79,13 +79,6 @@ defmodule Gnat do
         :gen_tcp.send(tcp, "CONNECT {\"verbose\": false}\r\n")
       after 1000 ->
         {:error, "timed out waiting for info"}
-    end
-  end
-
-  defp wait_for_ack(tcp, timeout) do
-    receive do
-      {:tcp, ^tcp, "+OK\r\n"} -> :ok
-      after timeout -> {:error, :timeout}
     end
   end
 end
