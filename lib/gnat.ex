@@ -55,11 +55,16 @@ defmodule Gnat do
     end
   end
 
+  defp process_message({:msg, topic, sid, body}, state) do
+    send state.receivers[sid], {:msg, topic, body}
+  end
+  defp process_message(:ping, state) do
+    :gen_tcp.send(state.tcp, "PONG\r\n")
+  end
   def handle_info({:tcp, tcp, data}, %{tcp: tcp, parser: parser}=state) do
+    Logger.debug "#{__MODULE__} received #{inspect data}"
     {new_parser, messages} = Parser.parse(parser, data)
-    Enum.each(messages, fn({:msg, topic, sid, body}) ->
-      send state.receivers[sid], {:msg, topic, body}
-    end)
+    Enum.each(messages, &process_message(&1, state))
     {:noreply, %{state | parser: new_parser}}
   end
   def handle_info(other, state) do
