@@ -2,6 +2,16 @@ defmodule Gnat.CommandTest do
   use ExUnit.Case, async: true
   alias Gnat.Command
 
+  test "formatting a simple pub message" do
+    command = Command.build(:pub, "topic", "payload", []) |> IO.iodata_to_binary
+    assert command == "PUB topic 7\r\npayload\r\n"
+  end
+
+  test "formatting a pub with reply_to set" do
+    command = Command.build(:pub, "topic", "payload", [reply_to: "INBOX"]) |> IO.iodata_to_binary
+    assert command == "PUB topic INBOX 7\r\npayload\r\n"
+  end
+
   test "formatting a simple unsub message" do
     command = Command.build(:unsub, 12, []) |> IO.iodata_to_binary
     assert command == "UNSUB 12\r\n"

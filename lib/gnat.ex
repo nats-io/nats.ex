@@ -22,7 +22,7 @@ defmodule Gnat do
 
   def sub(pid, subscriber, topic), do: GenServer.call(pid, {:sub, subscriber, topic})
 
-  def pub(pid, topic, message), do: GenServer.call(pid, {:pub, topic, message})
+  def pub(pid, topic, message, opts \\ []), do: GenServer.call(pid, {:pub, topic, message, opts})
 
   @doc """
   Unsubscribe from a topic
@@ -55,8 +55,8 @@ defmodule Gnat do
     end
   end
 
-  defp process_message({:msg, topic, sid, body}, state) do
-    send state.receivers[sid], {:msg, topic, body}
+  defp process_message({:msg, topic, sid, reply_to, body}, state) do
+    send state.receivers[sid], {:msg, %{topic: topic, body: body, reply_to: reply_to}}
   end
   defp process_message(:ping, state) do
     :gen_tcp.send(state.tcp, "PONG\r\n")
@@ -83,9 +83,9 @@ defmodule Gnat do
     next_state = Map.merge(state, %{receivers: receivers, next_sid: sid + 1})
     {:reply, {:ok, sid}, next_state}
   end
-  def handle_call({:pub, topic, message}, _from, state) do
-    publish_data = [["PUB ", topic, " #{IO.iodata_length(message)}\r\n"], [message, "\r\n"]]
-    :ok = :gen_tcp.send(state.tcp, publish_data)
+  def handle_call({:pub, topic, message, opts}, _from, state) do
+    command = Command.build(:pub, topic, message, opts)
+    :ok = :gen_tcp.send(state.tcp, command)
     {:reply, :ok, state}
   end
   def handle_call({:unsub, sid, opts}, _from, state) do
