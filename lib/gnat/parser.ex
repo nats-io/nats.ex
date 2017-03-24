@@ -13,7 +13,7 @@ defmodule Gnat.Parser do
   end
 
   def parse(parser, "", parsed), do: {parser, Enum.reverse(parsed)}
-  def parse(parser, "PING\r\n", _), do: {parser, ["PING"]}
+  def parse(parser, "PING\r\n", _), do: {parser, [:ping]}
   def parse(parser, bytes, parsed) do
     {index, 2} = :binary.match(bytes, "\r\n")
     {command, "\r\n"<>rest} = String.split_at(bytes, index)
