@@ -17,11 +17,16 @@ defmodule Gnat.Parser do
   def parse(parser, bytes, parsed) do
     {index, 2} = :binary.match(bytes, "\r\n")
     {command, "\r\n"<>rest} = String.split_at(bytes, index)
-    ["MSG", topic, sidstr, sizestr] = String.split(command)
-    bytesize = String.to_integer(sizestr)
-    sid = String.to_integer(sidstr)
+    {topic, sid, reply_to, bytesize} = parse_message_header(command)
     << message :: binary-size(bytesize), "\r\n", rest :: binary >> = rest
-    parsed = [ {:msg, topic, sid, message} | parsed]
+    parsed = [ {:msg, topic, sid, reply_to, message} | parsed]
     parse(parser, rest, parsed)
+  end
+
+  defp parse_message_header(str) do
+    case String.split(str) do
+      ["MSG", topic, sidstr, sizestr] -> {topic, String.to_integer(sidstr), nil, String.to_integer(sizestr)}
+      ["MSG", topic, sidstr, reply_to, sizestr] -> {topic, String.to_integer(sidstr), reply_to, String.to_integer(sizestr)}
+    end
   end
 end
