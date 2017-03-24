@@ -20,9 +20,9 @@ defmodule GnatTest do
   test "subscribe receive a message with a reply_to" do
     {:ok, pid} = Gnat.start_link()
     {:ok, _ref} = Gnat.sub(pid, self(), "with_reply")
-    :ok = Gnat.pub(pid, "reply_to", "yo dawg", reply_to: "me")
+    :ok = Gnat.pub(pid, "with_reply", "yo dawg", reply_to: "me")
 
-    assert_receive {:msg, %{topic: "test", reply_to: "me", body: "yo dawg"}}, 1000
+    assert_receive {:msg, %{topic: "with_reply", reply_to: "me", body: "yo dawg"}}, 1000
     :ok = Gnat.stop(pid)
   end
 
