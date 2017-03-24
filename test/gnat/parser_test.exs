@@ -24,6 +24,6 @@ defmodule Gnat.ParserTest do
   test "parsing PING message" do
     {parser_state, [parsed_message]} = Parser.new |> Parser.parse("PING\r\n")
     assert parser_state.partial == ""
-    assert parsed_message == "PING"
+    assert parsed_message == :ping
   end
 end
