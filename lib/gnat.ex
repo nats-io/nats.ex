@@ -24,6 +24,13 @@ defmodule Gnat do
 
   def pub(pid, topic, message, opts \\ []), do: GenServer.call(pid, {:pub, topic, message, opts})
 
+  def request(pid, topic, body, opts \\ []) do
+    recipient = Keyword.get(opts, :recipient, self())
+    max_messages = Keyword.get(opts, :max_messages, 1)
+    inbox = "INBOX-#{:crypto.strong_rand_bytes(12) |> Base.encode64}"
+    GenServer.call(pid, {:request, %{recipient: recipient, max_messages: max_messages, inbox: inbox, body: body, topic: topic}})
+  end
+
   @doc """
   Unsubscribe from a topic
 
@@ -87,6 +94,15 @@ defmodule Gnat do
     command = Command.build(:pub, topic, message, opts)
     :ok = :gen_tcp.send(state.tcp, command)
     {:reply, :ok, state}
+  end
+  def handle_call({:request, request}, _from, %{next_sid: sid}=state) do
+    sub = ["SUB", " #{request.inbox} #{sid}", "\r\n"]
+    unsub = Command.build(:unsub, sid, [max_messages: request.max_messages])
+    pub = Command.build(:pub, request.topic, request.body, reply_to: request.inbox)
+    receivers = Map.put(state.receivers, sid, request.recipient)
+    next_sid = sid + 1
+    :ok = :gen_tcp.send(state.tcp, [sub, unsub, pub])
+    {:reply, {:ok, request.inbox}, %{state | receivers: receivers, next_sid: next_sid}}
   end
   def handle_call({:unsub, sid, opts}, _from, state) do
     command = Command.build(:unsub, sid, opts)
