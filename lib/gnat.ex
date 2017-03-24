@@ -24,6 +24,22 @@ defmodule Gnat do
 
   def pub(pid, topic, message), do: GenServer.call(pid, {:pub, topic, message})
 
+  @doc """
+  Unsubscribe from a topic
+
+  This correlates to the [UNSUB](http://nats.io/documentation/internals/nats-protocol/#UNSUB) command in the nats protocol.
+  By default the unsubscribe is affected immediately, but an optional `max_messages` value can be provided which will allow
+  `max_messages` to be received before affecting the unsubscribe.
+  This is especially useful for [request response](http://nats.io/documentation/concepts/nats-req-rep/) patterns.
+
+  ```
+  {:ok, gnat} = Gnat.start_link()
+  {:ok, subscription} = Gnat.sub(gnat, self(), "my_inbox")
+  :ok = Gnat.unsub(gnat, subscription)
+  # OR
+  :ok = Gnat.unsub(gnat, subscription, max_messages: 2)
+  ```
+  """
   def unsub(pid, sid, opts \\ []), do: GenServer.call(pid, {:unsub, sid, opts})
 
   def init(connection_settings) do
