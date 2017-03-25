@@ -24,6 +24,16 @@ defmodule Gnat do
 
   def pub(pid, topic, message, opts \\ []), do: GenServer.call(pid, {:pub, topic, message, opts})
 
+  @doc """
+  Send a request listen for response(s)
+
+  Following the nats [request-response pattern](http://nats.io/documentation/concepts/nats-req-rep/) this
+  function generates a one-time topic to receive replies and then sends a message to the provided topic.
+
+  Supported options:
+    * max_messages: how many messages to expect before cleaning up the inbox subscription (default `1`)
+    * recipient: which pid should receive the responses (default `self()`)
+  """
   def request(pid, topic, body, opts \\ []) do
     recipient = Keyword.get(opts, :recipient, self())
     max_messages = Keyword.get(opts, :max_messages, 1)
