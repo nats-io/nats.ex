@@ -24,9 +24,12 @@ defmodule Gnat.Parser do
   end
 
   defp parse_message_header(str) do
-    case String.split(str) do
-      ["MSG", topic, sidstr, sizestr] -> {topic, String.to_integer(sidstr), nil, String.to_integer(sizestr)}
-      ["MSG", topic, sidstr, reply_to, sizestr] -> {topic, String.to_integer(sidstr), reply_to, String.to_integer(sizestr)}
+    [command | details] = String.split(str)
+    cond do
+      String.match?(command, ~r{msg}i) -> parse_msg(details)
     end
   end
+
+  defp parse_msg([topic, sidstr, sizestr]), do: {topic, String.to_integer(sidstr), nil, String.to_integer(sizestr)}
+  defp parse_msg([topic, sidstr, reply_to, sizestr]), do: {topic, String.to_integer(sidstr), reply_to, String.to_integer(sizestr)}
 end

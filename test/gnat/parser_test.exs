@@ -32,4 +32,10 @@ defmodule Gnat.ParserTest do
     assert parser_state.partial == ""
     assert parsed_message == :ping
   end
+
+  test "parsing a complete message with case insensitive command" do
+    {parser_state, [parsed_message]} = Parser.new |> Parser.parse("msg topic 13 4\r\ntest\r\n")
+    assert parser_state.partial == ""
+    assert parsed_message == {:msg, "topic", 13, nil, "test"}
+  end
 end
