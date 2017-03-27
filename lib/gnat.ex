@@ -47,7 +47,6 @@ defmodule Gnat do
     {:ok, subscription} = GenServer.call(pid, {:request, %{recipient: self(), inbox: inbox, body: body, topic: topic}})
     receive do
       {:msg, %{topic: ^inbox}=msg} -> {:ok, msg}
-      other -> IO.inspect(other)
       after receive_timeout ->
         :ok = unsub(pid, subscription)
         {:error, :timeout}
