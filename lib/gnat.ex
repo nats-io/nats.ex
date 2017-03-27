@@ -25,20 +25,33 @@ defmodule Gnat do
   def pub(pid, topic, message, opts \\ []), do: GenServer.call(pid, {:pub, topic, message, opts})
 
   @doc """
-  Send a request listen for response(s)
+  Send a request and listen for a response synchronously
 
   Following the nats [request-response pattern](http://nats.io/documentation/concepts/nats-req-rep/) this
   function generates a one-time topic to receive replies and then sends a message to the provided topic.
 
   Supported options:
-    * max_messages: how many messages to expect before cleaning up the inbox subscription (default `1`)
-    * recipient: which pid should receive the responses (default `self()`)
+    * receive_timeout: an integer number of milliseconds to wait for a response. Defaults to 60_000
+
+  ```
+  {:ok, gnat} = Gnat.start_link()
+  case Gnat.request("i_can_haz_cheezburger", "plZZZZ?!?!?") do
+    {:ok, %{body: delicious_cheezburger}} -> :yum
+    {:error, :timeout} -> :sad_cat
+  end
+  ```
   """
   def request(pid, topic, body, opts \\ []) do
-    recipient = Keyword.get(opts, :recipient, self())
-    max_messages = Keyword.get(opts, :max_messages, 1)
+    receive_timeout = Keyword.get(opts, :receive_timeout, 60_000)
     inbox = "INBOX-#{:crypto.strong_rand_bytes(12) |> Base.encode64}"
-    GenServer.call(pid, {:request, %{recipient: recipient, max_messages: max_messages, inbox: inbox, body: body, topic: topic}})
+    {:ok, subscription} = GenServer.call(pid, {:request, %{recipient: self(), inbox: inbox, body: body, topic: topic}})
+    receive do
+      {:msg, %{topic: ^inbox}=msg} -> {:ok, msg}
+      other -> IO.inspect(other)
+      after receive_timeout ->
+        :ok = unsub(pid, subscription)
+        {:error, :timeout}
+    end
   end
 
   @doc """
@@ -107,12 +120,12 @@ defmodule Gnat do
   end
   def handle_call({:request, request}, _from, %{next_sid: sid}=state) do
     sub = ["SUB", " #{request.inbox} #{sid}", "\r\n"]
-    unsub = Command.build(:unsub, sid, [max_messages: request.max_messages])
+    unsub = Command.build(:unsub, sid, [max_messages: 1])
     pub = Command.build(:pub, request.topic, request.body, reply_to: request.inbox)
     receivers = Map.put(state.receivers, sid, request.recipient)
     next_sid = sid + 1
     :ok = :gen_tcp.send(state.tcp, [sub, unsub, pub])
-    {:reply, {:ok, request.inbox}, %{state | receivers: receivers, next_sid: next_sid}}
+    {:reply, {:ok, sid}, %{state | receivers: receivers, next_sid: next_sid}}
   end
   def handle_call({:unsub, sid, opts}, _from, state) do
     command = Command.build(:unsub, sid, opts)

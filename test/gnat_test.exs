@@ -73,8 +73,8 @@ defmodule GnatTest do
     topic = "req-resp"
     {:ok, pid} = Gnat.start_link()
     spin_up_echo_server_on_topic(pid, topic)
-    {:ok, inbox} = Gnat.request(pid, topic, "ohai")
-    assert_receive {:msg, %{body: "ohai", topic: ^inbox, reply_to: nil}}, 500
+    {:ok, msg} = Gnat.request(pid, topic, "ohai", receive_timeout: 500)
+    assert msg.body == "ohai"
   end
 
   defp spin_up_echo_server_on_topic(gnat, topic) do
