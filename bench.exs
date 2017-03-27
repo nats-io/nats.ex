@@ -40,11 +40,7 @@ Benchee.run(%{
       after 100 -> raise "timed out on sub"
     end
   end,
-  "req-reply-16" => fn ->
-    {:ok, inbox} = Gnat.request(pid, "echo", "ping")
-    receive do
-      {:msg, %{topic: ^inbox, body: "pong"}} -> :ok
-      after 100 -> raise "didn't receive a pong"
-    end
+  "req-reply-4" => fn ->
+    {:ok, %{body: "pong"}} = Gnat.request(pid, "echo", "ping")
   end,
 }, time: 10, console: [comparison: false])
