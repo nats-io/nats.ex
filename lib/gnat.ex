@@ -20,7 +20,7 @@ defmodule Gnat do
 
   def stop(pid), do: GenServer.call(pid, :stop)
 
-  def sub(pid, subscriber, topic), do: GenServer.call(pid, {:sub, subscriber, topic})
+  def sub(pid, subscriber, topic, opts \\ []), do: GenServer.call(pid, {:sub, subscriber, topic, opts})
 
   def pub(pid, topic, message, opts \\ []), do: GenServer.call(pid, {:pub, topic, message, opts})
 
@@ -106,8 +106,9 @@ defmodule Gnat do
     :gen_tcp.close(state.tcp)
     {:stop, :normal, :ok, state}
   end
-  def handle_call({:sub, receiver, topic}, _from, %{next_sid: sid}=state) do
-    :ok = :gen_tcp.send(state.tcp, ["SUB ", topic, " #{sid}\r\n"])
+  def handle_call({:sub, receiver, topic, opts}, _from, %{next_sid: sid}=state) do
+    sub = Command.build(:sub, topic, sid, opts)
+    :ok = :gen_tcp.send(state.tcp, sub)
     receivers = Map.put(state.receivers, sid, receiver)
     next_state = Map.merge(state, %{receivers: receivers, next_sid: sid + 1})
     {:reply, {:ok, sid}, next_state}

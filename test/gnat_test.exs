@@ -39,6 +39,32 @@ defmodule GnatTest do
     :ok = Gnat.stop(pid)
   end
 
+  test "subscribing to the same topic multiple times" do
+    {:ok, pid} = Gnat.start_link()
+    {:ok, _sub1} = Gnat.sub(pid, self(), "dup")
+    {:ok, _sub2} = Gnat.sub(pid, self(), "dup")
+    :ok = Gnat.pub(pid, "dup", "yo")
+    :ok = Gnat.pub(pid, "dup", "ma")
+    assert_receive {:msg, %{topic: "dup", body: "yo"}}, 500
+    assert_receive {:msg, %{topic: "dup", body: "yo"}}, 500
+    assert_receive {:msg, %{topic: "dup", body: "ma"}}, 500
+    assert_receive {:msg, %{topic: "dup", body: "ma"}}, 500
+  end
+
+  test "subscribing to the same topic multiple times with a queue group" do
+    {:ok, pid} = Gnat.start_link()
+    {:ok, _sub1} = Gnat.sub(pid, self(), "dup", queue_group: "us")
+    {:ok, _sub2} = Gnat.sub(pid, self(), "dup", queue_group: "us")
+    :ok = Gnat.pub(pid, "dup", "yo")
+    :ok = Gnat.pub(pid, "dup", "ma")
+    assert_receive {:msg, %{topic: "dup", body: "yo"}}, 500
+    assert_receive {:msg, %{topic: "dup", body: "ma"}}, 500
+    receive do
+      {:msg, %{topic: _topic}}=msg -> flunk("Received duplicate message: #{inspect msg}")
+      after 200 -> :ok
+    end
+  end
+
   test "unsubscribing from a topic" do
     topic = "testunsub"
     {:ok, pid} = Gnat.start_link()
@@ -48,7 +74,7 @@ defmodule GnatTest do
     :ok = Gnat.unsub(pid, sub_ref)
     :ok = Gnat.pub(pid, topic, "msg2")
     receive do
-      {:msg, _topic, _msg}=msg -> flunk("Received message after unsubscribe: #{inspect msg}")
+      {:msg, %{topic: _topic, body: _body}}=msg -> flunk("Received message after unsubscribe: #{inspect msg}")
       after 200 -> :ok
     end
   end
