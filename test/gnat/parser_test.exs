@@ -44,4 +44,14 @@ defmodule Gnat.ParserTest do
     assert parser_state.partial == ""
     assert parsed_message == :ping
   end
+
+  test "parsing partial messages" do
+    {parser_state, [parsed_message]} = Parser.new |> Parser.parse("PING\r\nMSG topic 11 4\r\nOH")
+    assert parsed_message == :ping
+    assert parser_state.partial == "MSG topic 11 4\r\nOH"
+    {parser_state, [msg1,msg2]} = Parser.parse(parser_state, "AI\r\nMSG topic 11 3\r\nWAT\r\nMSG topic")
+    assert msg1 == {:msg, "topic", 11, nil, "OHAI"}
+    assert msg2 == {:msg, "topic", 11, nil, "WAT"}
+    assert parser_state.partial == "MSG topic"
+  end
 end

@@ -9,16 +9,26 @@ defmodule Gnat.Parser do
   def new, do: %Gnat.Parser{}
 
   def parse(parser, data) do
+    data = parser.partial <> data
+    parser = %{parser | partial: ""}
     parse(parser, data, [])
   end
 
   def parse(parser, "", parsed), do: {parser, Enum.reverse(parsed)}
   def parse(parser, bytes, parsed) do
-    {index, 2} = :binary.match(bytes, "\r\n")
-    {command, "\r\n"<>rest} = String.split_at(bytes, index)
-    {message, rest} = parse_command(command, rest)
-    parsed = [ message | parsed]
-    parse(parser, rest, parsed)
+    case  :binary.match(bytes, "\r\n") do
+      {index, 2} ->
+        {command, "\r\n"<>rest} = String.split_at(bytes, index)
+        case parse_command(command, rest) do
+          :partial_message ->
+            parser = %{parser | partial: bytes}
+            parse(parser, "", parsed)
+          {message, rest} ->
+            parse(parser, rest, [message | parsed])
+        end
+      :nomatch ->
+        parse(%{parser | partial: bytes}, "", parsed)
+    end
   end
 
   defp parse_command(command, body) do
@@ -33,7 +43,11 @@ defmodule Gnat.Parser do
   defp parse_command("MSG", [topic, sidstr, reply_to, sizestr], body) do
     sid = String.to_integer(sidstr)
     bytesize = String.to_integer(sizestr)
-    << message :: binary-size(bytesize), "\r\n", rest :: binary >> = body
-    {{:msg, topic, sid, reply_to, message}, rest}
+    if byte_size(body) >= (bytesize + 2) do
+      << message :: binary-size(bytesize), "\r\n", rest :: binary >> = body
+      {{:msg, topic, sid, reply_to, message}, rest}
+    else
+      :partial_message
+    end
   end
 end
