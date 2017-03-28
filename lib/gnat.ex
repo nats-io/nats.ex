@@ -24,8 +24,8 @@ defmodule Gnat do
   Subscribe to a topic
 
   By default each subscriber will receive a copy of messages on the topic.
-  When a queue_group is supplied messages will be spread amongs the subscribers
-  int the same group. (see [nats queueing](https://nats.io/documentation/concepts/nats-queueing/))
+  When a queue_group is supplied messages will be spread among the subscribers
+  in the same group. (see [nats queueing](https://nats.io/documentation/concepts/nats-queueing/))
 
   Supported options:
     * queue_group: a string that identifies which queue group you want to join
