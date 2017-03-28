@@ -21,16 +21,16 @@ defmodule Gnat.Parser do
     parse(parser, rest, parsed)
   end
 
-  defp parse_command(command_str, body) do
-    [command | details] = String.split(command_str)
-    cond do
-      String.match?(command, ~r{msg}i) -> parse_msg(details, body)
-      String.match?(command, ~r{ping}i) -> {:ping, ""}
-    end
+  defp parse_command(command, body) do
+    [operation | details] = String.split(command)
+    operation
+    |> String.upcase
+    |> parse_command(details, body)
   end
 
-  defp parse_msg([topic, sidstr, sizestr], body), do: parse_msg([topic, sidstr, nil, sizestr], body)
-  defp parse_msg([topic, sidstr, reply_to, sizestr], body) do
+  defp parse_command("PING", _, body), do: {:ping, body}
+  defp parse_command("MSG", [topic, sidstr, sizestr], body), do: parse_command("MSG", [topic, sidstr, nil, sizestr], body)
+  defp parse_command("MSG", [topic, sidstr, reply_to, sizestr], body) do
     sid = String.to_integer(sidstr)
     bytesize = String.to_integer(sizestr)
     << message :: binary-size(bytesize), "\r\n", rest :: binary >> = body
