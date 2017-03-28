@@ -20,7 +20,26 @@ defmodule Gnat do
 
   def stop(pid), do: GenServer.call(pid, :stop)
 
-  def sub(pid, subscriber, topic), do: GenServer.call(pid, {:sub, subscriber, topic})
+  @doc """
+  Subscribe to a topic
+
+  By default each subscriber will receive a copy of messages on the topic.
+  When a queue_group is supplied messages will be spread among the subscribers
+  in the same group. (see [nats queueing](https://nats.io/documentation/concepts/nats-queueing/))
+
+  Supported options:
+    * queue_group: a string that identifies which queue group you want to join
+
+  ```
+  {:ok, gnat} = Gnat.start_link()
+  {:ok, subscription} = Gnat.sub(gnat, "topic")
+  receive do
+    {:msg, %{topic: "topic", body: body}} ->
+      IO.puts "Received: \#\{body\}"
+  end
+  ```
+  """
+  def sub(pid, subscriber, topic, opts \\ []), do: GenServer.call(pid, {:sub, subscriber, topic, opts})
 
   def pub(pid, topic, message, opts \\ []), do: GenServer.call(pid, {:pub, topic, message, opts})
 
@@ -106,8 +125,9 @@ defmodule Gnat do
     :gen_tcp.close(state.tcp)
     {:stop, :normal, :ok, state}
   end
-  def handle_call({:sub, receiver, topic}, _from, %{next_sid: sid}=state) do
-    :ok = :gen_tcp.send(state.tcp, ["SUB ", topic, " #{sid}\r\n"])
+  def handle_call({:sub, receiver, topic, opts}, _from, %{next_sid: sid}=state) do
+    sub = Command.build(:sub, topic, sid, opts)
+    :ok = :gen_tcp.send(state.tcp, sub)
     receivers = Map.put(state.receivers, sid, receiver)
     next_state = Map.merge(state, %{receivers: receivers, next_sid: sid + 1})
     {:reply, {:ok, sid}, next_state}
@@ -118,7 +138,7 @@ defmodule Gnat do
     {:reply, :ok, state}
   end
   def handle_call({:request, request}, _from, %{next_sid: sid}=state) do
-    sub = ["SUB", " #{request.inbox} #{sid}", "\r\n"]
+    sub = Command.build(:sub, request.inbox, sid, [])
     unsub = Command.build(:unsub, sid, [max_messages: 1])
     pub = Command.build(:pub, request.topic, request.body, reply_to: request.inbox)
     receivers = Map.put(state.receivers, sid, request.recipient)

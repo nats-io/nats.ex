@@ -12,6 +12,16 @@ defmodule Gnat.CommandTest do
     assert command == "PUB topic INBOX 7\r\npayload\r\n"
   end
 
+  test "formatting a basic sub message" do
+    command = Command.build(:sub, "foobar", 4, []) |> IO.iodata_to_binary
+    assert command == "SUB foobar 4\r\n"
+  end
+
+  test "formatting a sub with a queue group" do
+    command = Command.build(:sub, "foobar", 5, [queue_group: "us"]) |> IO.iodata_to_binary
+    assert command == "SUB foobar us 5\r\n"
+  end
+
   test "formatting a simple unsub message" do
     command = Command.build(:unsub, 12, []) |> IO.iodata_to_binary
     assert command == "UNSUB 12\r\n"
