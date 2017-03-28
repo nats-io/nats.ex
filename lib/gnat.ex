@@ -119,7 +119,7 @@ defmodule Gnat do
     {:reply, :ok, state}
   end
   def handle_call({:request, request}, _from, %{next_sid: sid}=state) do
-    sub = ["SUB", " #{request.inbox} #{sid}", "\r\n"]
+    sub = Command.build(:sub, request.inbox, sid, [])
     unsub = Command.build(:unsub, sid, [max_messages: 1])
     pub = Command.build(:pub, request.topic, request.body, reply_to: request.inbox)
     receivers = Map.put(state.receivers, sid, request.recipient)
