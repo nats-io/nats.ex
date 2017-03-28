@@ -20,6 +20,25 @@ defmodule Gnat do
 
   def stop(pid), do: GenServer.call(pid, :stop)
 
+  @doc """
+  Subscribe to a topic
+
+  By default each subscriber will receive a copy of messages on the topic.
+  When a queue_group is supplied messages will be spread amongs the subscribers
+  int the same group. (see [nats queueing](https://nats.io/documentation/concepts/nats-queueing/))
+
+  Supported options:
+    * queue_group: a string that identifies which queue group you want to join
+
+  ```
+  {:ok, gnat} = Gnat.start_link()
+  {:ok, subscription} = Gnat.sub(gnat, "topic")
+  receive do
+    {:msg, %{topic: "topic", body: body}} ->
+      IO.puts "Received: \#\{body\}"
+  end
+  ```
+  """
   def sub(pid, subscriber, topic, opts \\ []), do: GenServer.call(pid, {:sub, subscriber, topic, opts})
 
   def pub(pid, topic, message, opts \\ []), do: GenServer.call(pid, {:pub, topic, message, opts})
