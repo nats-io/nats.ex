@@ -134,7 +134,8 @@ defmodule Gnat do
 
   defp perform_handshake(tcp) do
     receive do
-      {:tcp, ^tcp, "INFO"<>_} ->
+      {:tcp, ^tcp, operation} ->
+        "INFO" = operation |> String.split |> List.first |> String.upcase
         :gen_tcp.send(tcp, "CONNECT {\"verbose\": false}\r\n")
       after 1000 ->
         {:error, "timed out waiting for info"}

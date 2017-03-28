@@ -13,20 +13,27 @@ defmodule Gnat.Parser do
   end
 
   def parse(parser, "", parsed), do: {parser, Enum.reverse(parsed)}
-  def parse(parser, "PING\r\n", _), do: {parser, [:ping]}
   def parse(parser, bytes, parsed) do
     {index, 2} = :binary.match(bytes, "\r\n")
     {command, "\r\n"<>rest} = String.split_at(bytes, index)
-    {topic, sid, reply_to, bytesize} = parse_message_header(command)
-    << message :: binary-size(bytesize), "\r\n", rest :: binary >> = rest
-    parsed = [ {:msg, topic, sid, reply_to, message} | parsed]
+    {message, rest} = parse_command(command, rest)
+    parsed = [ message | parsed]
     parse(parser, rest, parsed)
   end
 
-  defp parse_message_header(str) do
-    case String.split(str) do
-      ["MSG", topic, sidstr, sizestr] -> {topic, String.to_integer(sidstr), nil, String.to_integer(sizestr)}
-      ["MSG", topic, sidstr, reply_to, sizestr] -> {topic, String.to_integer(sidstr), reply_to, String.to_integer(sizestr)}
-    end
+  defp parse_command(command, body) do
+    [operation | details] = String.split(command)
+    operation
+    |> String.upcase
+    |> parse_command(details, body)
+  end
+
+  defp parse_command("PING", _, body), do: {:ping, body}
+  defp parse_command("MSG", [topic, sidstr, sizestr], body), do: parse_command("MSG", [topic, sidstr, nil, sizestr], body)
+  defp parse_command("MSG", [topic, sidstr, reply_to, sizestr], body) do
+    sid = String.to_integer(sidstr)
+    bytesize = String.to_integer(sizestr)
+    << message :: binary-size(bytesize), "\r\n", rest :: binary >> = body
+    {{:msg, topic, sid, reply_to, message}, rest}
   end
 end
