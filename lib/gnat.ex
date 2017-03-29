@@ -95,9 +95,10 @@ defmodule Gnat do
   Ping the NATS server
 
   This correlates to the [PING](http://nats.io/documentation/internals/nats-protocol/#PINGPONG) command in the NATS protocol.
+  If the NATS server responds with a PONG message this function will return `:ok`
   ```
   {:ok, gnat} = Gnat.start_link()
-  {:pong} = Gnat.ping(gnat)
+  :ok = Gnat.ping(gnat)
   ```
   """
   def ping(pid) do
