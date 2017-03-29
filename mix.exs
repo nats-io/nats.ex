@@ -18,6 +18,7 @@ defmodule Gnat.Mixfile do
     [
       {:benchee, "~> 0.6.0", only: :dev},
       {:ex_doc, "~> 0.15", only: :dev},
+      {:poison, "~> 3.0"},
     ]
   end
 end

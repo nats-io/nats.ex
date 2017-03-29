@@ -54,4 +54,19 @@ defmodule Gnat.ParserTest do
     assert msg2 == {:msg, "topic", 11, nil, "WAT"}
     assert parser_state.partial == "MSG topic"
   end
+
+  test "parsing INFO message" do
+    {parser_state, [parsed_message]} = Parser.new |> Parser.parse("INFO {\"server_id\":\"1ec445b504f4edfb4cf7927c707dd717\",\"version\":\"0.6.6\",\"go\":\"go1.4.2\",\"host\":\"0.0.0.0\",\"port\":4222,\"auth_required\":false,\"ssl_required\":false,\"max_payload\":1048576}\r\n")
+    assert parser_state.partial == ""
+    assert parsed_message == {:info, %{
+                                        server_id: "1ec445b504f4edfb4cf7927c707dd717",
+                                        version: "0.6.6",
+                                        go: "go1.4.2",
+                                        host: "0.0.0.0",
+                                        port: 4222,
+                                        auth_required: false,
+                                        ssl_required: false,
+                                        max_payload: 1048576
+                                      }}
+  end
 end

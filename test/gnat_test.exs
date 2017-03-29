@@ -8,6 +8,20 @@ defmodule GnatTest do
     :ok = Gnat.stop(pid)
   end
 
+  test "connect to a server with authentication" do
+    connection_settings = %{
+      host: 'localhost',
+      port: 4223,
+      tcp_opts: [:binary],
+      username: "bob",
+      password: "alice"
+    }
+    {:ok, pid} = Gnat.start_link(connection_settings)
+    assert Process.alive?(pid)
+    :ok = Gnat.ping(pid)
+    :ok = Gnat.stop(pid)
+  end
+
   test "subscribe to topic and receive a message" do
     {:ok, pid} = Gnat.start_link()
     {:ok, _ref} = Gnat.sub(pid, self(), "test")

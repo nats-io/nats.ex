@@ -1,5 +1,6 @@
 defmodule Gnat.Parser do
   require Logger
+  require Poison
   # states: waiting, reading_message
   defstruct [
     partial: "",
@@ -39,6 +40,7 @@ defmodule Gnat.Parser do
   end
 
   defp parse_command("PING", _, body), do: {:ping, body}
+  defp parse_command("PONG", _, body), do: {:pong, body}
   defp parse_command("MSG", [topic, sidstr, sizestr], body), do: parse_command("MSG", [topic, sidstr, nil, sizestr], body)
   defp parse_command("MSG", [topic, sidstr, reply_to, sizestr], body) do
     sid = String.to_integer(sidstr)
@@ -49,5 +51,8 @@ defmodule Gnat.Parser do
     else
       :partial_message
     end
+  end
+  defp parse_command("INFO", options, body) do
+    {{:info, Poison.Parser.parse!(options, keys: :atoms)}, body}
   end
 end

@@ -5,6 +5,7 @@
 defmodule Gnat do
   use GenServer
   require Logger
+  require Poison
   alias Gnat.{Command, Parser}
 
   @default_connection_settings %{
@@ -90,10 +91,28 @@ defmodule Gnat do
   """
   def unsub(pid, sid, opts \\ []), do: GenServer.call(pid, {:unsub, sid, opts})
 
+  @doc """
+  Ping the NATS server
+
+  This correlates to the [PING](http://nats.io/documentation/internals/nats-protocol/#PINGPONG) command in the NATS protocol.
+  ```
+  {:ok, gnat} = Gnat.start_link()
+  {:pong} = Gnat.ping(gnat)
+  ```
+  """
+  def ping(pid) do
+    GenServer.call(pid, {:ping, self()})
+    receive do
+      :pong -> :ok
+    after
+      3_000 -> {:error, "No PONG response after 3 sec"}
+    end
+  end
+
   def init(connection_settings) do
     connection_settings = Map.merge(@default_connection_settings, connection_settings)
     {:ok, tcp} = :gen_tcp.connect(connection_settings.host, connection_settings.port, connection_settings.tcp_opts)
-    case perform_handshake(tcp) do
+    case perform_handshake(tcp, connection_settings) do
       :ok ->
         parser = Parser.new
         {:ok, %{tcp: tcp, connection_settings: connection_settings, next_sid: 1, receivers: %{}, parser: parser}}
@@ -108,6 +127,9 @@ defmodule Gnat do
   end
   defp process_message(:ping, state) do
     :gen_tcp.send(state.tcp, "PONG\r\n")
+  end
+  defp process_message(:pong, state) do
+    send state.pinger, :pong
   end
   def handle_info({:tcp, tcp, data}, %{tcp: tcp, parser: parser}=state) do
     Logger.debug "#{__MODULE__} received #{inspect data}"
@@ -151,14 +173,27 @@ defmodule Gnat do
     :ok = :gen_tcp.send(state.tcp, command)
     {:reply, :ok, state}
   end
+  def handle_call({:ping, pinger}, _from, state) do
+    :ok = :gen_tcp.send(state.tcp, "PING\r\n")
+    {:reply, :ok, Map.put(state, :pinger, pinger)}
+  end
 
-  defp perform_handshake(tcp) do
+  defp perform_handshake(tcp, connection_settings) do
     receive do
       {:tcp, ^tcp, operation} ->
-        "INFO" = operation |> String.split |> List.first |> String.upcase
-        :gen_tcp.send(tcp, "CONNECT {\"verbose\": false}\r\n")
+        {_, [{:info, options}]} = Parser.parse(Parser.new, operation) # |> String.split |> List.first |> String.upcase
+        # :gen_tcp.send(tcp, "CONNECT {\"verbose\": false}\r\n")
+        connect(tcp, options, connection_settings)
       after 1000 ->
         {:error, "timed out waiting for info"}
     end
+  end
+
+  defp connect(tcp, %{auth_required: true}=_options, %{username: username, password: password}=_connection_settings) do
+    opts = Poison.Encoder.encode(%{user: username, pass: password, verbose: false}, strict_keys: true)
+    :gen_tcp.send(tcp, "CONNECT #{opts}\r\n")
+  end
+  defp connect(tcp, _options, _connection_settings) do
+    :gen_tcp.send(tcp, "CONNECT {\"verbose\": false}\r\n")
   end
 end
