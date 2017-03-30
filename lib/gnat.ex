@@ -134,8 +134,13 @@ defmodule Gnat do
   end
   def handle_call({:pub, topic, message, opts}, _from, state) do
     command = Command.build(:pub, topic, message, opts)
-    :ok = :gen_tcp.send(state.tcp, command)
-    {:reply, :ok, state}
+    case :gen_tcp.send(state.tcp, command) do
+      :ok ->
+        {:reply, :ok, state}
+      {:error, :closed} ->
+        {:ok, tcp} = :gen_tcp.connect(state.connection_settings.host, state.connection_settings.port, state.connection_settings.tcp_opts)
+        {:reply, {:error, :closed}, %{state | tcp: tcp, parser: Parser.new }}
+    end
   end
   def handle_call({:request, request}, _from, %{next_sid: sid}=state) do
     sub = Command.build(:sub, request.inbox, sid, [])
