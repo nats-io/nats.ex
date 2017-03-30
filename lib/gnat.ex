@@ -104,7 +104,7 @@ defmodule Gnat do
   end
 
   defp process_message({:msg, topic, sid, reply_to, body}, state) do
-    send state.receivers[sid], {:msg, %{topic: topic, body: body, reply_to: reply_to}}
+    send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to}}
   end
   defp process_message(:ping, state) do
     :gen_tcp.send(state.tcp, "PONG\r\n")
@@ -128,8 +128,7 @@ defmodule Gnat do
   def handle_call({:sub, receiver, topic, opts}, _from, %{next_sid: sid}=state) do
     sub = Command.build(:sub, topic, sid, opts)
     :ok = :gen_tcp.send(state.tcp, sub)
-    receivers = Map.put(state.receivers, sid, receiver)
-    next_state = Map.merge(state, %{receivers: receivers, next_sid: sid + 1})
+    next_state = add_subscription_to_state(state, sid, receiver) |> Map.put(:next_sid, sid + 1)
     {:reply, {:ok, sid}, next_state}
   end
   def handle_call({:pub, topic, message, opts}, _from, state) do
@@ -141,10 +140,10 @@ defmodule Gnat do
     sub = Command.build(:sub, request.inbox, sid, [])
     unsub = Command.build(:unsub, sid, [max_messages: 1])
     pub = Command.build(:pub, request.topic, request.body, reply_to: request.inbox)
-    receivers = Map.put(state.receivers, sid, request.recipient)
-    next_sid = sid + 1
     :ok = :gen_tcp.send(state.tcp, [sub, unsub, pub])
-    {:reply, {:ok, sid}, %{state | receivers: receivers, next_sid: next_sid}}
+    state = add_subscription_to_state(state, sid, request.recipient) |> cleanup_subscription_from_state(sid, max_messages: 1)
+    next_sid = sid + 1
+    {:reply, {:ok, sid}, %{state | next_sid: next_sid}}
   end
   def handle_call({:unsub, sid, opts}, _from, state) do
     command = Command.build(:unsub, sid, opts)
@@ -160,5 +159,19 @@ defmodule Gnat do
       after 1000 ->
         {:error, "timed out waiting for info"}
     end
+  end
+
+  defp add_subscription_to_state(%{receivers: receivers}=state, sid, pid) do
+    receivers = Map.put(receivers, sid, %{recipient: pid, unsub_after: :infinity})
+    %{state | receivers: receivers}
+  end
+
+  defp cleanup_subscription_from_state(%{receivers: receivers}=state, sid, []) do
+    receivers = Map.delete(receivers, sid)
+    %{state | receivers: receivers}
+  end
+  defp cleanup_subscription_from_state(%{receivers: receivers}=state, sid, [max_messages: n]) do
+    receivers = put_in(receivers, [sid, :unsub_after], n)
+    %{state | receivers: receivers}
   end
 end
