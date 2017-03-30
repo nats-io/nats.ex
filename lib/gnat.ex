@@ -23,7 +23,7 @@ defmodule Gnat do
   @doc """
   Subscribe to a topic
 
-  By default each subscriber will receive a copy of messages on the topic.
+  By default each subscriber will receive a copy of every message on the topic.
   When a queue_group is supplied messages will be spread among the subscribers
   in the same group. (see [nats queueing](https://nats.io/documentation/concepts/nats-queueing/))
 
@@ -32,7 +32,7 @@ defmodule Gnat do
 
   ```
   {:ok, gnat} = Gnat.start_link()
-  {:ok, subscription} = Gnat.sub(gnat, "topic")
+  {:ok, subscription} = Gnat.sub(gnat, self(), "topic")
   receive do
     {:msg, %{topic: "topic", body: body}} ->
       IO.puts "Received: \#\{body\}"
@@ -103,17 +103,12 @@ defmodule Gnat do
     end
   end
 
-  defp process_message({:msg, topic, sid, reply_to, body}, state) do
-    send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to}}
-  end
-  defp process_message(:ping, state) do
-    :gen_tcp.send(state.tcp, "PONG\r\n")
-  end
   def handle_info({:tcp, tcp, data}, %{tcp: tcp, parser: parser}=state) do
     Logger.debug "#{__MODULE__} received #{inspect data}"
     {new_parser, messages} = Parser.parse(parser, data)
-    Enum.each(messages, &process_message(&1, state))
-    {:noreply, %{state | parser: new_parser}}
+    new_state = %{state | parser: new_parser}
+    new_state = Enum.reduce(messages, new_state, &process_message/2)
+    {:noreply, new_state}
   end
   def handle_info(other, state) do
     Logger.error "#{__MODULE__} received unexpected message: #{inspect other}"
@@ -172,6 +167,24 @@ defmodule Gnat do
   end
   defp cleanup_subscription_from_state(%{receivers: receivers}=state, sid, [max_messages: n]) do
     receivers = put_in(receivers, [sid, :unsub_after], n)
+    %{state | receivers: receivers}
+  end
+
+  defp process_message({:msg, topic, sid, reply_to, body}, state) do
+    send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to}}
+    update_subscriptions_after_delivering_message(state, sid)
+  end
+  defp process_message(:ping, state) do
+    :gen_tcp.send(state.tcp, "PONG\r\n")
+    state
+  end
+
+  defp update_subscriptions_after_delivering_message(%{receivers: receivers}=state, sid) do
+    receivers = case get_in(receivers, [sid, :unsub_after]) do
+                  :infinity -> receivers
+                  1 -> Map.delete(receivers, sid)
+                  n -> put_in(receivers, [sid, :unsub_after], n - 1)
+                end
     %{state | receivers: receivers}
   end
 end
