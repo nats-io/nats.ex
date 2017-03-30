@@ -69,4 +69,10 @@ defmodule Gnat.ParserTest do
                                         max_payload: 1048576
                                       }}
   end
+
+  test "parsing PONG message" do
+    {parser_state, [parsed_message]} = Parser.new |> Parser.parse("PONG\r\n")
+    assert parser_state.partial == ""
+    assert parsed_message == :pong
+  end
 end
