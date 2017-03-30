@@ -1,5 +1,5 @@
 defmodule GnatTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   doctest Gnat
 
   test "connect to a server" do
