@@ -182,8 +182,7 @@ defmodule Gnat do
   defp perform_handshake(tcp, connection_settings) do
     receive do
       {:tcp, ^tcp, operation} ->
-        {_, [{:info, options}]} = Parser.parse(Parser.new, operation) # |> String.split |> List.first |> String.upcase
-        # :gen_tcp.send(tcp, "CONNECT {\"verbose\": false}\r\n")
+        {_, [{:info, options}]} = Parser.parse(Parser.new, operation)
         connect(tcp, options, connection_settings)
       after 1000 ->
         {:error, "timed out waiting for info"}
