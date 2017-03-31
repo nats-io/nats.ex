@@ -142,7 +142,7 @@ defmodule Gnat do
   end
   def handle_call({:unsub, sid, opts}, _from, %{receivers: receivers}=state) do
     case Map.has_key?(receivers, sid) do
-      false -> {:reply, {:error, :no_such_subscription}, state}
+      false -> {:reply, :ok, state}
       true ->
         command = Command.build(:unsub, sid, opts)
         :ok = :gen_tcp.send(state.tcp, command)

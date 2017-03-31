@@ -79,12 +79,6 @@ defmodule GnatTest do
     end
   end
 
-  test "invalid unsub command" do
-    {:ok, pid} = Gnat.start_link()
-    assert Gnat.unsub(pid, 15) == {:error, :no_such_subscription}
-    Gnat.stop(pid)
-  end
-
   test "unsubscribing from a topic after a maximum number of messages" do
     topic = "testunsub_maxmsg"
     {:ok, pid} = Gnat.start_link()
