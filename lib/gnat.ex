@@ -140,10 +140,14 @@ defmodule Gnat do
     next_sid = sid + 1
     {:reply, {:ok, sid}, %{state | next_sid: next_sid}}
   end
-  def handle_call({:unsub, sid, opts}, _from, state) do
-    command = Command.build(:unsub, sid, opts)
-    :ok = :gen_tcp.send(state.tcp, command)
-    {:reply, :ok, state}
+  def handle_call({:unsub, sid, opts}, _from, %{receivers: receivers}=state) do
+    case Map.has_key?(receivers, sid) do
+      false -> {:reply, {:error, :no_such_subscription}, state}
+      true ->
+        command = Command.build(:unsub, sid, opts)
+        :ok = :gen_tcp.send(state.tcp, command)
+        {:reply, :ok, state}
+    end
   end
 
   defp perform_handshake(tcp) do
