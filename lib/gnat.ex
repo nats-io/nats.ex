@@ -216,6 +216,7 @@ defmodule Gnat do
   end
   defp process_message(:pong, state) do
     send state.pinger, :pong
+    state
   end
 
   defp update_subscriptions_after_delivering_message(%{receivers: receivers}=state, sid) do
