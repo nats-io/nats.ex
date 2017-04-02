@@ -1,6 +1,5 @@
 defmodule Gnat.Parser do
   require Logger
-  require Poison
   # states: waiting, reading_message
   defstruct [
     partial: "",

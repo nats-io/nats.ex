@@ -5,7 +5,6 @@
 defmodule Gnat do
   use GenServer
   require Logger
-  require Poison
   alias Gnat.{Command, Parser}
 
   @default_connection_settings %{
