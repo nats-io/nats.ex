@@ -33,3 +33,10 @@ As of this commit the most recent numbers from running on my macbook pro are:
 | parse-128 | 90.54 K | 11.04 μs | ±78.18% | 10.00 μs |
 | pub - 128 | 88.03 K | 11.36 μs | ±82.08% | 11.00 μs |
 | subpub-16 | 7.44 K | 134.49 μs | ±47.57% | 122.00 μs |
+
+## Development
+
+To run the tests the typical `mix test` will run all tests that have not been tagged
+to exclude as shown in the `test_helper.exs` file.  There are some tests that require
+another server to be running.  These are marked with `@tag :multi_server` and can be
+included in a test run with the following command `mix test --include multi_server`
