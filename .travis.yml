@@ -14,3 +14,6 @@ before_install:
 
 before_script:
  - ./gnatsd-v0.9.6-linux-amd64/gnatsd -p 4223 --user bob --pass alice &
+
+script:
+  - mix test --include multi_server
