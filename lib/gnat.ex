@@ -139,25 +139,25 @@ defmodule Gnat do
 
 
   def handle_call(:stop, _from, state) do
-    socket_close(state.connection_settings, state.socket)
+    socket_close(state)
     {:stop, :normal, :ok, state}
   end
   def handle_call({:sub, receiver, topic, opts}, _from, %{next_sid: sid}=state) do
     sub = Command.build(:sub, topic, sid, opts)
-    :ok = socket_write(state.connection_settings, state.socket, sub)
+    :ok = socket_write(state, sub)
     next_state = add_subscription_to_state(state, sid, receiver) |> Map.put(:next_sid, sid + 1)
     {:reply, {:ok, sid}, next_state}
   end
   def handle_call({:pub, topic, message, opts}, _from, state) do
     command = Command.build(:pub, topic, message, opts)
-    :ok = socket_write(state.connection_settings, state.socket, command)
+    :ok = socket_write(state, command)
     {:reply, :ok, state}
   end
   def handle_call({:request, request}, _from, %{next_sid: sid}=state) do
     sub = Command.build(:sub, request.inbox, sid, [])
     unsub = Command.build(:unsub, sid, [max_messages: 1])
     pub = Command.build(:pub, request.topic, request.body, reply_to: request.inbox)
-    :ok = socket_write(state.connection_settings, state.socket, [sub, unsub, pub])
+    :ok = socket_write(state, [sub, unsub, pub])
     state = add_subscription_to_state(state, sid, request.recipient) |> cleanup_subscription_from_state(sid, max_messages: 1)
     next_sid = sid + 1
     {:reply, {:ok, sid}, %{state | next_sid: next_sid}}
@@ -167,20 +167,22 @@ defmodule Gnat do
       false -> {:reply, :ok, state}
       true ->
         command = Command.build(:unsub, sid, opts)
-        :ok = socket_write(state.connection_settings, state.socket, command)
+        :ok = socket_write(state, command)
         {:reply, :ok, state}
     end
   end
   def handle_call({:ping, pinger}, _from, state) do
-    :ok = socket_write(state.connection_settings, state.socket, "PING\r\n")
+    :ok = socket_write(state, "PING\r\n")
     {:reply, :ok, Map.put(state, :pinger, pinger)}
   end
 
-  defp socket_close(%{tls: true}, socket), do: :ssl.close(socket)
-  defp socket_close(_, socket), do: :gen_tcp.close(socket)
+  defp socket_close(%{socket: socket, connection_settings: %{tls: true}}), do: :ssl.close(socket)
+  defp socket_close(%{socket: socket}), do: :gen_tcp.close(socket)
 
-  defp socket_write(%{tls: true}, socket, iodata), do: :ssl.send(socket, iodata)
-  defp socket_write(_, socket, iodata), do: :gen_tcp.send(socket, iodata)
+  defp socket_write(%{socket: socket, connection_settings: %{tls: true}}, iodata) do
+    :ssl.send(socket, iodata)
+  end
+  defp socket_write(%{socket: socket}, iodata), do: :gen_tcp.send(socket, iodata)
 
   defp add_subscription_to_state(%{receivers: receivers}=state, sid, pid) do
     receivers = Map.put(receivers, sid, %{recipient: pid, unsub_after: :infinity})
@@ -201,7 +203,7 @@ defmodule Gnat do
     update_subscriptions_after_delivering_message(state, sid)
   end
   defp process_message(:ping, state) do
-    socket_write(state.connection_settings, state.socket, "PONG\r\n")
+    socket_write(state, "PONG\r\n")
     state
   end
   defp process_message(:pong, state) do
