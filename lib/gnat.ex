@@ -11,6 +11,8 @@ defmodule Gnat do
     host: 'localhost',
     port: 4222,
     tcp_opts: [:binary],
+    ssl_opts: [],
+    tls: false,
   }
 
   def start_link, do: start_link(%{})
@@ -111,13 +113,11 @@ defmodule Gnat do
 
   def init(connection_settings) do
     connection_settings = Map.merge(@default_connection_settings, connection_settings)
-    {:ok, tcp} = :gen_tcp.connect(connection_settings.host, connection_settings.port, connection_settings.tcp_opts)
-    case perform_handshake(tcp, connection_settings) do
+    case Gnat.Handshake.connect(connection_settings) do
       {:ok, socket} ->
         parser = Parser.new
         {:ok, %{socket: socket, connection_settings: connection_settings, next_sid: 1, receivers: %{}, parser: parser}}
       {:error, reason} ->
-        :gen_tcp.close(tcp)
         {:error, reason}
     end
   end
@@ -175,32 +175,6 @@ defmodule Gnat do
     :ok = socket_write(state.connection_settings, state.socket, "PING\r\n")
     {:reply, :ok, Map.put(state, :pinger, pinger)}
   end
-
-  defp perform_handshake(tcp, connection_settings) do
-    receive do
-      {:tcp, ^tcp, operation} ->
-        {_, [{:info, options}]} = Parser.parse(Parser.new, operation)
-        {:ok, socket} = upgrade_connection(tcp, options, connection_settings)
-        connect(socket, options, connection_settings)
-        {:ok, socket}
-      after 1000 ->
-        {:error, "timed out waiting for info"}
-    end
-  end
-
-  defp connect(socket, %{auth_required: true}=_options, %{username: username, password: password}=connection_settings) do
-    opts = Poison.Encoder.encode(%{user: username, pass: password, verbose: false}, strict_keys: true)
-    socket_write(connection_settings, socket, "CONNECT #{opts}\r\n")
-  end
-  defp connect(socket, _options, connection_settings) do
-    socket_write(connection_settings, socket, "CONNECT {\"verbose\": false}\r\n")
-  end
-
-  defp upgrade_connection(tcp, %{tls_required: true}, %{tls: true}) do
-    :ok = :inet.setopts(tcp, [active: true])
-    :ssl.connect(tcp, [], 1_000)
-  end
-  defp upgrade_connection(tcp, _server_settings, _connection_settions), do: {:ok, tcp}
 
   defp socket_close(%{tls: true}, socket), do: :ssl.close(socket)
   defp socket_close(_, socket), do: :gen_tcp.close(socket)
