@@ -115,14 +115,14 @@ defmodule Gnat do
     case perform_handshake(tcp, connection_settings) do
       {:ok, socket} ->
         parser = Parser.new
-        {:ok, %{tcp: socket, connection_settings: connection_settings, next_sid: 1, receivers: %{}, parser: parser}}
+        {:ok, %{socket: socket, connection_settings: connection_settings, next_sid: 1, receivers: %{}, parser: parser}}
       {:error, reason} ->
         :gen_tcp.close(tcp)
         {:error, reason}
     end
   end
 
-  def handle_info({:tcp, tcp, data}, %{tcp: tcp, parser: parser}=state) do
+  def handle_info({:tcp, socket, data}, %{socket: socket, parser: parser}=state) do
     Logger.debug "#{__MODULE__} received #{inspect data}"
     {new_parser, messages} = Parser.parse(parser, data)
     new_state = %{state | parser: new_parser}
@@ -139,25 +139,25 @@ defmodule Gnat do
 
 
   def handle_call(:stop, _from, state) do
-    socket_close(state.connection_settings, state.tcp)
+    socket_close(state.connection_settings, state.socket)
     {:stop, :normal, :ok, state}
   end
   def handle_call({:sub, receiver, topic, opts}, _from, %{next_sid: sid}=state) do
     sub = Command.build(:sub, topic, sid, opts)
-    :ok = socket_write(state.connection_settings, state.tcp, sub)
+    :ok = socket_write(state.connection_settings, state.socket, sub)
     next_state = add_subscription_to_state(state, sid, receiver) |> Map.put(:next_sid, sid + 1)
     {:reply, {:ok, sid}, next_state}
   end
   def handle_call({:pub, topic, message, opts}, _from, state) do
     command = Command.build(:pub, topic, message, opts)
-    :ok = socket_write(state.connection_settings, state.tcp, command)
+    :ok = socket_write(state.connection_settings, state.socket, command)
     {:reply, :ok, state}
   end
   def handle_call({:request, request}, _from, %{next_sid: sid}=state) do
     sub = Command.build(:sub, request.inbox, sid, [])
     unsub = Command.build(:unsub, sid, [max_messages: 1])
     pub = Command.build(:pub, request.topic, request.body, reply_to: request.inbox)
-    :ok = socket_write(state.connection_settings, state.tcp, [sub, unsub, pub])
+    :ok = socket_write(state.connection_settings, state.socket, [sub, unsub, pub])
     state = add_subscription_to_state(state, sid, request.recipient) |> cleanup_subscription_from_state(sid, max_messages: 1)
     next_sid = sid + 1
     {:reply, {:ok, sid}, %{state | next_sid: next_sid}}
@@ -167,12 +167,12 @@ defmodule Gnat do
       false -> {:reply, :ok, state}
       true ->
         command = Command.build(:unsub, sid, opts)
-        :ok = socket_write(state.connection_settings, state.tcp, command)
+        :ok = socket_write(state.connection_settings, state.socket, command)
         {:reply, :ok, state}
     end
   end
   def handle_call({:ping, pinger}, _from, state) do
-    :ok = socket_write(state.connection_settings, state.tcp, "PING\r\n")
+    :ok = socket_write(state.connection_settings, state.socket, "PING\r\n")
     {:reply, :ok, Map.put(state, :pinger, pinger)}
   end
 
@@ -188,12 +188,12 @@ defmodule Gnat do
     end
   end
 
-  defp connect(tcp, %{auth_required: true}=_options, %{username: username, password: password}=connection_settings) do
+  defp connect(socket, %{auth_required: true}=_options, %{username: username, password: password}=connection_settings) do
     opts = Poison.Encoder.encode(%{user: username, pass: password, verbose: false}, strict_keys: true)
-    socket_write(connection_settings, tcp, "CONNECT #{opts}\r\n")
+    socket_write(connection_settings, socket, "CONNECT #{opts}\r\n")
   end
-  defp connect(tcp, _options, connection_settings) do
-    socket_write(connection_settings, tcp, "CONNECT {\"verbose\": false}\r\n")
+  defp connect(socket, _options, connection_settings) do
+    socket_write(connection_settings, socket, "CONNECT {\"verbose\": false}\r\n")
   end
 
   defp upgrade_connection(tcp, %{tls_required: true}, %{tls: true}) do
@@ -227,7 +227,7 @@ defmodule Gnat do
     update_subscriptions_after_delivering_message(state, sid)
   end
   defp process_message(:ping, state) do
-    socket_write(state.connection_settings, state.tcp, "PONG\r\n")
+    socket_write(state.connection_settings, state.socket, "PONG\r\n")
     state
   end
   defp process_message(:pong, state) do
