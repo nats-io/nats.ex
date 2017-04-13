@@ -2,9 +2,42 @@ defmodule GnatTest do
   use ExUnit.Case, async: true
   doctest Gnat
 
+  setup context do
+    if context[:multi_server] do
+      case :gen_tcp.connect('localhost', 4223, [:binary]) do
+        {:ok, socket} ->
+          :gen_tcp.close(socket)
+        {:error, reason} ->
+          Mix.raise "Cannot connect to gnatsd" <>
+                    " (http://localhost:4223):" <>
+                    " #{:inet.format_error(reason)}\n" <>
+                    "You probably need to start a gnatsd " <>
+                    "server that requires authentication with " <>
+                    "the following command `gnatsd -p 4223 " <>
+                    "--user bob --pass alice`."
+      end
+    end
+    :ok
+  end
+
   test "connect to a server" do
     {:ok, pid} = Gnat.start_link()
     assert Process.alive?(pid)
+    :ok = Gnat.stop(pid)
+  end
+
+  @tag :multi_server
+  test "connect to a server with authentication" do
+    connection_settings = %{
+      host: 'localhost',
+      port: 4223,
+      tcp_opts: [:binary],
+      username: "bob",
+      password: "alice"
+    }
+    {:ok, pid} = Gnat.start_link(connection_settings)
+    assert Process.alive?(pid)
+    :ok = Gnat.ping(pid)
     :ok = Gnat.stop(pid)
   end
 

@@ -11,3 +11,9 @@ before_install:
  - wget https://github.com/nats-io/gnatsd/releases/download/v0.9.6/gnatsd-v0.9.6-linux-amd64.zip
  - unzip gnatsd-v0.9.6-linux-amd64.zip
  - ./gnatsd-v0.9.6-linux-amd64/gnatsd &
+
+before_script:
+ - ./gnatsd-v0.9.6-linux-amd64/gnatsd -p 4223 --user bob --pass alice &
+
+script:
+  - mix test --include multi_server

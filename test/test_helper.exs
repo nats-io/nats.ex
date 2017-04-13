@@ -1,4 +1,4 @@
-ExUnit.configure(exclude: [pending: true])
+ExUnit.configure(exclude: [:pending, :multi_server])
 
 ExUnit.start()
 
