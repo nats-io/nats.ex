@@ -136,6 +136,26 @@ defmodule GnatTest do
     assert msg.body == "ohai"
   end
 
+  test "reconnect when pub fails" do
+    mock_server = fn ->
+      {:ok, socket} = :gen_tcp.listen(11111, [:binary, active: false, reuseaddr: true])
+      {:ok, client} = :gen_tcp.accept(socket)
+      :gen_tcp.send(client, "INFO {}")
+      :gen_tcp.close(client)
+      {:ok, client2} = :gen_tcp.accept(socket)
+      :gen_tcp.send(client2, "INFO {}")
+      :gen_tcp.recv(client2, 0)
+      :gen_tcp.close(socket)
+      :ok
+    end
+    mock_server_task = Task.async(mock_server)
+    {:ok, pid} = Gnat.start_link(%{port: 11111})
+    {:error, :closed} = Gnat.pub(pid, "test", "yo dawg")
+    :ok = Gnat.pub(pid, "test", "yo dawg")
+    :ok = Task.await(mock_server_task)
+    :ok = Gnat.stop(pid)
+  end
+
   defp spin_up_echo_server_on_topic(gnat, topic) do
     spawn(fn ->
       {:ok, subscription} = Gnat.sub(gnat, self(), topic)
