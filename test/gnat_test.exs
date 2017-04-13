@@ -3,20 +3,7 @@ defmodule GnatTest do
   doctest Gnat
 
   setup context do
-    if context[:multi_server] do
-      case :gen_tcp.connect('localhost', 4223, [:binary]) do
-        {:ok, socket} ->
-          :gen_tcp.close(socket)
-        {:error, reason} ->
-          Mix.raise "Cannot connect to gnatsd" <>
-                    " (http://localhost:4223):" <>
-                    " #{:inet.format_error(reason)}\n" <>
-                    "You probably need to start a gnatsd " <>
-                    "server that requires authentication with " <>
-                    "the following command `gnatsd -p 4223 " <>
-                    "--user bob --pass alice`."
-      end
-    end
+    CheckForExpectedNatsServers.check(Map.keys(context))
     :ok
   end
 
@@ -39,6 +26,14 @@ defmodule GnatTest do
     assert Process.alive?(pid)
     :ok = Gnat.ping(pid)
     :ok = Gnat.stop(pid)
+  end
+
+  @tag :multi_server
+  test "connet to a server which requires TLS" do
+    connection_settings = %{port: 4224, tls: true}
+    {:ok, gnat} = Gnat.start_link(connection_settings)
+    assert Gnat.ping(gnat) == :ok
+    assert Gnat.stop(gnat) == :ok
   end
 
   test "subscribe to topic and receive a message" do
