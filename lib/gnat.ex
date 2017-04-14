@@ -16,6 +16,21 @@ defmodule Gnat do
   }
 
   def start_link, do: start_link(%{})
+
+  @doc """
+  Starts a connection to a nats broker
+
+  ```
+  {:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222})
+  # if the server requires TLS you can start a connection with:
+  {:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, tls: true})
+  # if the server requires TLS and a client certificate you can start a connection with:
+  {:ok, gnat} = Gnat.start_link(%{tls: true, ssl_opts: [certfile: "client-cert.pem", keyfile: "client-key.pem"]})
+  ```
+
+  You can also pass arbitrary SSL or TCP options in the `tcp_opts` and `ssl_opts` keys.
+  If you pass custom TCP options please include `:binary`. Gnat uses binary matching to parse messages.
+  """
   def start_link(connection_settings) do
     GenServer.start_link(__MODULE__, connection_settings)
   end

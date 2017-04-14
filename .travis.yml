@@ -16,6 +16,7 @@ before_install:
 before_script:
  - ./gnatsd-v0.9.6-linux-amd64/gnatsd -p 4223 --user bob --pass alice &
  - ./gnatsd-v0.9.6-linux-amd64/gnatsd -p 4224 --tls --tlscert test/fixtures/server.pem --tlskey test/fixtures/key.pem &
+ - ./gnatsd-v0.9.6-linux-amd64/gnatsd -p 4225 --tls --tlscert test/fixtures/server.pem --tlskey test/fixtures/key.pem --tlscacert test/fixtures/ca.pem --tlsverify &
 
 script:
   - mix test --include multi_server

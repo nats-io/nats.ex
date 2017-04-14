@@ -36,6 +36,21 @@ defmodule GnatTest do
     assert Gnat.stop(gnat) == :ok
   end
 
+  @tag :multi_server
+  test "connect to a server which requires TLS with a client certificate" do
+    connection_settings = %{
+      port: 4225,
+      tls: true,
+      ssl_opts: [
+        certfile: "test/fixtures/client-cert.pem",
+        keyfile: "test/fixtures/client-key.pem",
+      ],
+    }
+    {:ok, gnat} = Gnat.start_link(connection_settings)
+    assert Gnat.ping(gnat) == :ok
+    assert Gnat.stop(gnat) == :ok
+  end
+
   test "subscribe to topic and receive a message" do
     {:ok, pid} = Gnat.start_link()
     {:ok, _ref} = Gnat.sub(pid, self(), "test")
