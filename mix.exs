@@ -8,6 +8,7 @@ defmodule Gnat.Mixfile do
       elixir: "~> 1.4",
       build_embedded: Mix.env == :prod,
       start_permanent: Mix.env == :prod,
+      package: package(),
       deps: deps(),
       docs: [
         main: "readme",
@@ -26,6 +27,19 @@ defmodule Gnat.Mixfile do
       {:benchee, "~> 0.6.0", only: :dev},
       {:ex_doc, "~> 0.15", only: :dev},
       {:poison, "~> 3.0"},
+    ]
+  end
+
+  defp package do
+    [
+      description: "A nats client in pure elixir. Resiliance, Performance, Ease-of-Use.",
+      files: ["lib", "README*", "LICENSE*"],
+      licenses: ["MIT"],
+      links: %{
+        "Github" => "https://github.com/mmmries/gnat",
+        "Docs" => "https://hexdocs.pm/gnat",
+      },
+      maintainers: ["Jon Carstens", "Devin Christensen", "Dave Hackett","Steve Newell", "Michael Ries", "Garrett Thornburg"],
     ]
   end
 end
