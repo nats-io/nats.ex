@@ -4,7 +4,7 @@ defmodule Gnat.Mixfile do
   def project do
     [
       app: :gnat,
-      version: "0.1.0",
+      version: "0.1.1",
       elixir: "~> 1.4",
       build_embedded: Mix.env == :prod,
       start_permanent: Mix.env == :prod,
@@ -33,7 +33,6 @@ defmodule Gnat.Mixfile do
   defp package do
     [
       description: "A nats client in pure elixir. Resiliance, Performance, Ease-of-Use.",
-      files: ["lib", "README*", "LICENSE*"],
       licenses: ["MIT"],
       links: %{
         "Github" => "https://github.com/mmmries/gnat",
