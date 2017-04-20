@@ -15,8 +15,6 @@ defmodule Gnat do
     tls: false,
   }
 
-  def start_link, do: start_link(%{})
-
   @doc """
   Starts a connection to a nats broker
 
@@ -30,9 +28,11 @@ defmodule Gnat do
 
   You can also pass arbitrary SSL or TCP options in the `tcp_opts` and `ssl_opts` keys.
   If you pass custom TCP options please include `:binary`. Gnat uses binary matching to parse messages.
+
+  The final `opts` argument will be passed to the `GenServer.start_link` call so you can pass things like `[name: :gnat_connection]`.
   """
-  def start_link(connection_settings) do
-    GenServer.start_link(__MODULE__, connection_settings)
+  def start_link(connection_settings \\ %{}, opts \\ []) do
+    GenServer.start_link(__MODULE__, connection_settings, opts)
   end
 
   def stop(pid), do: GenServer.call(pid, :stop)
