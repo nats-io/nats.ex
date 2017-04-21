@@ -147,6 +147,15 @@ defmodule Gnat do
   def handle_info({:ssl, socket, data}, state) do
     handle_info({:tcp, socket, data}, state)
   end
+  def handle_info({:tcp_closed, _}, state) do
+    {:stop, "connection closed", state}
+  end
+  def handle_info({:ssl_closed, _}, state) do
+    {:stop, "connection closed", state}
+  end
+  def handle_info({:tcp_error, _, reason}, state) do
+    {:stop, "tcp transport error #{inspect(reason)}", state}
+  end
   def handle_info(other, state) do
     Logger.error "#{__MODULE__} received unexpected message: #{inspect other}"
     {:noreply, state}
