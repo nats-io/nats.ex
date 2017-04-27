@@ -75,4 +75,15 @@ defmodule Gnat.ParserTest do
     assert parser_state.partial == ""
     assert parsed_message == :pong
   end
+
+  test "parsing -ERR message" do
+    {parser_state, [parsed_message]} = Parser.new |> Parser.parse("-ERR 'Unknown Protocol Operation'\r\n")
+    assert parser_state.partial == ""
+    assert parsed_message == {:error, "'Unknown Protocol Operation'"}
+  end
+
+  test "parsing -ERR messages in the middle of other traffic" do
+    assert {parser, [:ping]} = Parser.new |> Parser.parse("PING\r\n-ERR 'Unknown Pro")
+    assert {_, [{:error, "'Unknown Protocol Operation'"}]} = parser |> Parser.parse("tocol Operation'\r\nMSG")
+  end
 end
