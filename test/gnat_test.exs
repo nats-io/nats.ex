@@ -166,4 +166,11 @@ defmodule GnatTest do
       Process.sleep(20) # errors are reported asynchronously so we need to wait a moment
     end) =~ "Parser Error"
   end
+
+  test "connection timeout" do
+    start = System.monotonic_time(:millisecond)
+    connection_settings = %{ host: '169.33.33.33', timeout: 200 }
+    {:stop, :timeout} = Gnat.init(connection_settings)
+    assert_in_delta System.monotonic_time(:millisecond) - start, 200, 10
+  end
 end
