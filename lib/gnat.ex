@@ -234,6 +234,13 @@ defmodule Gnat do
     send state.pinger, :pong
     state
   end
+  defp process_message({:error, message}, state) do
+    :error_logger.error_report([
+      type: :gnat_error_from_broker,
+      message: message,
+    ])
+    state
+  end
 
   defp update_subscriptions_after_delivering_message(%{receivers: receivers}=state, sid) do
     receivers = case get_in(receivers, [sid, :unsub_after]) do
