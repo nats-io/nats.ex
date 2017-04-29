@@ -156,4 +156,14 @@ defmodule GnatTest do
       end
     end)
   end
+
+  test "recording errors from the broker" do
+    import ExUnit.CaptureLog
+    {:ok, gnat} = Gnat.start_link()
+    assert capture_log(fn ->
+      Process.flag(:trap_exit, true)
+      Gnat.sub(gnat, self(), "invalid\r\nsubject")
+      Process.sleep(20) # errors are reported asynchronously so we need to wait a moment
+    end) =~ "Parser Error"
+  end
 end
