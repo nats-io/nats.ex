@@ -11,7 +11,7 @@ defmodule Gnat do
     host: 'localhost',
     port: 4222,
     tcp_opts: [:binary],
-    timeout: 3_000,
+    connection_timeout: 3_000,
     ssl_opts: [],
     tls: false,
   }

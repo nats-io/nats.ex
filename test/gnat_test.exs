@@ -169,7 +169,7 @@ defmodule GnatTest do
 
   test "connection timeout" do
     start = System.monotonic_time(:millisecond)
-    connection_settings = %{ host: '169.33.33.33', timeout: 200 }
+    connection_settings = %{ host: '169.33.33.33', connection_timeout: 200 }
     {:stop, :timeout} = Gnat.init(connection_settings)
     assert_in_delta System.monotonic_time(:millisecond) - start, 200, 10
   end
