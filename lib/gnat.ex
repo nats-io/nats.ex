@@ -11,6 +11,7 @@ defmodule Gnat do
     host: 'localhost',
     port: 4222,
     tcp_opts: [:binary],
+    connection_timeout: 3_000,
     ssl_opts: [],
     tls: false,
   }
@@ -133,7 +134,7 @@ defmodule Gnat do
         parser = Parser.new
         {:ok, %{socket: socket, connection_settings: connection_settings, next_sid: 1, receivers: %{}, parser: parser}}
       {:error, reason} ->
-        {:error, reason}
+        {:stop, reason}
     end
   end
 
