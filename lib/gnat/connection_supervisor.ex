@@ -27,6 +27,14 @@ defmodule Gnat.ConnectionSupervisor do
   import Supervisor.Spec
   worker(Gnat.ConnectionSupervisor, [gnat_supervisor_settings])
   ```
+
+  Now in the rest of your code you can call things like:
+
+  ```
+  :ok = Gnat.pub(:gnat, "subject", "message")
+  ```
+
+  And it will use your supervised connection. If the connection is down when you call that function (or dies during that function) it will raise an error.
   """
 
   def start_link(options) do
