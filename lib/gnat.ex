@@ -36,6 +36,14 @@ defmodule Gnat do
     GenServer.start_link(__MODULE__, connection_settings, opts)
   end
 
+  @doc """
+  Gracefull shuts down a connection
+
+  ```
+  {:ok, gnat} = Gnat.start_link()
+  :ok = Gnat.stop(gnat)
+  ```
+  """
   def stop(pid), do: GenServer.call(pid, :stop)
 
   @doc """
@@ -59,6 +67,22 @@ defmodule Gnat do
   """
   def sub(pid, subscriber, topic, opts \\ []), do: GenServer.call(pid, {:sub, subscriber, topic, opts})
 
+  @doc """
+  Publish a message
+
+  ```
+  {:ok, gnat} = Gnat.start_link()
+  :ok = Gnat.pub(gnat, "characters", "Ron Swanson")
+  ```
+
+  If you want to provide a reply address to receive a response you can pass it as an option.
+  [See request-response pattern](http://nats.io/documentation/concepts/nats-req-rep/).
+
+  ```
+  {:ok, gnat} = Gnat.start_link()
+  :ok = Gnat.pub(gnat, "characters", "Star Lord", reply_to: "me")
+  ```
+  """
   def pub(pid, topic, message, opts \\ []), do: GenServer.call(pid, {:pub, topic, message, opts})
 
   @doc """
