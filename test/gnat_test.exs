@@ -16,7 +16,7 @@ defmodule GnatTest do
   @tag :multi_server
   test "connect to a server with authentication" do
     connection_settings = %{
-      host: 'localhost',
+      host: "localhost",
       port: 4223,
       tcp_opts: [:binary],
       username: "bob",
