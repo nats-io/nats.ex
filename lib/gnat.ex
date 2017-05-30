@@ -217,6 +217,7 @@ defmodule Gnat do
       true ->
         command = Command.build(:unsub, sid, opts)
         :ok = socket_write(state, command)
+        state = cleanup_subscription_from_state(state, sid, opts)
         {:reply, :ok, state}
     end
   end
