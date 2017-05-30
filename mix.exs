@@ -4,7 +4,7 @@ defmodule Gnat.Mixfile do
   def project do
     [
       app: :gnat,
-      version: "0.3.1",
+      version: "0.3.2",
       elixir: "~> 1.4",
       build_embedded: Mix.env == :prod,
       start_permanent: Mix.env == :prod,
@@ -38,7 +38,7 @@ defmodule Gnat.Mixfile do
         "Github" => "https://github.com/mmmries/gnat",
         "Docs" => "https://hexdocs.pm/gnat",
       },
-      maintainers: ["Jon Carstens", "Devin Christensen", "Dave Hackett","Steve Newell", "Michael Ries", "Garrett Thornburg"],
+      maintainers: ["Jon Carstens", "Devin Christensen", "Dave Hackett","Steve Newell", "Michael Ries", "Garrett Thornburg", "Masahiro Tokioka"],
     ]
   end
 end
