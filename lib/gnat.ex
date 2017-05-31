@@ -252,8 +252,9 @@ defmodule Gnat do
     unless is_nil(state.receivers[sid]) do
       send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to}}
       update_subscriptions_after_delivering_message(state, sid)
+    else
+      state
     end
-    state
   end
   defp process_message(:ping, state) do
     socket_write(state, "PONG\r\n")
