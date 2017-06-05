@@ -163,7 +163,6 @@ defmodule Gnat do
   end
 
   def handle_info({:tcp, socket, data}, %{socket: socket, parser: parser}=state) do
-    Logger.debug "#{__MODULE__} received #{inspect data}"
     {new_parser, messages} = Parser.parse(parser, data)
     new_state = %{state | parser: new_parser}
     new_state = Enum.reduce(messages, new_state, &process_message/2)
