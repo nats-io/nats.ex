@@ -11,7 +11,7 @@ defmodule Gnat.ConnectionSupervisor do
   ```
   gnat_supervisor_settings = %{
     name: :gnat, # (required) the registered named you want to give the Gnat connection
-    backoff_period: 4_000, # number of milliseconds to wait between consecurity reconnect attempts (default: 2_000)
+    backoff_period: 4_000, # number of milliseconds to wait between consecutive reconnect attempts (default: 2_000)
     connection_settings: [
       %{host: '10.0.0.100', port: 4222},
       %{host: '10.0.0.101', port: 4222},
@@ -19,7 +19,7 @@ defmodule Gnat.ConnectionSupervisor do
   }
   ```
 
-  The connection settings can specify all of the same values that you pass to `Gnat.start_start_link/1`. Each time a connection is attempted we will use one of the provided connection settings to open the connection. This is a simplistic way of load balancing your connections across a cluster of nats nodes and allowing failove to other nodes in the cluster if one goes down.
+  The connection settings can specify all of the same values that you pass to `Gnat.start_link/1`. Each time a connection is attempted we will use one of the provided connection settings to open the connection. This is a simplistic way of load balancing your connections across a cluster of nats nodes and allowing failover to other nodes in the cluster if one goes down.
 
   To use this in your supervision tree add an entry like this:
 
