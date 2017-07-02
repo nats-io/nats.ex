@@ -46,9 +46,17 @@ defmodule Gnat.ConsumerSupervisor do
     Process.send_after(self(), :connect, 2_000)
     {:noreply, %{state | status: :disconnected, connection_pid: nil, subscriptions: []}}
   end
+  # Ignore DOWN and task result messages from the spawned tasks
+  def handle_info({:DOWN, _ref, :process, _task_pid, _reason}, state), do: {:noreply, state}
+  def handle_info({ref, _result}, state) when is_reference(ref), do: {:noreply, state}
 
   def handle_info({:msg, gnat_message}, %{consuming_function: {mod, fun}}=state) do
     Task.Supervisor.async_nolink(state.task_supervisor_pid, mod, fun, [gnat_message])
+    {:noreply, state}
+  end
+
+  def handle_info(other, state) do
+    Logger.error "#{__MODULE__} received unexpected message #{inspect other}"
     {:noreply, state}
   end
 
