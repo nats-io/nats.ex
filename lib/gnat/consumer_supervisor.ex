@@ -84,7 +84,37 @@ defmodule Gnat.ConsumerSupervisor do
     {:noreply, state}
   end
 
-  def terminate(_reason, _state) do
-    # TODO unsub, then wait for the task supervisor to be empty
+  def terminate(:shutdown, state) do
+    Logger.info "#{__MODULE__} starting graceful shutdown"
+    Enum.each(state.subscriptions, fn(subscription) ->
+      :ok = Gnat.unsub(state.connection_pid, subscription)
+    end)
+    Process.sleep(500) # wait for final messages from broker
+    receive_final_broker_messages(state)
+    wait_for_empty_task_supervisor(state)
+    Logger.info "#{__MODULE__} finished graceful shutdown"
+  end
+  def terminate(reason, _state) do
+    Logger.error "#{__MODULE__} unexpected shutdown #{inspect reason}"
+  end
+
+  defp receive_final_broker_messages(state) do
+    receive do
+      info ->
+        handle_info(info, state)
+        receive_final_broker_messages(state)
+      after 0 ->
+        :done
+    end
+  end
+
+  defp wait_for_empty_task_supervisor(%{task_supervisor_pid: pid}=state) do
+    case Task.Supervisor.children(pid) do
+      [] -> :ok
+      children ->
+        Logger.info "#{__MODULE__}\t\t#{Enum.count(children)} tasks remaining"
+        Process.sleep(1_000)
+        wait_for_empty_task_supervisor(state)
+    end
   end
 end
