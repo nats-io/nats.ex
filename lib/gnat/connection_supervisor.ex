@@ -25,10 +25,10 @@ defmodule Gnat.ConnectionSupervisor do
 
   ```
   import Supervisor.Spec
-  worker(Gnat.ConnectionSupervisor, [gnat_supervisor_settings])
+  worker(Gnat.ConnectionSupervisor, [gnat_supervisor_settings, [name: :my_connection_supervisor]])
   ```
 
-  Now in the rest of your code you can call things like:
+  The second argument is used as GenServer options so you can give the supervisor a registered name as well if you like. Now in the rest of your code you can call things like:
 
   ```
   :ok = Gnat.pub(:gnat, "subject", "message")
@@ -37,8 +37,8 @@ defmodule Gnat.ConnectionSupervisor do
   And it will use your supervised connection. If the connection is down when you call that function (or dies during that function) it will raise an error.
   """
 
-  def start_link(options) do
-    GenServer.start_link(__MODULE__, options, name: __MODULE__)
+  def start_link(settings, options \\ []) do
+    GenServer.start_link(__MODULE__, settings, options)
   end
 
   def init(options) do

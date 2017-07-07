@@ -2,7 +2,31 @@ defmodule Gnat.ConsumerSupervisor do
   use GenServer
   require Logger
 
-  def start_link(settings, options) do
+  @moduledoc """
+  A process that can supervise consumers for you
+
+  If you want to subscribe to a few topics and have that subscription last across restarts for you, then this worker can be of help. It also spawns a supervised `Task` for each message it receives. This way errors in message processing don't crash the consumers, but you will still get SASL reports that you can send to services like honeybadger.
+
+  To use this just add an entry to your supervision tree like this:
+
+  ```
+  consumer_supervisor_settings = %{
+    connection_name: :name_of_supervised_connection,
+    consuming_function: {MyApp.RpcServer, :handle_request},
+    subscription_topics: [
+      %{topic: "rpc.MyApp.search", queue_group: "rpc.MyApp.search"},
+      %{topic: "rpc.MyApp.create", queue_group: "rpc.MyApp.create"},
+    ],
+  }
+  worker(Gnat.ConsumerSupervisor, [consumer_supervisor_settings, [name: :rpc_consumer]], shutdown: 30_000)
+  ```
+
+  The second argument is a keyword list that gets used as the GenServer options so you can pass a name that you want to register for the consumer process if you like. The `consuming_function` specific which module and function to call when messages arrive. The function will be called with a single argument which is a gnat message just like you get when you call `Gnat.sub` directly.
+
+  You can have a single consumer that subscribes to multiple topics or multiple consumers that subscribe to different topics and call different consuming functions. It is recommended that your `ConsumerSupervisor`s are present later in your supervision tree than your `ConnectionSupervisor`. That way during a shutdown the `ConsumerSupervisor` can attempt a graceful shutdown of the consumer before shutting down the connection.
+  """
+
+  def start_link(settings, options \\ []) do
     GenServer.start_link(__MODULE__, settings, options)
   end
 
@@ -60,7 +84,37 @@ defmodule Gnat.ConsumerSupervisor do
     {:noreply, state}
   end
 
-  def terminate(_reason, _state) do
-    # TODO unsub, then wait for the task supervisor to be empty
+  def terminate(:shutdown, state) do
+    Logger.info "#{__MODULE__} starting graceful shutdown"
+    Enum.each(state.subscriptions, fn(subscription) ->
+      :ok = Gnat.unsub(state.connection_pid, subscription)
+    end)
+    Process.sleep(500) # wait for final messages from broker
+    receive_final_broker_messages(state)
+    wait_for_empty_task_supervisor(state)
+    Logger.info "#{__MODULE__} finished graceful shutdown"
+  end
+  def terminate(reason, _state) do
+    Logger.error "#{__MODULE__} unexpected shutdown #{inspect reason}"
+  end
+
+  defp receive_final_broker_messages(state) do
+    receive do
+      info ->
+        handle_info(info, state)
+        receive_final_broker_messages(state)
+      after 0 ->
+        :done
+    end
+  end
+
+  defp wait_for_empty_task_supervisor(%{task_supervisor_pid: pid}=state) do
+    case Task.Supervisor.children(pid) do
+      [] -> :ok
+      children ->
+        Logger.info "#{__MODULE__}\t\t#{Enum.count(children)} tasks remaining"
+        Process.sleep(1_000)
+        wait_for_empty_task_supervisor(state)
+    end
   end
 end
