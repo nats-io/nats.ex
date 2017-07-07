@@ -28,19 +28,19 @@ msg16="74c93e71c5aa03ad"
 
 tcp_packet = "MSG topic 1 128\r\n#{msg128}\r\n"
 Benchee.run(%{
-  "parse-128" => fn -> {_parser, [_msg]} = Gnat.Parser.new() |> Gnat.Parser.parse(tcp_packet) end,
+ "parse-128" => fn -> {_parser, [_msg]} = Gnat.Parser.new() |> Gnat.Parser.parse(tcp_packet) end,
   "pub - 128" => fn -> :ok = Gnat.pub(pid, "pub128", msg128) end,
-  "sub-unsub-pub-16" => fn ->
-    rand = :crypto.strong_rand_bytes(8) |> Base.encode64
-    {:ok, subscription} = Gnat.sub(pid, self(), rand)
-    :ok = Gnat.unsub(pid, subscription, max_messages: 1)
-    :ok = Gnat.pub(pid, rand, msg16)
-    receive do
-      {:msg, %{topic: ^rand, body: ^msg16}} -> :ok
-      after 100 -> raise "timed out on sub"
-    end
-  end,
-  "req-reply-4" => fn ->
-    {:ok, %{body: "pong"}} = Gnat.request(pid, "echo", "ping")
-  end,
-}, time: 10, console: [comparison: false])
+ "sub-unsub-pub-16" => fn ->
+   rand = :crypto.strong_rand_bytes(8) |> Base.encode64
+   {:ok, subscription} = Gnat.sub(pid, self(), rand)
+   :ok = Gnat.unsub(pid, subscription, max_messages: 1)
+   :ok = Gnat.pub(pid, rand, msg16)
+   receive do
+     {:msg, %{topic: ^rand, body: ^msg16}} -> :ok
+     after 100 -> raise "timed out on sub"
+   end
+ end,
+ "req-reply-4" => fn ->
+   {:ok, %{body: "pong"}} = Gnat.request(pid, "echo", "ping")
+ end,
+}, time: 10, parallel: 8, console: [comparison: false])
