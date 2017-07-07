@@ -3,7 +3,9 @@ defmodule Gnat.ConnectionSupervisor do
   require Logger
 
   @moduledoc """
-  A process that can supervise a named connection for you
+  A process that can supervise a named connection for you (EXPERIMENTAL)
+
+  > Note: This module is experimental and may be removed in the 1.0 release depending on what we find as we experiment with other forms of highly available connections.
 
   If you would like to supervise a Gnat connection and have it automatically re-connect in case of failure you can use this module in your supervision tree.
   It takes a map with the following data:

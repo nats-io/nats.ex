@@ -3,7 +3,9 @@ defmodule Gnat.ConsumerSupervisor do
   require Logger
 
   @moduledoc """
-  A process that can supervise consumers for you
+  A process that can supervise consumers for you (EXPERIMENTAL)
+
+  > Note: This module is experimental and may be removed in the 1.0 release depending on what we find as we experiment with other forms of highly available connections.
 
   If you want to subscribe to a few topics and have that subscription last across restarts for you, then this worker can be of help. It also spawns a supervised `Task` for each message it receives. This way errors in message processing don't crash the consumers, but you will still get SASL reports that you can send to services like honeybadger.
 
