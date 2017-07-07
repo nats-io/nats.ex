@@ -206,10 +206,13 @@ defmodule Gnat do
     next_state = add_subscription_to_state(state, sid, receiver) |> Map.put(:next_sid, sid + 1)
     {:reply, {:ok, sid}, next_state}
   end
-  def handle_call({:pub, topic, message, opts}, _from, state) do
-    command = Command.build(:pub, topic, message, opts)
-    :ok = socket_write(state, command)
-    {:reply, :ok, state}
+  def handle_call({:pub, topic, message, opts}, from, state) do
+    commands = [Command.build(:pub, topic, message, opts)]
+    froms = [from]
+    {commands, froms} = receive_additional_pubs(commands, froms, 10)
+    :ok = socket_write(state, commands)
+    Enum.each(froms, fn(from) -> GenServer.reply(from, :ok) end)
+    {:noreply, state}
   end
   def handle_call({:request, request}, _from, %{next_sid: sid}=state) do
     sub = Command.build(:sub, request.inbox, sid, [])
@@ -280,6 +283,18 @@ defmodule Gnat do
       message: message,
     ])
     state
+  end
+
+  defp receive_additional_pubs(commands, froms, 0), do: {commands, froms}
+  defp receive_additional_pubs(commands, froms, how_many_more) do
+    receive do
+      {:"$gen_call", from, {:pub, topic, message, opts}} ->
+        commands = [Command.build(:pub, topic, message, opts) | commands]
+        froms = [from | froms]
+        receive_additional_pubs(commands, froms, how_many_more - 1)
+    after
+      0 -> {commands, froms}
+    end
   end
 
   defp update_subscriptions_after_delivering_message(%{receivers: receivers}=state, sid) do
