@@ -7,6 +7,8 @@
 A [nats.io](https://nats.io/) client for elixir.
 The goals of the project are resiliency, performance, and ease of use.
 
+<a href="https://app.codesponsor.io/link/RJLdpYrCcEHqZEL5w1U2rFtj/mmmries/gnat"><img src="https://app.codesponsor.io/embed/RJLdpYrCcEHqZEL5w1U2rFtj/mmmries/gnat.svg" style="width: 888px; height: 68px;" alt="Sponsor" /></a>
+
 ## Usage
 
 ```elixir
