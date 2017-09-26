@@ -172,10 +172,13 @@ defmodule Gnat do
   end
 
   @impl GenServer
-  def handle_info({:tcp, socket, data}, %{socket: socket, parser: parser}=state) do
-    {new_parser, messages} = Parser.parse(parser, data)
-    new_state = %{state | parser: new_parser}
-    new_state = Enum.reduce(messages, new_state, &process_message/2)
+  def handle_info({:tcp, socket, data}, %{socket: socket}=state) do
+    data_packets = receive_additional_tcp_data(socket, [data], 10)
+    new_state = Enum.reduce(data_packets, state, fn(data, %{parser: parser}=state) ->
+      {new_parser, messages} = Parser.parse(parser, data)
+      new_state = %{state | parser: new_parser}
+      Enum.reduce(messages, new_state, &process_message/2)
+    end)
     {:noreply, new_state}
   end
   def handle_info({:ssl, socket, data}, state) do
@@ -294,6 +297,16 @@ defmodule Gnat do
         receive_additional_pubs(commands, froms, how_many_more - 1)
     after
       0 -> {commands, froms}
+    end
+  end
+
+  def receive_additional_tcp_data(socket, packets, 0), do: Enum.reverse(packets)
+  def receive_additional_tcp_data(socket, packets, n) do
+    receive do
+      {:tcp, ^socket, data} ->
+        receive_additional_tcp_data(socket, [data | packets], n - 1)
+      after
+        0 -> Enum.reverse(packets)
     end
   end
 
