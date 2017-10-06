@@ -6,8 +6,16 @@ defmodule Gnat.Parser do
     state: :waiting,
   ]
 
+  @type parsed :: {:msg, String.t, non_neg_integer(), String.t | nil, binary()}
+                | :ping
+                | :pong
+                | {:error, String.t}
+                | {:info, map()}
+
+  @spec new :: %Gnat.Parser{}
   def new, do: %Gnat.Parser{}
 
+  @spec parse(%Gnat.Parser{}, binary()) :: {%Gnat.Parser{}, [parsed]}
   def parse(parser, data) do
     data = parser.partial <> data
     parser = %{parser | partial: ""}

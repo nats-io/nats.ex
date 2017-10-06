@@ -7,6 +7,8 @@ defmodule Gnat do
   require Logger
   alias Gnat.{Command, Parser}
 
+  @type message :: %{topic: String.t, body: String.t, reply_to: String.t}
+
   @default_connection_settings %{
     host: 'localhost',
     port: 4222,
@@ -32,6 +34,7 @@ defmodule Gnat do
 
   The final `opts` argument will be passed to the `GenServer.start_link` call so you can pass things like `[name: :gnat_connection]`.
   """
+  @spec start_link(map(), keyword()) :: GenServer.on_start
   def start_link(connection_settings \\ %{}, opts \\ []) do
     GenServer.start_link(__MODULE__, connection_settings, opts)
   end
@@ -44,6 +47,7 @@ defmodule Gnat do
   :ok = Gnat.stop(gnat)
   ```
   """
+  @spec stop(GenServer.server) :: :ok
   def stop(pid), do: GenServer.call(pid, :stop)
 
   @doc """
@@ -65,6 +69,7 @@ defmodule Gnat do
   end
   ```
   """
+  @spec sub(GenServer.server, pid(), String.t, keyword()) :: {:ok, non_neg_integer()}
   def sub(pid, subscriber, topic, opts \\ []), do: GenServer.call(pid, {:sub, subscriber, topic, opts})
 
   @doc """
@@ -83,6 +88,7 @@ defmodule Gnat do
   :ok = Gnat.pub(gnat, "characters", "Star Lord", reply_to: "me")
   ```
   """
+  @spec pub(GenServer.server, String.t, binary(), keyword()) :: :ok
   def pub(pid, topic, message, opts \\ []), do: GenServer.call(pid, {:pub, topic, message, opts})
 
   @doc """
@@ -102,6 +108,7 @@ defmodule Gnat do
   end
   ```
   """
+  @spec request(GenServer.server, String.t, binary(), keyword()) :: {:ok, message} | {:error, :timeout}
   def request(pid, topic, body, opts \\ []) do
     receive_timeout = Keyword.get(opts, :receive_timeout, 60_000)
     inbox = "INBOX-#{:crypto.strong_rand_bytes(12) |> Base.encode64}"
@@ -130,6 +137,7 @@ defmodule Gnat do
   :ok = Gnat.unsub(gnat, subscription, max_messages: 2)
   ```
   """
+  @spec unsub(GenServer.server, non_neg_integer(), keyword()) :: :ok
   def unsub(pid, sid, opts \\ []), do: GenServer.call(pid, {:unsub, sid, opts})
 
   @doc """
@@ -151,6 +159,7 @@ defmodule Gnat do
     end
   end
 
+  @impl GenServer
   def init(connection_settings) do
     connection_settings = Map.merge(@default_connection_settings, connection_settings)
     case Gnat.Handshake.connect(connection_settings) do
@@ -162,6 +171,7 @@ defmodule Gnat do
     end
   end
 
+  @impl GenServer
   def handle_info({:tcp, socket, data}, %{socket: socket, parser: parser}=state) do
     {new_parser, messages} = Parser.parse(parser, data)
     new_state = %{state | parser: new_parser}
@@ -185,7 +195,7 @@ defmodule Gnat do
     {:noreply, state}
   end
 
-
+  @impl GenServer
   def handle_call(:stop, _from, state) do
     socket_close(state)
     {:stop, :normal, :ok, state}
