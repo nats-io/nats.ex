@@ -27,11 +27,12 @@ defmodule Gnat.ConsumerSupervisor do
 
   You can have a single consumer that subscribes to multiple topics or multiple consumers that subscribe to different topics and call different consuming functions. It is recommended that your `ConsumerSupervisor`s are present later in your supervision tree than your `ConnectionSupervisor`. That way during a shutdown the `ConsumerSupervisor` can attempt a graceful shutdown of the consumer before shutting down the connection.
   """
-
+  @spec start_link(map(), keyword()) :: GenServer.on_start
   def start_link(settings, options \\ []) do
     GenServer.start_link(__MODULE__, settings, options)
   end
 
+  @impl GenServer
   def init(settings) do
     Process.flag(:trap_exit, true)
     {:ok, task_supervisor_pid} = Task.Supervisor.start_link()
@@ -51,6 +52,7 @@ defmodule Gnat.ConsumerSupervisor do
     {:ok, state}
   end
 
+  @impl GenServer
   def handle_info(:connect, %{connection_name: name}=state) do
     case Process.whereis(name) do
       nil ->
@@ -86,6 +88,7 @@ defmodule Gnat.ConsumerSupervisor do
     {:noreply, state}
   end
 
+  @impl GenServer
   def terminate(:shutdown, state) do
     Logger.info "#{__MODULE__} starting graceful shutdown"
     Enum.each(state.subscriptions, fn(subscription) ->

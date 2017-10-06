@@ -25,6 +25,7 @@ defmodule Gnat.Mixfile do
   defp deps do
     [
       {:benchee, "~> 0.6.0", only: :dev},
+      {:dialyxir, "~> 0.5", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.15", only: :dev},
       {:poison, "~> 3.0"},
     ]
