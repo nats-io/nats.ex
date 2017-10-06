@@ -38,11 +38,12 @@ defmodule Gnat.ConnectionSupervisor do
 
   And it will use your supervised connection. If the connection is down when you call that function (or dies during that function) it will raise an error.
   """
-
+  @spec start_link(map(), keyword()) :: GenServer.on_start
   def start_link(settings, options \\ []) do
     GenServer.start_link(__MODULE__, settings, options)
   end
 
+  @impl GenServer
   def init(options) do
     state = %{
       backoff_period: Map.get(options, :backoff_period, 2000),
@@ -55,6 +56,7 @@ defmodule Gnat.ConnectionSupervisor do
     {:ok, state}
   end
 
+  @impl GenServer
   def handle_info(:attempt_connection, state) do
     connection_config = random_connection_config(state)
     Logger.info "connecting to #{inspect connection_config}"
@@ -84,4 +86,3 @@ defmodule Gnat.ConnectionSupervisor do
     connection_settings |> Enum.random()
   end
 end
-
