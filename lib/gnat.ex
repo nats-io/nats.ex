@@ -265,7 +265,7 @@ defmodule Gnat do
 
   defp process_message({:msg, topic, sid, reply_to, body}, state) do
     unless is_nil(state.receivers[sid]) do
-      send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to, connection: self()}}
+      send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to, gnat: self()}}
       update_subscriptions_after_delivering_message(state, sid)
     else
       Logger.error "#{__MODULE__} got message for sid #{sid}, but that is no longer registered"
