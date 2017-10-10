@@ -5,7 +5,7 @@ defmodule Gnat.Handshake do
   This module provides a single function which handles all of the variations of establishing a connection to a gnatsd server and just returns {:ok, socket} or {:error, reason}
   """
   def connect(settings) do
-    host = settings.host |> to_char_list
+    host = settings.host |> to_charlist
     case :gen_tcp.connect(host, settings.port, settings.tcp_opts, settings.connection_timeout) do
       {:ok, tcp} -> perform_handshake(tcp, settings)
       result -> result

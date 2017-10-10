@@ -300,7 +300,7 @@ defmodule Gnat do
     end
   end
 
-  def receive_additional_tcp_data(socket, packets, 0), do: Enum.reverse(packets)
+  def receive_additional_tcp_data(_socket, packets, 0), do: Enum.reverse(packets)
   def receive_additional_tcp_data(socket, packets, n) do
     receive do
       {:tcp, ^socket, data} ->
