@@ -172,10 +172,13 @@ defmodule Gnat do
   end
 
   @impl GenServer
-  def handle_info({:tcp, socket, data}, %{socket: socket, parser: parser}=state) do
-    {new_parser, messages} = Parser.parse(parser, data)
-    new_state = %{state | parser: new_parser}
-    new_state = Enum.reduce(messages, new_state, &process_message/2)
+  def handle_info({:tcp, socket, data}, %{socket: socket}=state) do
+    data_packets = receive_additional_tcp_data(socket, [data], 10)
+    new_state = Enum.reduce(data_packets, state, fn(data, %{parser: parser}=state) ->
+      {new_parser, messages} = Parser.parse(parser, data)
+      new_state = %{state | parser: new_parser}
+      Enum.reduce(messages, new_state, &process_message/2)
+    end)
     {:noreply, new_state}
   end
   def handle_info({:ssl, socket, data}, state) do
@@ -206,10 +209,13 @@ defmodule Gnat do
     next_state = add_subscription_to_state(state, sid, receiver) |> Map.put(:next_sid, sid + 1)
     {:reply, {:ok, sid}, next_state}
   end
-  def handle_call({:pub, topic, message, opts}, _from, state) do
-    command = Command.build(:pub, topic, message, opts)
-    :ok = socket_write(state, command)
-    {:reply, :ok, state}
+  def handle_call({:pub, topic, message, opts}, from, state) do
+    commands = [Command.build(:pub, topic, message, opts)]
+    froms = [from]
+    {commands, froms} = receive_additional_pubs(commands, froms, 10)
+    :ok = socket_write(state, commands)
+    Enum.each(froms, fn(from) -> GenServer.reply(from, :ok) end)
+    {:noreply, state}
   end
   def handle_call({:request, request}, _from, %{next_sid: sid}=state) do
     sub = Command.build(:sub, request.inbox, sid, [])
@@ -259,7 +265,7 @@ defmodule Gnat do
 
   defp process_message({:msg, topic, sid, reply_to, body}, state) do
     unless is_nil(state.receivers[sid]) do
-      send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to}}
+      send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to, gnat: self()}}
       update_subscriptions_after_delivering_message(state, sid)
     else
       Logger.error "#{__MODULE__} got message for sid #{sid}, but that is no longer registered"
@@ -280,6 +286,28 @@ defmodule Gnat do
       message: message,
     ])
     state
+  end
+
+  defp receive_additional_pubs(commands, froms, 0), do: {commands, froms}
+  defp receive_additional_pubs(commands, froms, how_many_more) do
+    receive do
+      {:"$gen_call", from, {:pub, topic, message, opts}} ->
+        commands = [Command.build(:pub, topic, message, opts) | commands]
+        froms = [from | froms]
+        receive_additional_pubs(commands, froms, how_many_more - 1)
+    after
+      0 -> {commands, froms}
+    end
+  end
+
+  def receive_additional_tcp_data(_socket, packets, 0), do: Enum.reverse(packets)
+  def receive_additional_tcp_data(socket, packets, n) do
+    receive do
+      {:tcp, ^socket, data} ->
+        receive_additional_tcp_data(socket, [data | packets], n - 1)
+      after
+        0 -> Enum.reverse(packets)
+    end
   end
 
   defp update_subscriptions_after_delivering_message(%{receivers: receivers}=state, sid) do
