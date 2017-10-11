@@ -6,14 +6,14 @@ defmodule Gnat.Mixfile do
       app: :gnat,
       version: "0.4.0",
       elixir: "~> 1.4",
-      build_embedded: Mix.env == :prod,
-      start_permanent: Mix.env == :prod,
+      build_embedded: Mix.env() == :prod,
+      start_permanent: Mix.env() == :prod,
       package: package(),
       deps: deps(),
       docs: [
         main: "readme",
         logo: "gnat.png",
-        extras: ["README.md"],
+        extras: ["README.md"]
       ]
     ]
   end
@@ -27,7 +27,7 @@ defmodule Gnat.Mixfile do
       {:benchee, "~> 0.6.0", only: :dev},
       {:dialyxir, "~> 0.5", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.15", only: :dev},
-      {:poison, "~> 3.0"},
+      {:poison, "~> 3.0"}
     ]
   end
 
@@ -37,9 +37,17 @@ defmodule Gnat.Mixfile do
       licenses: ["MIT"],
       links: %{
         "Github" => "https://github.com/mmmries/gnat",
-        "Docs" => "https://hexdocs.pm/gnat",
+        "Docs" => "https://hexdocs.pm/gnat"
       },
-      maintainers: ["Jon Carstens", "Devin Christensen", "Dave Hackett","Steve Newell", "Michael Ries", "Garrett Thornburg", "Masahiro Tokioka"],
+      maintainers: [
+        "Jon Carstens",
+        "Devin Christensen",
+        "Dave Hackett",
+        "Steve Newell",
+        "Michael Ries",
+        "Garrett Thornburg",
+        "Masahiro Tokioka"
+      ]
     ]
   end
 end

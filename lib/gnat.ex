@@ -7,15 +7,15 @@ defmodule Gnat do
   require Logger
   alias Gnat.{Command, Parser}
 
-  @type message :: %{topic: String.t, body: String.t, reply_to: String.t}
+  @type message :: %{topic: String.t(), body: String.t(), reply_to: String.t()}
 
   @default_connection_settings %{
     host: 'localhost',
     port: 4222,
     tcp_opts: [:binary],
-    connection_timeout: 3_000,
+    connection_timeout: 3000,
     ssl_opts: [],
-    tls: false,
+    tls: false
   }
 
   @doc """
@@ -34,7 +34,7 @@ defmodule Gnat do
 
   The final `opts` argument will be passed to the `GenServer.start_link` call so you can pass things like `[name: :gnat_connection]`.
   """
-  @spec start_link(map(), keyword()) :: GenServer.on_start
+  @spec start_link(map(), keyword()) :: GenServer.on_start()
   def start_link(connection_settings \\ %{}, opts \\ []) do
     GenServer.start_link(__MODULE__, connection_settings, opts)
   end
@@ -47,7 +47,7 @@ defmodule Gnat do
   :ok = Gnat.stop(gnat)
   ```
   """
-  @spec stop(GenServer.server) :: :ok
+  @spec stop(GenServer.server()) :: :ok
   def stop(pid), do: GenServer.call(pid, :stop)
 
   @doc """
@@ -69,8 +69,9 @@ defmodule Gnat do
   end
   ```
   """
-  @spec sub(GenServer.server, pid(), String.t, keyword()) :: {:ok, non_neg_integer()}
-  def sub(pid, subscriber, topic, opts \\ []), do: GenServer.call(pid, {:sub, subscriber, topic, opts})
+  @spec sub(GenServer.server(), pid(), String.t(), keyword()) :: {:ok, non_neg_integer()}
+  def sub(pid, subscriber, topic, opts \\ []),
+    do: GenServer.call(pid, {:sub, subscriber, topic, opts})
 
   @doc """
   Publish a message
@@ -88,7 +89,7 @@ defmodule Gnat do
   :ok = Gnat.pub(gnat, "characters", "Star Lord", reply_to: "me")
   ```
   """
-  @spec pub(GenServer.server, String.t, binary(), keyword()) :: :ok
+  @spec pub(GenServer.server(), String.t(), binary(), keyword()) :: :ok
   def pub(pid, topic, message, opts \\ []), do: GenServer.call(pid, {:pub, topic, message, opts})
 
   @doc """
@@ -108,14 +109,19 @@ defmodule Gnat do
   end
   ```
   """
-  @spec request(GenServer.server, String.t, binary(), keyword()) :: {:ok, message} | {:error, :timeout}
+  @spec request(GenServer.server(), String.t(), binary(), keyword()) ::
+          {:ok, message} | {:error, :timeout}
   def request(pid, topic, body, opts \\ []) do
-    receive_timeout = Keyword.get(opts, :receive_timeout, 60_000)
-    inbox = "INBOX-#{:crypto.strong_rand_bytes(12) |> Base.encode64}"
-    {:ok, subscription} = GenServer.call(pid, {:request, %{recipient: self(), inbox: inbox, body: body, topic: topic}})
+    receive_timeout = Keyword.get(opts, :receive_timeout, 60000)
+    inbox = "INBOX-#{:crypto.strong_rand_bytes(12) |> Base.encode64()}"
+
+    {:ok, subscription} =
+      GenServer.call(pid, {:request, %{recipient: self(), inbox: inbox, body: body, topic: topic}})
+
     receive do
-      {:msg, %{topic: ^inbox}=msg} -> {:ok, msg}
-      after receive_timeout ->
+      {:msg, %{topic: ^inbox} = msg} -> {:ok, msg}
+    after
+      receive_timeout ->
         :ok = unsub(pid, subscription)
         {:error, :timeout}
     end
@@ -137,7 +143,7 @@ defmodule Gnat do
   :ok = Gnat.unsub(gnat, subscription, max_messages: 2)
   ```
   """
-  @spec unsub(GenServer.server, non_neg_integer(), keyword()) :: :ok
+  @spec unsub(GenServer.server(), non_neg_integer(), keyword()) :: :ok
   def unsub(pid, sid, opts \\ []), do: GenServer.call(pid, {:unsub, sid, opts})
 
   @doc """
@@ -152,49 +158,70 @@ defmodule Gnat do
   """
   def ping(pid) do
     GenServer.call(pid, {:ping, self()})
+
     receive do
       :pong -> :ok
     after
-      3_000 -> {:error, "No PONG response after 3 sec"}
+      3000 -> {:error, "No PONG response after 3 sec"}
     end
   end
 
   @impl GenServer
   def init(connection_settings) do
     connection_settings = Map.merge(@default_connection_settings, connection_settings)
+
     case Gnat.Handshake.connect(connection_settings) do
       {:ok, socket} ->
-        parser = Parser.new
-        {:ok, %{socket: socket, connection_settings: connection_settings, next_sid: 1, receivers: %{}, parser: parser}}
+        parser = Parser.new()
+
+        {
+          :ok,
+          %{
+            socket: socket,
+            connection_settings: connection_settings,
+            next_sid: 1,
+            receivers: %{},
+            parser: parser
+          }
+        }
+
       {:error, reason} ->
         {:stop, reason}
     end
   end
 
   @impl GenServer
-  def handle_info({:tcp, socket, data}, %{socket: socket}=state) do
+  def handle_info({:tcp, socket, data}, %{socket: socket} = state) do
     data_packets = receive_additional_tcp_data(socket, [data], 10)
-    new_state = Enum.reduce(data_packets, state, fn(data, %{parser: parser}=state) ->
-      {new_parser, messages} = Parser.parse(parser, data)
-      new_state = %{state | parser: new_parser}
-      Enum.reduce(messages, new_state, &process_message/2)
-    end)
+
+    new_state =
+      Enum.reduce(data_packets, state, fn data, %{parser: parser} = state ->
+        {new_parser, messages} = Parser.parse(parser, data)
+        new_state = %{state | parser: new_parser}
+        Enum.reduce(messages, new_state, &process_message/2)
+      end)
+
     {:noreply, new_state}
   end
+
   def handle_info({:ssl, socket, data}, state) do
     handle_info({:tcp, socket, data}, state)
   end
+
   def handle_info({:tcp_closed, _}, state) do
     {:stop, "connection closed", state}
   end
+
   def handle_info({:ssl_closed, _}, state) do
     {:stop, "connection closed", state}
   end
+
   def handle_info({:tcp_error, _, reason}, state) do
     {:stop, "tcp transport error #{inspect(reason)}", state}
   end
+
   def handle_info(other, state) do
-    Logger.error "#{__MODULE__} received unexpected message: #{inspect other}"
+    Logger.error("#{__MODULE__} received unexpected message: #{inspect(other)}")
     {:noreply, state}
   end
 
@@ -203,32 +230,42 @@ defmodule Gnat do
     socket_close(state)
     {:stop, :normal, :ok, state}
   end
-  def handle_call({:sub, receiver, topic, opts}, _from, %{next_sid: sid}=state) do
+
+  def handle_call({:sub, receiver, topic, opts}, _from, %{next_sid: sid} = state) do
     sub = Command.build(:sub, topic, sid, opts)
     :ok = socket_write(state, sub)
     next_state = add_subscription_to_state(state, sid, receiver) |> Map.put(:next_sid, sid + 1)
     {:reply, {:ok, sid}, next_state}
   end
+
   def handle_call({:pub, topic, message, opts}, from, state) do
     commands = [Command.build(:pub, topic, message, opts)]
     froms = [from]
     {commands, froms} = receive_additional_pubs(commands, froms, 10)
     :ok = socket_write(state, commands)
-    Enum.each(froms, fn(from) -> GenServer.reply(from, :ok) end)
+    Enum.each(froms, fn from -> GenServer.reply(from, :ok) end)
     {:noreply, state}
   end
-  def handle_call({:request, request}, _from, %{next_sid: sid}=state) do
+
+  def handle_call({:request, request}, _from, %{next_sid: sid} = state) do
     sub = Command.build(:sub, request.inbox, sid, [])
-    unsub = Command.build(:unsub, sid, [max_messages: 1])
+    unsub = Command.build(:unsub, sid, max_messages: 1)
     pub = Command.build(:pub, request.topic, request.body, reply_to: request.inbox)
     :ok = socket_write(state, [sub, unsub, pub])
-    state = add_subscription_to_state(state, sid, request.recipient) |> cleanup_subscription_from_state(sid, max_messages: 1)
+
+    state =
+      add_subscription_to_state(state, sid, request.recipient)
+      |> cleanup_subscription_from_state(sid, max_messages: 1)
+
     next_sid = sid + 1
     {:reply, {:ok, sid}, %{state | next_sid: next_sid}}
   end
-  def handle_call({:unsub, sid, opts}, _from, %{receivers: receivers}=state) do
+
+  def handle_call({:unsub, sid, opts}, _from, %{receivers: receivers} = state) do
     case Map.has_key?(receivers, sid) do
-      false -> {:reply, :ok, state}
+      false ->
+        {:reply, :ok, state}
+
       true ->
         command = Command.build(:unsub, sid, opts)
         :ok = socket_write(state, command)
@@ -236,6 +273,7 @@ defmodule Gnat do
         {:reply, :ok, state}
     end
   end
+
   def handle_call({:ping, pinger}, _from, state) do
     :ok = socket_write(state, "PING\r\n")
     {:reply, :ok, Map.put(state, :pinger, pinger)}
@@ -247,48 +285,59 @@ defmodule Gnat do
   defp socket_write(%{socket: socket, connection_settings: %{tls: true}}, iodata) do
     :ssl.send(socket, iodata)
   end
+
   defp socket_write(%{socket: socket}, iodata), do: :gen_tcp.send(socket, iodata)
 
-  defp add_subscription_to_state(%{receivers: receivers}=state, sid, pid) do
+  defp add_subscription_to_state(%{receivers: receivers} = state, sid, pid) do
     receivers = Map.put(receivers, sid, %{recipient: pid, unsub_after: :infinity})
     %{state | receivers: receivers}
   end
 
-  defp cleanup_subscription_from_state(%{receivers: receivers}=state, sid, []) do
+  defp cleanup_subscription_from_state(%{receivers: receivers} = state, sid, []) do
     receivers = Map.delete(receivers, sid)
     %{state | receivers: receivers}
   end
-  defp cleanup_subscription_from_state(%{receivers: receivers}=state, sid, [max_messages: n]) do
+
+  defp cleanup_subscription_from_state(%{receivers: receivers} = state, sid, max_messages: n) do
     receivers = put_in(receivers, [sid, :unsub_after], n)
     %{state | receivers: receivers}
   end
 
   defp process_message({:msg, topic, sid, reply_to, body}, state) do
     unless is_nil(state.receivers[sid]) do
-      send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to, gnat: self()}}
+      send(state.receivers[sid].recipient, {
+        :msg,
+        %{topic: topic, body: body, reply_to: reply_to, gnat: self()}
+      })
+
       update_subscriptions_after_delivering_message(state, sid)
     else
-      Logger.error "#{__MODULE__} got message for sid #{sid}, but that is no longer registered"
+      Logger.error("#{__MODULE__} got message for sid #{sid}, but that is no longer registered")
       state
     end
   end
+
   defp process_message(:ping, state) do
     socket_write(state, "PONG\r\n")
     state
   end
+
   defp process_message(:pong, state) do
-    send state.pinger, :pong
+    send(state.pinger, :pong)
     state
   end
+
   defp process_message({:error, message}, state) do
-    :error_logger.error_report([
+    :error_logger.error_report(
       type: :gnat_error_from_broker,
-      message: message,
-    ])
+      message: message
+    )
+
     state
   end
 
   defp receive_additional_pubs(commands, froms, 0), do: {commands, froms}
+
   defp receive_additional_pubs(commands, froms, how_many_more) do
     receive do
       {:"$gen_call", from, {:pub, topic, message, opts}} ->
@@ -301,21 +350,24 @@ defmodule Gnat do
   end
 
   def receive_additional_tcp_data(_socket, packets, 0), do: Enum.reverse(packets)
+
   def receive_additional_tcp_data(socket, packets, n) do
     receive do
       {:tcp, ^socket, data} ->
         receive_additional_tcp_data(socket, [data | packets], n - 1)
-      after
-        0 -> Enum.reverse(packets)
+    after
+      0 -> Enum.reverse(packets)
     end
   end
 
-  defp update_subscriptions_after_delivering_message(%{receivers: receivers}=state, sid) do
-    receivers = case get_in(receivers, [sid, :unsub_after]) do
-                  :infinity -> receivers
-                  1 -> Map.delete(receivers, sid)
-                  n -> put_in(receivers, [sid, :unsub_after], n - 1)
-                end
+  defp update_subscriptions_after_delivering_message(%{receivers: receivers} = state, sid) do
+    receivers =
+      case get_in(receivers, [sid, :unsub_after]) do
+        :infinity -> receivers
+        1 -> Map.delete(receivers, sid)
+        n -> put_in(receivers, [sid, :unsub_after], n - 1)
+      end
+
     %{state | receivers: receivers}
   end
 end

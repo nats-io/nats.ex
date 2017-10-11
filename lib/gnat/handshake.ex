@@ -6,6 +6,7 @@ defmodule Gnat.Handshake do
   """
   def connect(settings) do
     host = settings.host |> to_charlist
+
     case :gen_tcp.connect(host, settings.port, settings.tcp_opts, settings.connection_timeout) do
       {:ok, tcp} -> perform_handshake(tcp, settings)
       result -> result
@@ -15,11 +16,12 @@ defmodule Gnat.Handshake do
   defp perform_handshake(tcp, connection_settings) do
     receive do
       {:tcp, ^tcp, operation} ->
-        {_, [{:info, options}]} = Parser.parse(Parser.new, operation)
+        {_, [{:info, options}]} = Parser.parse(Parser.new(), operation)
         {:ok, socket} = upgrade_connection(tcp, options, connection_settings)
         send_connect_message(socket, options, connection_settings)
         {:ok, socket}
-      after 1000 ->
+    after
+      1000 ->
         {:error, "timed out waiting for info"}
     end
   end
@@ -27,17 +29,25 @@ defmodule Gnat.Handshake do
   defp socket_write(%{tls: true}, socket, iodata), do: :ssl.send(socket, iodata)
   defp socket_write(_, socket, iodata), do: :gen_tcp.send(socket, iodata)
 
-  defp send_connect_message(socket, %{auth_required: true}=_options, %{username: username, password: password}=connection_settings) do
-    opts = Poison.Encoder.encode(%{user: username, pass: password, verbose: false}, strict_keys: true)
+  defp send_connect_message(
+         socket,
+         %{auth_required: true} = _options,
+         %{username: username, password: password} = connection_settings
+       ) do
+    opts =
+      Poison.Encoder.encode(%{user: username, pass: password, verbose: false}, strict_keys: true)
+
     socket_write(connection_settings, socket, "CONNECT #{opts}\r\n")
   end
+
   defp send_connect_message(socket, _options, connection_settings) do
     socket_write(connection_settings, socket, "CONNECT {\"verbose\": false}\r\n")
   end
 
   defp upgrade_connection(tcp, %{tls_required: true}, %{tls: true, ssl_opts: opts}) do
-    :ok = :inet.setopts(tcp, [active: true])
-    :ssl.connect(tcp, opts, 1_000)
+    :ok = :inet.setopts(tcp, active: true)
+    :ssl.connect(tcp, opts, 1000)
   end
+
   defp upgrade_connection(tcp, _server_settings, _connection_settions), do: {:ok, tcp}
 end
