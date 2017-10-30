@@ -77,6 +77,10 @@ defmodule Gnat.ConsumerSupervisor do
   # Ignore DOWN and task result messages from the spawned tasks
   def handle_info({:DOWN, _ref, :process, _task_pid, _reason}, state), do: {:noreply, state}
   def handle_info({ref, _result}, state) when is_reference(ref), do: {:noreply, state}
+  def handle_info({:EXIT, supervisor_pid, _reason}, %{task_supervisor_pid: supervisor_pid}=state) do
+    {:ok, task_supervisor_pid} = Task.Supervisor.start_link()
+    {:noreply, Map.put(state, :task_supervisor_pid, task_supervisor_pid)}
+  end
 
   def handle_info({:msg, gnat_message}, %{consuming_function: {mod, fun}}=state) do
     Task.Supervisor.async_nolink(state.task_supervisor_pid, mod, fun, [gnat_message])
