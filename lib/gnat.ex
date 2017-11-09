@@ -18,6 +18,8 @@ defmodule Gnat do
     tls: false,
   }
 
+  @request_sid 0
+
   @doc """
   Starts a connection to a nats broker
 
@@ -273,9 +275,9 @@ defmodule Gnat do
   defp create_request_subscription(%{request_inbox_prefix: request_inbox_prefix}=state) do
     # Example: "_INBOX.Jhf7AcTGP3x4dAV9.*"
     wildcard_inbox_topic = request_inbox_prefix <> "*"
-    sub = Command.build(:sub, wildcard_inbox_topic, 0, [])
+    sub = Command.build(:sub, wildcard_inbox_topic, @request_sid, [])
     :ok = socket_write(state, [sub])
-    add_subscription_to_state(state, 0, self())
+    add_subscription_to_state(state, @request_sid, self())
   end
 
   defp nuid(), do: :crypto.strong_rand_bytes(12) |> Base.encode64
@@ -302,6 +304,14 @@ defmodule Gnat do
     %{state | receivers: receivers}
   end
 
+  defp process_message({:msg, topic, @request_sid, reply_to, body}, state) do
+    if Map.has_key?(state.request_receivers, topic) do
+      send state.request_receivers[topic], {:msg, %{topic: topic, body: body, reply_to: reply_to, gnat: self()}}
+    else
+      Logger.error "#{__MODULE__} got a response for a request, but that is no longer registered"
+      state
+    end
+  end
   defp process_message({:msg, topic, sid, reply_to, body}, state) do
     unless is_nil(state.receivers[sid]) do
       send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to, gnat: self()}}
