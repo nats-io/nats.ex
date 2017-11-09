@@ -187,13 +187,16 @@ defmodule Gnat do
     case Gnat.Handshake.connect(connection_settings) do
       {:ok, socket} ->
         parser = Parser.new
-        {:ok, %{socket: socket,
-                connection_settings: connection_settings,
-                next_sid: 1,
-                receivers: %{},
-                parser: parser,
-                request_receivers: %{},
-                request_inbox_prefix: request_inbox_prefix}}
+        state = %{socket: socket,
+                  connection_settings: connection_settings,
+                  next_sid: 1,
+                  receivers: %{},
+                  parser: parser,
+                  request_receivers: %{},
+                  request_inbox_prefix: request_inbox_prefix}
+
+        state = create_request_subscription(state)
+        {:ok, state}
       {:error, reason} ->
         {:stop, reason}
     end
@@ -275,6 +278,14 @@ defmodule Gnat do
   def handle_call(:active_subscriptions, _from, state) do
     active_subscriptions = Enum.count(state.receivers)
     {:reply, {:ok, active_subscriptions}, state}
+  end
+
+  defp create_request_subscription(%{request_inbox_prefix: request_inbox_prefix}=state) do
+    # Example: "_INBOX.Jhf7AcTGP3x4dAV9.*"
+    wildcard_inbox_topic = request_inbox_prefix <> "*"
+    sub = Command.build(:sub, wildcard_inbox_topic, 0, [])
+    :ok = socket_write(state, [sub])
+    add_subscription_to_state(state, 0, self())
   end
 
   defp nuid(), do: :crypto.strong_rand_bytes(12) |> Base.encode64
