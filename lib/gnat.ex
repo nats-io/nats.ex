@@ -111,7 +111,7 @@ defmodule Gnat do
   @spec request(GenServer.server, String.t, binary(), keyword()) :: {:ok, message} | {:error, :timeout}
   def request(pid, topic, body, opts \\ []) do
     receive_timeout = Keyword.get(opts, :receive_timeout, 60_000)
-    inbox = "INBOX-#{:crypto.strong_rand_bytes(12) |> Base.encode64}"
+    {:ok, inbox} = new_inbox(pid)
     {:ok, subscription} = GenServer.call(pid, {:request, %{recipient: self(), inbox: inbox, body: body, topic: topic}})
     receive do
       {:msg, %{topic: ^inbox}=msg} -> {:ok, msg}
@@ -120,6 +120,21 @@ defmodule Gnat do
         {:error, :timeout}
     end
   end
+
+  @doc """
+  Get a new request inbox
+
+  As an optimization, the gnats connection maintains a single subscription to route all responses from "requests". Which
+  are of the format `_INBOX.<connection_id>.<request_id>`. Use this method to generate a new inbox.
+
+  ```
+  {:ok, gnat} = Gnat.start_link()
+  {:ok, inbox} = Gnat.new_inbox(gnat)
+  IO.inspect(inbox) #=> "_INBOX.Jhf7AcTGP3x4dAV9.gV4Xzwd0BmdmJMBx"
+  ```
+  """
+  @spec new_inbox(GenServer.server) :: {:ok, String.t}
+  def new_inbox(pid), do: GenServer.call(pid, {:new_inbox})
 
   @doc """
   Unsubscribe from a topic
@@ -162,10 +177,17 @@ defmodule Gnat do
   @impl GenServer
   def init(connection_settings) do
     connection_settings = Map.merge(@default_connection_settings, connection_settings)
+    request_inbox_prefix = "_INBOX.#{nuid()}."
     case Gnat.Handshake.connect(connection_settings) do
       {:ok, socket} ->
         parser = Parser.new
-        {:ok, %{socket: socket, connection_settings: connection_settings, next_sid: 1, receivers: %{}, parser: parser}}
+        {:ok, %{socket: socket,
+                connection_settings: connection_settings,
+                next_sid: 1,
+                receivers: %{},
+                parser: parser,
+                request_receivers: %{},
+                request_inbox_prefix: request_inbox_prefix}}
       {:error, reason} ->
         {:stop, reason}
     end
@@ -217,6 +239,10 @@ defmodule Gnat do
     Enum.each(froms, fn(from) -> GenServer.reply(from, :ok) end)
     {:noreply, state}
   end
+  def handle_call({:new_inbox}, _from, %{request_inbox_prefix: request_inbox_prefix}=state) do
+    inbox = request_inbox_prefix <> nuid()
+    {:reply, {:ok, inbox}, state}
+  end
   def handle_call({:request, request}, _from, %{next_sid: sid}=state) do
     sub = Command.build(:sub, request.inbox, sid, [])
     unsub = Command.build(:unsub, sid, [max_messages: 1])
@@ -240,6 +266,8 @@ defmodule Gnat do
     :ok = socket_write(state, "PING\r\n")
     {:reply, :ok, Map.put(state, :pinger, pinger)}
   end
+
+  defp nuid(), do: :crypto.strong_rand_bytes(12) |> Base.encode64
 
   defp socket_close(%{socket: socket, connection_settings: %{tls: true}}), do: :ssl.close(socket)
   defp socket_close(%{socket: socket}), do: :gen_tcp.close(socket)
