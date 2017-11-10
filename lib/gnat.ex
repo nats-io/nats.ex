@@ -207,7 +207,6 @@ defmodule Gnat do
   @impl GenServer
   def init(connection_settings) do
     connection_settings = Map.merge(@default_connection_settings, connection_settings)
-    request_inbox_prefix = "_INBOX.#{nuid()}."
     case Gnat.Handshake.connect(connection_settings) do
       {:ok, socket} ->
         parser = Parser.new
@@ -217,7 +216,7 @@ defmodule Gnat do
                   receivers: %{},
                   parser: parser,
                   request_receivers: %{},
-                  request_inbox_prefix: request_inbox_prefix}
+                  request_inbox_prefix: "_INBOX.#{nuid()}."}
 
         state = create_request_subscription(state)
         {:ok, state}
