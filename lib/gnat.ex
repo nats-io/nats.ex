@@ -132,14 +132,14 @@ defmodule Gnat do
   @spec request(GenServer.server, String.t, binary(), keyword()) :: {:ok, message} | {:error, :timeout}
   def request(pid, topic, body, opts \\ []) do
     receive_timeout = Keyword.get(opts, :receive_timeout, 60_000)
-    {:ok, inbox} = new_inbox(pid)
-    {:ok, subscription} = GenServer.call(pid, {:request, %{recipient: self(), inbox: inbox, body: body, topic: topic}})
-    receive do
-      {:msg, %{topic: ^inbox}=msg} -> {:ok, msg}
+    {:ok, subscription} = GenServer.call(pid, {:request, %{recipient: self(), body: body, topic: topic}})
+    response = receive do
+      {:msg, %{topic: ^subscription}=msg} -> {:ok, msg}
       after receive_timeout ->
-        :ok = unsub(pid, subscription)
         {:error, :timeout}
     end
+    :ok = unsub(pid, subscription)
+    response
   end
 
   @doc """
@@ -281,18 +281,15 @@ defmodule Gnat do
     Enum.each(froms, fn(from) -> GenServer.reply(from, :ok) end)
     {:noreply, state}
   end
-  def handle_call({:new_inbox}, _from, %{request_inbox_prefix: request_inbox_prefix}=state) do
-    inbox = request_inbox_prefix <> nuid()
-    {:reply, {:ok, inbox}, state}
+  def handle_call({:new_inbox}, _from, state) do
+    {:reply, {:ok, make_new_inbox(state)}, state}
   end
-  def handle_call({:request, request}, _from, %{next_sid: sid}=state) do
-    sub = Command.build(:sub, request.inbox, sid, [])
-    unsub = Command.build(:unsub, sid, [max_messages: 1])
-    pub = Command.build(:pub, request.topic, request.body, reply_to: request.inbox)
-    :ok = socket_write(state, [sub, unsub, pub])
-    state = add_subscription_to_state(state, sid, request.recipient) |> cleanup_subscription_from_state(sid, max_messages: 1)
-    next_sid = sid + 1
-    {:reply, {:ok, sid}, %{state | next_sid: next_sid}}
+  def handle_call({:request, request}, _from, state) do
+    inbox = make_new_inbox(state)
+    new_state = %{state | request_receivers: Map.put(state.request_receivers, inbox, request.recipient)}
+    pub = Command.build(:pub, request.topic, request.body, reply_to: inbox)
+    :ok = socket_write(new_state, [pub])
+    {:reply, {:ok, inbox}, new_state}
   end
   # When the SID is a string, it's a topic, which is used as a key in the request receiver map.
   def handle_call({:unsub, topic, _opts}, _from, state) when is_binary(topic) do
@@ -330,6 +327,8 @@ defmodule Gnat do
     :ok = socket_write(state, [sub])
     add_subscription_to_state(state, @request_sid, self())
   end
+
+  defp make_new_inbox(%{request_inbox_prefix: prefix}), do: prefix <> nuid()
 
   defp nuid(), do: :crypto.strong_rand_bytes(12) |> Base.encode64
 
