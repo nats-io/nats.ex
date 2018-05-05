@@ -9,6 +9,7 @@ defmodule Gnat.Mixfile do
       build_embedded: Mix.env == :prod,
       start_permanent: Mix.env == :prod,
       package: package(),
+      propcheck: [counter_examples: "test/counter_examples"],
       deps: deps(),
       docs: [
         main: "readme",
@@ -28,6 +29,7 @@ defmodule Gnat.Mixfile do
       {:dialyxir, "~> 0.5", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.15", only: :dev},
       {:poison, "~> 3.0"},
+      {:propcheck, "~> 1.0", only: :test},
     ]
   end
 
