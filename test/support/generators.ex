@@ -10,7 +10,7 @@ defmodule Gnat.Generators do
   def delimiter_char, do: union([" ","\t"])
 
   def message, do: sized(size, message(size))
-  def message(size), do: message_with_reply(size)
+  def message(size), do: union([message_without_reply(size), message_with_reply(size)])
   def message_with_reply(size) do
     let(
       {p, su, si, r, d1, d2, d3, d4} <-
@@ -20,6 +20,21 @@ defmodule Gnat.Generators do
       %{
         binary: Enum.join(parts),
         reply_to: r,
+        sid: si,
+        subject: su,
+        payload: p,
+      }
+    end
+  end
+  def message_without_reply(size) do
+    let(
+      {p, su, si, d1, d2, d3} <-
+      {payload(size), subject(), sid(), delimiter(), delimiter(), delimiter()}
+    ) do
+      parts = ["MSG", d1, su, d2, si, d3, byte_size(p), "\r\n", p, "\r\n"]
+      %{
+        binary: Enum.join(parts),
+        reply_to: nil,
         sid: si,
         subject: su,
         payload: p,
