@@ -9,6 +9,8 @@ defmodule Gnat.Generators do
   def delimiter, do: let(chunks <- non_empty(list(delimiter_char())), do: Enum.join(chunks, ""))
   def delimiter_char, do: union([" ","\t"])
 
+  # generates a map containing the binary encoded message and attributes for which generated
+  # sid, subject, payload and reply_to topic were used in the encoded message
   def message, do: sized(size, message(size))
   def message(size), do: union([message_without_reply(size), message_with_reply(size)])
   def message_with_reply(size) do
