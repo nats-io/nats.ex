@@ -1,6 +1,10 @@
-%{"benchee": {:hex, :benchee, "0.6.0", "c2565506c621ee010e71d05f555e39a1b937e00810e284bc85463a4d4efc4b00", [:mix], [{:deep_merge, "~> 0.1", [hex: :deep_merge, repo: "hexpm", optional: false]}], "hexpm"},
+%{
+  "benchee": {:hex, :benchee, "0.6.0", "c2565506c621ee010e71d05f555e39a1b937e00810e284bc85463a4d4efc4b00", [:mix], [{:deep_merge, "~> 0.1", [hex: :deep_merge, repo: "hexpm", optional: false]}], "hexpm"},
   "deep_merge": {:hex, :deep_merge, "0.1.1", "c27866a7524a337b6a039eeb8dd4f17d458fd40fbbcb8c54661b71a22fffe846", [:mix], [], "hexpm"},
   "dialyxir": {:hex, :dialyxir, "0.5.1", "b331b091720fd93e878137add264bac4f644e1ddae07a70bf7062c7862c4b952", [:mix], [], "hexpm"},
   "earmark": {:hex, :earmark, "1.2.3", "206eb2e2ac1a794aa5256f3982de7a76bf4579ff91cb28d0e17ea2c9491e46a4", [:mix], [], "hexpm"},
   "ex_doc": {:hex, :ex_doc, "0.17.1", "39f777415e769992e6732d9589dc5846ea587f01412241f4a774664c746affbb", [:mix], [{:earmark, "~> 1.1", [hex: :earmark, repo: "hexpm", optional: false]}], "hexpm"},
-  "poison": {:hex, :poison, "3.1.0", "d9eb636610e096f86f25d9a46f35a9facac35609a7591b3be3326e99a0484665", [:mix], [], "hexpm"}}
+  "poison": {:hex, :poison, "3.1.0", "d9eb636610e096f86f25d9a46f35a9facac35609a7591b3be3326e99a0484665", [:mix], [], "hexpm"},
+  "propcheck": {:hex, :propcheck, "1.0.4", "f83174301b637bce011a4ebf0e4f10e9bae38d6eefebdd117677c7884bc99aa4", [:mix], [{:proper, "~> 1.2.0", [hex: :proper, repo: "hexpm", optional: false]}], "hexpm"},
+  "proper": {:hex, :proper, "1.2.0", "1466492385959412a02871505434e72e92765958c60dba144b43863554b505a4", [:make, :mix, :rebar3], [], "hexpm"},
+}

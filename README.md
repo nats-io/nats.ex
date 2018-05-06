@@ -44,7 +44,10 @@ Running 32 client actors on an 8-core ubuntu server sending requests to another 
 
 ## Development
 
-To run the tests the typical `mix test` will run all tests that have not been tagged
-to exclude as shown in the `test_helper.exs` file.  There are some tests that require
-another server to be running.  These are marked with `@tag :multi_server` and can be
-included in a test run with the following command `mix test --include multi_server`
+To run the tests the typical `mix test` will run all the basic unit tests.
+You can also run the `multi_server` set of tests that test connectivity to different
+`gnatsd` with different configurations. You can run these with `mix test --only multi_server`.
+There are also some property-based tests that generate a lot of test cases.
+You can tune how many test cases by setting the environment variable `N=200 mix test --only property` (default it 100).
+
+For more details you can look at how Travis runs these things in the CI flow.

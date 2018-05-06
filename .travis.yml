@@ -2,10 +2,13 @@ language: elixir
 otp_release:
  - 18.3
  - 19.3
- - 20.1
+ - 20.3
 elixir:
  - 1.4.5
- - 1.5.2
+ - 1.5.3
+ - 1.6.4
+env:
+ - N=400 MIX_ENV=test
 branches:
   only:
     - master
@@ -20,4 +23,7 @@ before_script:
  - ./gnatsd-v0.9.6-linux-amd64/gnatsd -p 4225 --tls --tlscert test/fixtures/server.pem --tlskey test/fixtures/key.pem --tlscacert test/fixtures/ca.pem --tlsverify &
 
 script:
-  - mix test --include multi_server
+  - mix compile
+  - mix test
+  - mix test --only multi_server
+  - mix test --only property
