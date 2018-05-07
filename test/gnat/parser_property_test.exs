@@ -1,7 +1,7 @@
 defmodule Gnat.ParserPropertyTest do
   use ExUnit.Case, async: true
   use PropCheck
-  import Gnat.Generators, only: [message: 0]
+  import Gnat.Generators, only: [message: 0, protocol_message: 0]
   alias Gnat.Parser
   @numtests (System.get_env("N") || "100") |> String.to_integer
 
@@ -30,6 +30,31 @@ defmodule Gnat.ParserPropertyTest do
 
       parser.partial == "" &&
       parsed == payloads
+    end)
+  end
+
+  @tag :property
+  property "can parse any sequence of protocol messages without exception" do
+    numtests(@numtests, forall messages <- list(protocol_message()) do
+      parser = Enum.reduce(messages, Parser.new(), fn(%{binary: bin}, parser) ->
+        {parser, [_parsed]} = Parser.parse(parser, bin)
+        parser
+      end)
+      parser.partial == ""
+    end)
+  end
+
+  @tag :property
+  property "can parse any sequence of protocol messages, randomly chunked without exception" do
+    numtests(@numtests, forall messages <- list(protocol_message()) do
+      bin = Enum.reduce(messages, "", fn(%{binary: part}, acc) -> acc<>part end)
+      chunks = random_chunk(bin)
+      {parser, parsed} = Enum.reduce(chunks, {Parser.new(), []}, fn(bin, {parser, acc}) ->
+        {parser, parsed} = Parser.parse(parser, bin)
+        {parser, acc ++ parsed}
+      end)
+      parser.partial == "" &&
+      Enum.count(parsed) == Enum.count(messages)
     end)
   end
 

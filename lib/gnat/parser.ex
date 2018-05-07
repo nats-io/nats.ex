@@ -48,6 +48,7 @@ defmodule Gnat.Parser do
 
   defp parse_command("PING", _, body), do: {:ping, body}
   defp parse_command("PONG", _, body), do: {:pong, body}
+  defp parse_command("+OK", _, body), do: {:ok, body}
   defp parse_command("MSG", [topic, sidstr, sizestr], body), do: parse_command("MSG", [topic, sidstr, nil, sizestr], body)
   defp parse_command("MSG", [topic, sidstr, reply_to, sizestr], body) do
     sid = String.to_integer(sidstr)
