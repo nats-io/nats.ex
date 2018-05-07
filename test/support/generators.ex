@@ -1,22 +1,55 @@
 defmodule Gnat.Generators do
   use PropCheck
 
+  # Character classes useful for generating text
   def alphanumeric_char do
     elements('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
   end
+  def alphanumeric_space_char do
+    elements(' 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
+  end
+  def numeric_char do
+    elements('0123456789')
+  end
 
+  @doc "protocol delimiter. The protocol can use one ore more of space or tab characters as delimiters between fields"
   def delimiter, do: let(chunks <- non_empty(list(delimiter_char())), do: Enum.join(chunks, ""))
 
   def delimiter_char, do: union([" ","\t"])
 
   def error do
-    let chars <- list(error_char) do
+    let chars <- list(alphanumeric_space_char()) do
       %{binary: "-ERR '#{List.to_string(chars)}'\r\n"}
     end
   end
 
-  def error_char do
-    elements(' 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
+  def host_port do
+    let({ip,port} <- {[byte(),byte(),byte(),byte()],non_neg_integer()}, do: "#{Enum.join(ip,".")}:#{port}")
+  end
+
+  def info do
+    let options <- info_options() do
+      %{binary: "INFO #{Poison.encode!(options)}\r\n"}
+    end
+  end
+
+  def info_options do
+    let(
+      {server_id,version,go,host,port,auth_required,ssl_required,max_payload,connect_urls} <-
+      {list(alphanumeric_space_char()), list(list(numeric_char())), list(alphanumeric_char()), list(alphanumeric_char()), non_neg_integer(), boolean(), boolean(), integer(1024,1048576), list(host_port())}
+    ) do
+      %{
+        server_id: List.to_string(server_id),
+        version: version |> Enum.map(&List.to_string/1) |> Enum.join("."),
+        go: List.to_string(go),
+        host: List.to_string(host),
+        port: port,
+        auth_required: auth_required,
+        ssl_required: ssl_required,
+        max_payload: max_payload,
+        connect_urls: connect_urls,
+      }
+    end
   end
 
   def ok, do: %{binary: "+OK\r\n"}
@@ -63,7 +96,7 @@ defmodule Gnat.Generators do
   def payload(size), do: binary(size)
 
   def protocol_message do
-    union([ok(), ping(), pong(), error(), message()])
+    union([ok(), ping(), pong(), error(), info(), message()])
   end
 
   # according to the spec sid's can be alphanumeric, but our client only generates
