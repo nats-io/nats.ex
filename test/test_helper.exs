@@ -12,6 +12,26 @@ case :gen_tcp.connect('localhost', 4222, [:binary]) do
               "You probably need to start gnatsd."
 end
 
+# this is used by some property tests, see test/gnat_property_test.exs
+Gnat.start_link(%{}, [name: :test_connection])
+
+defmodule RpcEndpoint do
+  def init do
+    {:ok, pid} = Gnat.start_link()
+    {:ok, _ref} = Gnat.sub(pid, self(), "rpc.>")
+    loop(pid)
+  end
+
+  def loop(pid) do
+    receive do
+      {:msg, %{body: body, reply_to: topic}} ->
+        Gnat.pub(pid, topic, body)
+        loop(pid)
+    end
+  end
+end
+spawn(&RpcEndpoint.init/0)
+
 defmodule CheckForExpectedNatsServers do
   def check(tags) do
     check_for_default()
