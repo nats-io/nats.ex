@@ -6,14 +6,14 @@ defmodule GnatPropertyTest do
 
   @tag :property
   property "can publish to random subjects" do
-    numtests(@numtests * 10, forall %{subject: subject, payload: payload} <- message() do
+    numtests(@numtests * 2, forall %{subject: subject, payload: payload} <- message() do
       Gnat.pub(:test_connection, subject, payload) == :ok
     end)
   end
 
   @tag :property
   property "can subscribe, publish, receive and unsubscribe from subjects" do
-    numtests(@numtests * 10, forall %{subject: subject, payload: payload} <- message() do
+    numtests(@numtests * 2, forall %{subject: subject, payload: payload} <- message() do
       {:ok, ref} = Gnat.sub(:test_connection, self(), subject)
       :ok = Gnat.pub(:test_connection, subject, payload)
       assert_receive {:msg, %{topic: ^subject, body: ^payload, reply_to: nil}}, 500
@@ -23,7 +23,7 @@ defmodule GnatPropertyTest do
 
   @tag :property
   property "can make requests to an echo endpoint" do
-    numtests(@numtests * 10, forall %{subject: subject, payload: payload} <- message() do
+    numtests(@numtests * 2, forall %{subject: subject, payload: payload} <- message() do
       {:ok, msg} = Gnat.request(:test_connection, "rpc.#{subject}", payload)
       msg.body == payload
     end)
@@ -31,7 +31,7 @@ defmodule GnatPropertyTest do
 
   @tag :property
   property "auto-unsubscribes after n messages" do
-    numtests(@numtests * 2, forall {%{subject: subject, payload: payload}, max_messaages} <- {message(), pos_integer()} do
+    numtests(@numtests, forall {%{subject: subject, payload: payload}, max_messaages} <- {message(), pos_integer()} do
       {:ok, ref} = Gnat.sub(:test_connection, self(), subject)
       :ok = Gnat.unsub(:test_connection, ref, max_messages: max_messaages)
       Enum.each(1..max_messaages, fn(_) ->
