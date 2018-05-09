@@ -82,6 +82,21 @@ defmodule GnatTest do
     :ok = Gnat.stop(pid)
   end
 
+  test "subscribing and unsubscribing as a request" do
+    {:ok, gnat} = Gnat.start_link()
+    {:ok, inbox} = Gnat.new_inbox(gnat)
+    {:ok, subscription} = Gnat.sub(gnat, self(), inbox, as_request: true)
+    :ok = Gnat.pub(gnat, inbox, "how's the water?")
+    assert_receive {:msg, %{topic: ^inbox, body: "how's the water?"}}, 500
+    Gnat.unsub(gnat, subscription)
+  end
+
+  test "subscribing as a request without the connection inbox prefix returns an error" do
+    {:ok, gnat} = Gnat.start_link()
+    response = Gnat.sub(gnat, self(), "not_a_request_inbox", as_request: true)
+    assert response == {:error, "When subscribing as a request, you must use the new_inbox() method to create your topic."}
+  end
+
   test "subscribing to the same topic multiple times" do
     {:ok, pid} = Gnat.start_link()
     {:ok, _sub1} = Gnat.sub(pid, self(), "dup")
@@ -141,15 +156,18 @@ defmodule GnatTest do
   test "request-reply convenience function" do
     topic = "req-resp"
     {:ok, pid} = Gnat.start_link()
-    spin_up_echo_server_on_topic(pid, topic)
+    spin_up_echo_server_on_topic(self(), pid, topic)
+    # Wait for server to spawn and subscribe.
+    assert_receive(true, 100)
     {:ok, msg} = Gnat.request(pid, topic, "ohai", receive_timeout: 500)
     assert msg.body == "ohai"
   end
 
-  defp spin_up_echo_server_on_topic(gnat, topic) do
+  defp spin_up_echo_server_on_topic(ready, gnat, topic) do
     spawn(fn ->
       {:ok, subscription} = Gnat.sub(gnat, self(), topic)
       :ok = Gnat.unsub(gnat, subscription, max_messages: 1)
+      send ready, true
       receive do
         {:msg, %{topic: ^topic, body: body, reply_to: reply_to}} ->
           Gnat.pub(gnat, reply_to, body)
