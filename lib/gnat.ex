@@ -159,6 +159,12 @@ defmodule Gnat do
     end
   end
 
+  @doc "get the number of active subscriptions"
+  @spec active_subscriptions(GenServer.server) :: {:ok, non_neg_integer()}
+  def active_subscriptions(pid) do
+    GenServer.call(pid, :active_subscriptions)
+  end
+
   @impl GenServer
   def init(connection_settings) do
     connection_settings = Map.merge(@default_connection_settings, connection_settings)
@@ -240,6 +246,10 @@ defmodule Gnat do
     :ok = socket_write(state, "PING\r\n")
     {:reply, :ok, Map.put(state, :pinger, pinger)}
   end
+  def handle_call(:active_subscriptions, _from, state) do
+    active_subscriptions = Enum.count(state.receivers)
+    {:reply, {:ok, active_subscriptions}, state}
+  end
 
   defp socket_close(%{socket: socket, connection_settings: %{tls: true}}), do: :ssl.close(socket)
   defp socket_close(%{socket: socket}), do: :gen_tcp.close(socket)
@@ -300,8 +310,8 @@ defmodule Gnat do
     end
   end
 
-  def receive_additional_tcp_data(_socket, packets, 0), do: Enum.reverse(packets)
-  def receive_additional_tcp_data(socket, packets, n) do
+  defp receive_additional_tcp_data(_socket, packets, 0), do: Enum.reverse(packets)
+  defp receive_additional_tcp_data(socket, packets, n) do
     receive do
       {:tcp, ^socket, data} ->
         receive_additional_tcp_data(socket, [data | packets], n - 1)
