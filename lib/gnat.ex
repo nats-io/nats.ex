@@ -7,7 +7,7 @@ defmodule Gnat do
   require Logger
   alias Gnat.{Command, Parser}
 
-  @type message :: %{topic: String.t, body: String.t, reply_to: String.t}
+  @type message :: %{topic: String.t, body: String.t, sid: non_neg_integer(), reply_to: String.t}
 
   @default_connection_settings %{
     host: 'localhost',
@@ -275,7 +275,7 @@ defmodule Gnat do
 
   defp process_message({:msg, topic, sid, reply_to, body}, state) do
     unless is_nil(state.receivers[sid]) do
-      send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to, gnat: self()}}
+      send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to, sid: sid, gnat: self()}}
       update_subscriptions_after_delivering_message(state, sid)
     else
       Logger.error "#{__MODULE__} got message for sid #{sid}, but that is no longer registered"
