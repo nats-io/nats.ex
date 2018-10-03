@@ -82,21 +82,6 @@ defmodule GnatTest do
     :ok = Gnat.stop(pid)
   end
 
-  test "subscribing and unsubscribing as a request" do
-    {:ok, gnat} = Gnat.start_link()
-    {:ok, inbox} = Gnat.new_inbox(gnat)
-    {:ok, subscription} = Gnat.sub(gnat, self(), inbox, as_request: true)
-    :ok = Gnat.pub(gnat, inbox, "how's the water?")
-    assert_receive {:msg, %{topic: ^inbox, body: "how's the water?"}}, 500
-    Gnat.unsub(gnat, subscription)
-  end
-
-  test "subscribing as a request without the connection inbox prefix returns an error" do
-    {:ok, gnat} = Gnat.start_link()
-    response = Gnat.sub(gnat, self(), "not_a_request_inbox", as_request: true)
-    assert response == {:error, "When subscribing as a request, you must use the new_inbox() method to create your topic."}
-  end
-
   test "subscribing to the same topic multiple times" do
     {:ok, pid} = Gnat.start_link()
     {:ok, _sub1} = Gnat.sub(pid, self(), "dup")

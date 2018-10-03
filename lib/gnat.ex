@@ -57,17 +57,10 @@ defmodule Gnat do
 
   Supported options:
     * queue_group: a string that identifies which queue group you want to join
-    * as_request: a boolean that determines if you want to use the request wildcard subscription
-
-  NOTE: `as_request: true` cannot be used with any other option.
 
   By default each subscriber will receive a copy of every message on the topic.
   When a queue_group is supplied messages will be spread among the subscribers
   in the same group. (see [nats queueing](https://nats.io/documentation/concepts/nats-queueing/))
-
-  The `as_request: true` option adds your subscription to the wildcard request subscription. By
-  sharing a subscription NATS does not need to update its internal map, which keeps your system
-  running super fast.
 
   ```
   {:ok, gnat} = Gnat.start_link()
@@ -76,18 +69,6 @@ defmodule Gnat do
     {:msg, %{topic: "topic", body: body}} ->
       IO.puts "Received: \#\{body\}"
   end
-
-  # OR
-
-  {:ok, gnat} = Gnat.start_link()
-  {:ok, inbox} = Gnat.new_inbox(gnat)
-  {:ok, subscription} = Gnat.sub(gnat, self(), inbox, as_request: true)
-  :ok = Gnat.pub(gnat, inbox, "how's the water?")
-  receive do
-    {:msg, %{topic: _topic, body: _body}=message} ->
-      IO.inspect(message)
-  end
-  Gnat.unsub(gnat, subscription)
   ```
   """
   @spec sub(GenServer.server, pid(), String.t, keyword()) :: {:ok, non_neg_integer()} | {:ok, String.t} | {:error, String.t}
@@ -141,21 +122,6 @@ defmodule Gnat do
     :ok = unsub(pid, subscription)
     response
   end
-
-  @doc """
-  Get a new request inbox
-
-  As an optimization, the gnats connection maintains a single subscription to route all responses from "requests". Which
-  are of the format `_INBOX.<connection_id>.<request_id>`. Use this method to generate a new inbox.
-
-  ```
-  {:ok, gnat} = Gnat.start_link()
-  {:ok, inbox} = Gnat.new_inbox(gnat)
-  IO.inspect(inbox) #=> "_INBOX.Jhf7AcTGP3x4dAV9.gV4Xzwd0BmdmJMBx"
-  ```
-  """
-  @spec new_inbox(GenServer.server) :: {:ok, String.t}
-  def new_inbox(pid), do: GenServer.call(pid, {:new_inbox})
 
   @doc """
   Unsubscribe from a topic
@@ -257,15 +223,6 @@ defmodule Gnat do
     socket_close(state)
     {:stop, :normal, :ok, state}
   end
-  def handle_call({:sub, receiver, topic, [as_request: true]}, _from, state) do
-    if String.contains?(topic, state.request_inbox_prefix) do
-      state = %{state | request_receivers: Map.put(state.request_receivers, topic, receiver)}
-      {:reply, {:ok, topic}, state}
-    else
-      error = "When subscribing as a request, you must use the new_inbox() method to create your topic."
-      {:reply, {:error, error}, state}
-    end
-  end
   def handle_call({:sub, receiver, topic, opts}, _from, %{next_sid: sid}=state) do
     sub = Command.build(:sub, topic, sid, opts)
     :ok = socket_write(state, sub)
@@ -279,9 +236,6 @@ defmodule Gnat do
     :ok = socket_write(state, commands)
     Enum.each(froms, fn(from) -> GenServer.reply(from, :ok) end)
     {:noreply, state}
-  end
-  def handle_call({:new_inbox}, _from, state) do
-    {:reply, {:ok, make_new_inbox(state)}, state}
   end
   def handle_call({:request, request}, _from, state) do
     inbox = make_new_inbox(state)
