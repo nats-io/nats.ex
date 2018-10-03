@@ -141,15 +141,18 @@ defmodule GnatTest do
   test "request-reply convenience function" do
     topic = "req-resp"
     {:ok, pid} = Gnat.start_link()
-    spin_up_echo_server_on_topic(pid, topic)
+    spin_up_echo_server_on_topic(self(), pid, topic)
+    # Wait for server to spawn and subscribe.
+    assert_receive(true, 100)
     {:ok, msg} = Gnat.request(pid, topic, "ohai", receive_timeout: 500)
     assert msg.body == "ohai"
   end
 
-  defp spin_up_echo_server_on_topic(gnat, topic) do
+  defp spin_up_echo_server_on_topic(ready, gnat, topic) do
     spawn(fn ->
       {:ok, subscription} = Gnat.sub(gnat, self(), topic)
       :ok = Gnat.unsub(gnat, subscription, max_messages: 1)
+      send ready, true
       receive do
         {:msg, %{topic: ^topic, body: body, reply_to: reply_to}} ->
           Gnat.pub(gnat, reply_to, body)

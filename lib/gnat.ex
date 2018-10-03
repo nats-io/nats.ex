@@ -18,6 +18,8 @@ defmodule Gnat do
     tls: false,
   }
 
+  @request_sid 0
+
   @doc """
   Starts a connection to a nats broker
 
@@ -53,12 +55,12 @@ defmodule Gnat do
   @doc """
   Subscribe to a topic
 
+  Supported options:
+    * queue_group: a string that identifies which queue group you want to join
+
   By default each subscriber will receive a copy of every message on the topic.
   When a queue_group is supplied messages will be spread among the subscribers
   in the same group. (see [nats queueing](https://nats.io/documentation/concepts/nats-queueing/))
-
-  Supported options:
-    * queue_group: a string that identifies which queue group you want to join
 
   ```
   {:ok, gnat} = Gnat.start_link()
@@ -69,7 +71,7 @@ defmodule Gnat do
   end
   ```
   """
-  @spec sub(GenServer.server, pid(), String.t, keyword()) :: {:ok, non_neg_integer()}
+  @spec sub(GenServer.server, pid(), String.t, keyword()) :: {:ok, non_neg_integer()} | {:ok, String.t} | {:error, String.t}
   def sub(pid, subscriber, topic, opts \\ []), do: GenServer.call(pid, {:sub, subscriber, topic, opts})
 
   @doc """
@@ -111,18 +113,21 @@ defmodule Gnat do
   @spec request(GenServer.server, String.t, binary(), keyword()) :: {:ok, message} | {:error, :timeout}
   def request(pid, topic, body, opts \\ []) do
     receive_timeout = Keyword.get(opts, :receive_timeout, 60_000)
-    inbox = "INBOX-#{:crypto.strong_rand_bytes(12) |> Base.encode64}"
-    {:ok, subscription} = GenServer.call(pid, {:request, %{recipient: self(), inbox: inbox, body: body, topic: topic}})
-    receive do
-      {:msg, %{topic: ^inbox}=msg} -> {:ok, msg}
+    {:ok, subscription} = GenServer.call(pid, {:request, %{recipient: self(), body: body, topic: topic}})
+    response = receive do
+      {:msg, %{topic: ^subscription}=msg} -> {:ok, msg}
       after receive_timeout ->
-        :ok = unsub(pid, subscription)
         {:error, :timeout}
     end
+    :ok = unsub(pid, subscription)
+    response
   end
 
   @doc """
   Unsubscribe from a topic
+
+  Supported options:
+    * max_messages: number of messages to be received before automatically unsubscribed
 
   This correlates to the [UNSUB](http://nats.io/documentation/internals/nats-protocol/#UNSUB) command in the nats protocol.
   By default the unsubscribe is affected immediately, but an optional `max_messages` value can be provided which will allow
@@ -137,7 +142,7 @@ defmodule Gnat do
   :ok = Gnat.unsub(gnat, subscription, max_messages: 2)
   ```
   """
-  @spec unsub(GenServer.server, non_neg_integer(), keyword()) :: :ok
+  @spec unsub(GenServer.server, non_neg_integer() | String.t, keyword()) :: :ok
   def unsub(pid, sid, opts \\ []), do: GenServer.call(pid, {:unsub, sid, opts})
 
   @doc """
@@ -171,7 +176,16 @@ defmodule Gnat do
     case Gnat.Handshake.connect(connection_settings) do
       {:ok, socket} ->
         parser = Parser.new
-        {:ok, %{socket: socket, connection_settings: connection_settings, next_sid: 1, receivers: %{}, parser: parser}}
+        state = %{socket: socket,
+                  connection_settings: connection_settings,
+                  next_sid: 1,
+                  receivers: %{},
+                  parser: parser,
+                  request_receivers: %{},
+                  request_inbox_prefix: "_INBOX.#{nuid()}."}
+
+        state = create_request_subscription(state)
+        {:ok, state}
       {:error, reason} ->
         {:stop, reason}
     end
@@ -223,14 +237,22 @@ defmodule Gnat do
     Enum.each(froms, fn(from) -> GenServer.reply(from, :ok) end)
     {:noreply, state}
   end
-  def handle_call({:request, request}, _from, %{next_sid: sid}=state) do
-    sub = Command.build(:sub, request.inbox, sid, [])
-    unsub = Command.build(:unsub, sid, [max_messages: 1])
-    pub = Command.build(:pub, request.topic, request.body, reply_to: request.inbox)
-    :ok = socket_write(state, [sub, unsub, pub])
-    state = add_subscription_to_state(state, sid, request.recipient) |> cleanup_subscription_from_state(sid, max_messages: 1)
-    next_sid = sid + 1
-    {:reply, {:ok, sid}, %{state | next_sid: next_sid}}
+  def handle_call({:request, request}, _from, state) do
+    inbox = make_new_inbox(state)
+    new_state = %{state | request_receivers: Map.put(state.request_receivers, inbox, request.recipient)}
+    pub = Command.build(:pub, request.topic, request.body, reply_to: inbox)
+    :ok = socket_write(new_state, [pub])
+    {:reply, {:ok, inbox}, new_state}
+  end
+  # When the SID is a string, it's a topic, which is used as a key in the request receiver map.
+  def handle_call({:unsub, topic, _opts}, _from, state) when is_binary(topic) do
+    if Map.has_key?(state.request_receivers, topic) do
+      request_receivers = Map.delete(state.request_receivers, topic)
+      new_state = %{state | request_receivers: request_receivers}
+      {:reply, :ok, new_state}
+    else
+      {:reply, :ok, state}
+    end
   end
   def handle_call({:unsub, sid, opts}, _from, %{receivers: receivers}=state) do
     case Map.has_key?(receivers, sid) do
@@ -250,6 +272,18 @@ defmodule Gnat do
     active_subscriptions = Enum.count(state.receivers)
     {:reply, {:ok, active_subscriptions}, state}
   end
+
+  defp create_request_subscription(%{request_inbox_prefix: request_inbox_prefix}=state) do
+    # Example: "_INBOX.Jhf7AcTGP3x4dAV9.*"
+    wildcard_inbox_topic = request_inbox_prefix <> "*"
+    sub = Command.build(:sub, wildcard_inbox_topic, @request_sid, [])
+    :ok = socket_write(state, [sub])
+    add_subscription_to_state(state, @request_sid, self())
+  end
+
+  defp make_new_inbox(%{request_inbox_prefix: prefix}), do: prefix <> nuid()
+
+  defp nuid(), do: :crypto.strong_rand_bytes(12) |> Base.encode64
 
   defp socket_close(%{socket: socket, connection_settings: %{tls: true}}), do: :ssl.close(socket)
   defp socket_close(%{socket: socket}), do: :gen_tcp.close(socket)
@@ -273,6 +307,15 @@ defmodule Gnat do
     %{state | receivers: receivers}
   end
 
+  defp process_message({:msg, topic, @request_sid, reply_to, body}, state) do
+    if Map.has_key?(state.request_receivers, topic) do
+      send state.request_receivers[topic], {:msg, %{topic: topic, body: body, reply_to: reply_to, gnat: self()}}
+      state
+    else
+      Logger.error "#{__MODULE__} got a response for a request, but that is no longer registered"
+      state
+    end
+  end
   defp process_message({:msg, topic, sid, reply_to, body}, state) do
     unless is_nil(state.receivers[sid]) do
       send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to, gnat: self()}}
