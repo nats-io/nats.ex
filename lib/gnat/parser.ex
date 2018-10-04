@@ -61,7 +61,7 @@ defmodule Gnat.Parser do
     end
   end
   defp parse_command("INFO", options, body) do
-    {{:info, Poison.Parser.parse!(options, keys: :atoms)}, body}
+    {{:info, Jason.decode!(options, keys: :atoms)}, body}
   end
   defp parse_command("-ERR", options, body) do
     {{:error, Enum.join(options, " ")},body}

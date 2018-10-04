@@ -31,3 +31,9 @@ script:
   - mix test
   - mix test --only multi_server
   - mix test --only property
+  - mix dialyzer --halt-exit-status
+
+cache:
+  directories:
+    - _build/test/
+    - $HOME/.mix/
