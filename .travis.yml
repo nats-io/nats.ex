@@ -33,7 +33,7 @@ script:
   - mix test --only property
   - mix dialyzer --halt-exit-status
 
- cache:
-    directories:
-     - _build/test/
-     - $HOME/.mix/
+cache:
+  directories:
+    - _build/test/
+    - $HOME/.mix/

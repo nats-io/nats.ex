@@ -44,9 +44,14 @@ Running 32 client actors on an 8-core ubuntu server sending requests to another 
 
 ## Development
 
-To run the tests the typical `mix test` will run all the basic unit tests.
+Before running the tests make sure you have a locally running copy of `gnatsd` (`brew install gnatsd`).
+We currently use version `1.3.0` in CI, but anything higher than `0.9.6` should be fine.
+The typical `mix test` will run all the basic unit tests.
+
 You can also run the `multi_server` set of tests that test connectivity to different
-`gnatsd` with different configurations. You can run these with `mix test --only multi_server`.
+`gnatsd` configurations. You can run these with `mix test --only multi_server`.
+The tests will tell you how to start the different configurations.
+
 There are also some property-based tests that generate a lot of test cases.
 You can tune how many test cases by setting the environment variable `N=200 mix test --only property` (default it 100).
 
