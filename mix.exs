@@ -11,6 +11,7 @@ defmodule Gnat.Mixfile do
       start_permanent: Mix.env == :prod,
       package: package(),
       propcheck: [counter_examples: "test/counter_examples"],
+      dialyzer: [ignore_warnings: ".dialyzer_ignore.exs"],
       deps: deps(),
       docs: [
         main: "readme",
@@ -27,7 +28,7 @@ defmodule Gnat.Mixfile do
   defp deps do
     [
       {:benchee, "~> 0.6.0", only: :dev},
-      {:dialyxir, "~> 0.5", only: [:dev], runtime: false},
+      {:dialyxir, "~> 1.0.0-rc.3", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.15", only: :dev},
       {:poison, "~> 3.0"},
       {:propcheck, "~> 1.0", only: :test},
