@@ -28,7 +28,7 @@ defmodule Gnat.Handshake do
   defp socket_write(_, socket, iodata), do: :gen_tcp.send(socket, iodata)
 
   defp send_connect_message(socket, %{auth_required: true}=_options, %{username: username, password: password}=connection_settings) do
-    opts = Poison.Encoder.encode(%{user: username, pass: password, verbose: false}, strict_keys: true)
+    opts = Jason.encode!(%{user: username, pass: password, verbose: false})
     socket_write(connection_settings, socket, "CONNECT #{opts}\r\n")
   end
   defp send_connect_message(socket, _options, connection_settings) do

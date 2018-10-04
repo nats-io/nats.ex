@@ -29,7 +29,7 @@ defmodule Gnat.Generators do
 
   def info do
     let options <- info_options() do
-      %{binary: "INFO #{Poison.encode!(options)}\r\n"}
+      %{binary: "INFO #{Jason.encode!(options)}\r\n"}
     end
   end
 
