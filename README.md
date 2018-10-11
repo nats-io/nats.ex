@@ -25,22 +25,19 @@ end
 ## Benchmarks
 
 Part of the motivation for building this library is to get better performance.
-To this end I've started a `bench.exs` script that we can use to check our performance.
-As of this commit the most recent numbers from running on my macbook pro are:
+To this end, there is a `bench` branch on this project which includes a `server.exs` and `client.exs` that can be used for benchmarking various scenarios.
+
+As of this commit, the [latest benchmark on a 16-core server](https://gist.github.com/mmmries/08fe44fdd47a6f8838936f41170f270a) shows that you can make 70k+ requests per second.
+
+The `bench.exs` file also contains some straight-line performance tests.
+As of this commit my 2014 macbook pro shows.
 
 |   | ips | average | deviation | median |
 | - | --- | ------- | --------- | ------ |
-| parse-128 | 81.86 K | 12.22 μs | ±177.12% | 11.00 μs |
-| pub - 128 | 146.22 K | 6.84 μs | ±450.03% | 6.00 μs |
-| sub-unsub-pub16 | 9.06 K | 110.37 μs | ±68.61% | 102.00 μs |
-| req-reply-4 | 5.67 K | 176.45 μs | ±19.81% | 165.00 μs |
-
-These benchmarks all show single-actor performance with a locally running gnats server.
-Running 32 client actors on an 8-core ubuntu server sending requests to another 8-core ubuntu server running 2 gnat subscriber actors we achieved:
-* 19,920 requests/sec
-* 90th % latency of 2.2ms
-
-[see details in the performance issue](https://github.com/mmmries/gnat/issues/28)
+| parse-128 | 77.14 K | 12.96 μs | ±161.76% | 12.00 μs |
+| pub - 128 | 37.22 K | 26.87 μs | ±62.84% | 24.00 μs |
+| sub-unsub-pub16 | 5.03 K | 198.68 μs | ±37.81% | 184.00 μs |
+| req-reply-4 | 2.98 K | 335.26 μs | ±18.04% | 326.00 μs |
 
 ## Development
 
