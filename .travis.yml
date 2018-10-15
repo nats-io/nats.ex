@@ -31,6 +31,7 @@ script:
   - mix test
   - mix test --only multi_server
   - mix test --only property
+  - mix format --check-formatted
   - mix dialyzer --halt-exit-status
 
 cache:
