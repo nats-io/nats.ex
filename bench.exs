@@ -43,4 +43,4 @@ Benchee.run(%{
  "req-reply-4" => fn ->
    {:ok, %{body: "pong"}} = Gnat.request(pid, "echo", "ping")
  end,
-}, time: 10, parallel: 8, console: [comparison: false])
+}, time: 10, parallel: 1, console: [comparison: false])

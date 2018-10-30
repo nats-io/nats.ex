@@ -70,7 +70,7 @@ defmodule Gnat.ConsumerSupervisor do
     end
   end
 
-  def handle_info({:DOWN, _ref, :process, connection_pid, _reason}, %{connnection_pid: connection_pid}=state) do
+  def handle_info({:DOWN, _ref, :process, connection_pid, _reason}, %{connection_pid: connection_pid}=state) do
     Process.send_after(self(), :connect, 2_000)
     {:noreply, %{state | status: :disconnected, connection_pid: nil, subscriptions: []}}
   end

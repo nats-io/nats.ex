@@ -1,29 +1,39 @@
 language: elixir
 otp_release:
- - 18.3
  - 19.3
  - 20.3
+ - 21.1
 elixir:
- - 1.4.5
  - 1.5.3
- - 1.6.4
+ - 1.6.6
+ - 1.7.3
+matrix:
+  exclude:
+    elixir: 1.5.3
+    otp_release: 21.1
 env:
  - N=400 MIX_ENV=test
 branches:
   only:
     - master
 before_install:
- - wget https://github.com/nats-io/gnatsd/releases/download/v0.9.6/gnatsd-v0.9.6-linux-amd64.zip
- - unzip gnatsd-v0.9.6-linux-amd64.zip
- - ./gnatsd-v0.9.6-linux-amd64/gnatsd &
+ - wget https://github.com/nats-io/gnatsd/releases/download/v1.3.0/gnatsd-v1.3.0-linux-amd64.zip
+ - unzip gnatsd-v1.3.0-linux-amd64.zip
+ - ./gnatsd-v1.3.0-linux-amd64/gnatsd &
 
 before_script:
- - ./gnatsd-v0.9.6-linux-amd64/gnatsd -p 4223 --user bob --pass alice &
- - ./gnatsd-v0.9.6-linux-amd64/gnatsd -p 4224 --tls --tlscert test/fixtures/server.pem --tlskey test/fixtures/key.pem &
- - ./gnatsd-v0.9.6-linux-amd64/gnatsd -p 4225 --tls --tlscert test/fixtures/server.pem --tlskey test/fixtures/key.pem --tlscacert test/fixtures/ca.pem --tlsverify &
+ - ./gnatsd-v1.3.0-linux-amd64/gnatsd -p 4223 --user bob --pass alice &
+ - ./gnatsd-v1.3.0-linux-amd64/gnatsd -p 4224 --tls --tlscert test/fixtures/server.pem --tlskey test/fixtures/key.pem &
+ - ./gnatsd-v1.3.0-linux-amd64/gnatsd -p 4225 --tls --tlscert test/fixtures/server.pem --tlskey test/fixtures/key.pem --tlscacert test/fixtures/ca.pem --tlsverify &
 
 script:
   - mix compile
   - mix test
   - mix test --only multi_server
   - mix test --only property
+  - mix dialyzer --halt-exit-status
+
+cache:
+  directories:
+    - _build/test/
+    - $HOME/.mix/
