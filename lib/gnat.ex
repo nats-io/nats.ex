@@ -72,7 +72,12 @@ defmodule Gnat do
   ```
   """
   @spec sub(GenServer.server, pid(), String.t, keyword()) :: {:ok, non_neg_integer()} | {:ok, String.t} | {:error, String.t}
-  def sub(pid, subscriber, topic, opts \\ []), do: GenServer.call(pid, {:sub, subscriber, topic, opts})
+  def sub(pid, subscriber, topic, opts \\ []) do
+    start = :erlang.monotonic_time()
+    result = GenServer.call(pid, {:sub, subscriber, topic, opts})
+    Telemetry.execute([:gnat, :sub], :erlang.monotonic_time() - start, %{topic: topic})
+    result
+  end
 
   @doc """
   Publish a message
@@ -91,7 +96,12 @@ defmodule Gnat do
   ```
   """
   @spec pub(GenServer.server, String.t, binary(), keyword()) :: :ok
-  def pub(pid, topic, message, opts \\ []), do: GenServer.call(pid, {:pub, topic, message, opts})
+  def pub(pid, topic, message, opts \\ []) do
+    start = :erlang.monotonic_time()
+    result = GenServer.call(pid, {:pub, topic, message, opts})
+    Telemetry.execute([:gnat, :pub], :erlang.monotonic_time() - start, %{topic: topic})
+    result
+  end
 
   @doc """
   Send a request and listen for a response synchronously
@@ -113,6 +123,7 @@ defmodule Gnat do
   @spec request(GenServer.server, String.t, binary(), keyword()) :: {:ok, message} | {:error, :timeout}
   def request(pid, topic, body, opts \\ []) do
     receive_timeout = Keyword.get(opts, :receive_timeout, 60_000)
+    start = :erlang.monotonic_time()
     {:ok, subscription} = GenServer.call(pid, {:request, %{recipient: self(), body: body, topic: topic}})
     response = receive do
       {:msg, %{topic: ^subscription}=msg} -> {:ok, msg}
@@ -120,6 +131,7 @@ defmodule Gnat do
         {:error, :timeout}
     end
     :ok = unsub(pid, subscription)
+    Telemetry.execute([:gnat, :request], :erlang.monotonic_time() - start, %{topic: topic})
     response
   end
 
@@ -143,7 +155,12 @@ defmodule Gnat do
   ```
   """
   @spec unsub(GenServer.server, non_neg_integer() | String.t, keyword()) :: :ok
-  def unsub(pid, sid, opts \\ []), do: GenServer.call(pid, {:unsub, sid, opts})
+  def unsub(pid, sid, opts \\ []) do
+    start = :erlang.monotonic_time()
+    result = GenServer.call(pid, {:unsub, sid, opts})
+    Telemetry.execute([:gnat, :unsub], :erlang.monotonic_time() - start)
+    result
+  end
 
   @doc """
   Ping the NATS server
@@ -318,6 +335,7 @@ defmodule Gnat do
   end
   defp process_message({:msg, topic, sid, reply_to, body}, state) do
     unless is_nil(state.receivers[sid]) do
+      Telemetry.execute([:gnat, :message_received], 1, %{topic: topic})
       send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to, gnat: self()}}
       update_subscriptions_after_delivering_message(state, sid)
     else

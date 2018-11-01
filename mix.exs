@@ -32,6 +32,7 @@ defmodule Gnat.Mixfile do
       {:ex_doc, "~> 0.15", only: :dev},
       {:jason, "~> 1.1"},
       {:propcheck, "~> 1.0", only: :test},
+      {:telemetry, "~> 0.2"},
     ]
   end
 
