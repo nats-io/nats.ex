@@ -22,6 +22,23 @@ receive do
 end
 ```
 
+## Instrumentation
+
+Gnat uses [telemetry](https://hex.pm/packages/telemetry) to make instrumentation data available to clients.
+If you want to record metrics around the number of messages or latency of message publishes, subscribes, requests, etc you can do the following in your project:
+
+```elixir
+Telemetry.attach("record_pubs", [:gnat, :pub], YourMetricRecorder, :publish, nil)
+Telemetry.attach("record_subs", [:gnat, :sub], YourMetricRecorder, :subscribe, nil)
+Telemetry.attach("record_requests", [:gnat, :request], YourMetricRecord, :request, nil)
+Telemetry.attach("record_messages", [:gnat, :message_received], YourMetricRecorder, :message_received, nil)
+Telemetry.attach("record_unsubs", [:gnat, :unsub], YourMetricRecorder, :unsub, nil)
+```
+
+The `pub`, `sub`, `request`, and `unsub` events all report the latency of those respective calls.
+The `message_received` event always reports a value of `1` because there isn't a good latency metric to report.
+All of the events include metadata with a `topic` key so you can split your metrics by topic (the `unsub` metric is the only one that doesn't have a `topic` available).
+
 ## Benchmarks
 
 Part of the motivation for building this library is to get better performance.
