@@ -30,7 +30,7 @@ If you want to record metrics around the number of messages or latency of messag
 ```elixir
 Telemetry.attach("record_pubs", [:gnat, :pub], YourMetricRecorder, :publish, nil)
 Telemetry.attach("record_subs", [:gnat, :sub], YourMetricRecorder, :subscribe, nil)
-Telemetry.attach("record_requests", [:gnat, :request], YourMetricRecord, :request, nil)
+Telemetry.attach("record_requests", [:gnat, :request], YourMetricRecorder, :request, nil)
 Telemetry.attach("record_messages", [:gnat, :message_received], YourMetricRecorder, :message_received, nil)
 Telemetry.attach("record_unsubs", [:gnat, :unsub], YourMetricRecorder, :unsub, nil)
 ```
