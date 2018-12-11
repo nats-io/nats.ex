@@ -114,7 +114,7 @@ defmodule Gnat do
 
   ```
   {:ok, gnat} = Gnat.start_link()
-  case Gnat.request("i_can_haz_cheezburger", "plZZZZ?!?!?") do
+  case Gnat.request(gnat, "i_can_haz_cheezburger", "plZZZZ?!?!?") do
     {:ok, %{body: delicious_cheezburger}} -> :yum
     {:error, :timeout} -> :sad_cat
   end
