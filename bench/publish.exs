@@ -7,5 +7,5 @@ inputs = %{
 {:ok, client_pid} = Gnat.start_link(%{host: '127.0.0.1', port: 4222})
 
 Benchee.run(%{
-  "request" => fn(msg) -> :ok = Gnat.pub(client_pid, "echo", msg) end,
+  "pub" => fn(msg) -> :ok = Gnat.pub(client_pid, "echo", msg) end,
 }, time: 10, parallel: 1, console: [comparison: false], inputs: inputs)

@@ -3,7 +3,7 @@ defmodule Gnat.Parsec do
 
   import NimbleParsec
 
-  subject = ascii_string([?0..?9, ?a..?z, ?A..?Z, ?.], min: 1)
+  subject = ascii_string([?!..?~], min: 1)
   length = integer(min: 1)
   sid = integer(min: 1)
   whitespace = ascii_char([32, ?\t])

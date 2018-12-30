@@ -167,7 +167,7 @@ defmodule GnatTest do
       Process.flag(:trap_exit, true)
       Gnat.sub(gnat, self(), "invalid. subject")
       Process.sleep(20) # errors are reported asynchronously so we need to wait a moment
-    end) =~ "'Invalid Subject'"
+    end) =~ "Invalid Subject"
   end
 
   test "connection timeout" do

@@ -27,6 +27,13 @@ defmodule Gnat.ParsecTest do
     assert parsed_message == {:msg, "topic", 13, "me", "test\r\nline"}
   end
 
+  test "handling _INBOX subjects" do
+    inbox = "_INBOX.Rf+MI+V1+9pUCgC+.BChhlI06WHyCTYor"
+    {parser_state, [parsed_message]} = Parsec.new |> Parsec.parse("MSG topic 13 #{inbox} 10\r\ntest\r\nline\r\n")
+    assert parser_state.partial == nil
+    assert parsed_message == {:msg, "topic", 13, inbox, "test\r\nline"}
+  end
+
   test "parsing PING message" do
     {parser_state, [parsed_message]} = Parsec.new |> Parsec.parse("PING\r\n")
     assert parser_state.partial == nil

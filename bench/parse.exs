@@ -8,7 +8,7 @@ inputs = %{
   "1024 byte" => "MSG topic 1 1024\r\n#{msg1024}\r\n",
 }
 
-parser = Gnat.Parser.new()
+parsec = Gnat.Parsec.new()
 Benchee.run(%{
-  "parse" => fn(tcp_packet) -> {_parser, [_msg]} = Gnat.Parser.parse(parser, tcp_packet) end,
+  "parsec" => fn(tcp_packet) -> {_parse, [_msg]} = Gnat.Parsec.parse(parsec, tcp_packet) end,
 }, time: 10, parallel: 1, console: [comparison: false], inputs: inputs)
