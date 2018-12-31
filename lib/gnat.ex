@@ -5,7 +5,7 @@
 defmodule Gnat do
   use GenServer
   require Logger
-  alias Gnat.{Command, Parser}
+  alias Gnat.{Command, Parsec}
 
   @type message :: %{topic: String.t, body: String.t, sid: non_neg_integer(), reply_to: String.t}
 
@@ -192,7 +192,7 @@ defmodule Gnat do
     connection_settings = Map.merge(@default_connection_settings, connection_settings)
     case Gnat.Handshake.connect(connection_settings) do
       {:ok, socket} ->
-        parser = Parser.new
+        parser = Parsec.new
         state = %{socket: socket,
                   connection_settings: connection_settings,
                   next_sid: 1,
@@ -212,7 +212,7 @@ defmodule Gnat do
   def handle_info({:tcp, socket, data}, %{socket: socket}=state) do
     data_packets = receive_additional_tcp_data(socket, [data], 10)
     new_state = Enum.reduce(data_packets, state, fn(data, %{parser: parser}=state) ->
-      {new_parser, messages} = Parser.parse(parser, data)
+      {new_parser, messages} = Parsec.parse(parser, data)
       new_state = %{state | parser: new_parser}
       Enum.reduce(messages, new_state, &process_message/2)
     end)

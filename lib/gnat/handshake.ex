@@ -1,5 +1,5 @@
 defmodule Gnat.Handshake do
-  alias Gnat.Parser
+  alias Gnat.Parsec
 
   @moduledoc """
   This module provides a single function which handles all of the variations of establishing a connection to a gnatsd server and just returns {:ok, socket} or {:error, reason}
@@ -15,7 +15,7 @@ defmodule Gnat.Handshake do
   defp perform_handshake(tcp, connection_settings) do
     receive do
       {:tcp, ^tcp, operation} ->
-        {_, [{:info, options}]} = Parser.parse(Parser.new, operation)
+        {_, [{:info, options}]} = Parsec.parse(Parsec.new(), operation)
         {:ok, socket} = upgrade_connection(tcp, options, connection_settings)
         send_connect_message(socket, options, connection_settings)
         {:ok, socket}

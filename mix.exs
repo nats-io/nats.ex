@@ -27,10 +27,11 @@ defmodule Gnat.Mixfile do
 
   defp deps do
     [
-      {:benchee, "~> 0.6.0", only: :dev},
-      {:dialyxir, "~> 1.0.0-rc.3", only: [:dev, :test], runtime: false},
+      {:benchee, "~> 0.13", only: :dev},
+      {:dialyxir, "~> 1.0.0-rc.4", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.15", only: :dev},
       {:jason, "~> 1.1"},
+      {:nimble_parsec, "~> 0.5"},
       {:propcheck, "~> 1.0", only: :test},
       {:telemetry, "~> 0.2"},
     ]
