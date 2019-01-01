@@ -44,17 +44,16 @@ All of the events include metadata with a `topic` key so you can split your metr
 Part of the motivation for building this library is to get better performance.
 To this end, there is a `bench` branch on this project which includes a `server.exs` and `client.exs` that can be used for benchmarking various scenarios.
 
-As of this commit, the [latest benchmark on a 16-core server](https://gist.github.com/mmmries/08fe44fdd47a6f8838936f41170f270a) shows that you can make 70k+ requests per second.
+As of this commit, the [latest benchmark on a 16-core server](https://gist.github.com/mmmries/08fe44fdd47a6f8838936f41170f270a) shows that you can make 170k+ req/sec or up to 192MB/sec.
 
-The `bench.exs` file also contains some straight-line performance tests.
+The `bench/*.exs` files also contain some straight-line single-cpu performance tests.
 As of this commit my 2014 macbook pro shows.
 
 |   | ips | average | deviation | median |
 | - | --- | ------- | --------- | ------ |
-| parse-128 | 77.14 K | 12.96 μs | ±161.76% | 12.00 μs |
-| pub - 128 | 37.22 K | 26.87 μs | ±62.84% | 24.00 μs |
-| sub-unsub-pub16 | 5.03 K | 198.68 μs | ±37.81% | 184.00 μs |
-| req-reply-4 | 2.98 K | 335.26 μs | ±18.04% | 326.00 μs |
+| parse-128 | 317.75 K | 3.18 μs | ±1661.95% | 3 μs |
+| pub - 128 | 34.07 K | 29.35 μs | ±50.34% | 26 μs |
+| req-reply-128 | 3.90 K | 256.58 μs | ±25.75% | 243 μs |
 
 ## Development
 
