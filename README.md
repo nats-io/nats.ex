@@ -28,16 +28,35 @@ Gnat uses [telemetry](https://hex.pm/packages/telemetry) to make instrumentation
 If you want to record metrics around the number of messages or latency of message publishes, subscribes, requests, etc you can do the following in your project:
 
 ```elixir
-Telemetry.attach("record_pubs", [:gnat, :pub], YourMetricRecorder, :publish, nil)
-Telemetry.attach("record_subs", [:gnat, :sub], YourMetricRecorder, :subscribe, nil)
-Telemetry.attach("record_requests", [:gnat, :request], YourMetricRecorder, :request, nil)
-Telemetry.attach("record_messages", [:gnat, :message_received], YourMetricRecorder, :message_received, nil)
-Telemetry.attach("record_unsubs", [:gnat, :unsub], YourMetricRecorder, :unsub, nil)
+iex(1)> metrics_function = fn(event_name, event_value, event_meta, config) ->
+  IO.inspect([event_name, event_value, event_meta, config])
+  :ok
+end
+#Function<4.128620087/4 in :erl_eval.expr/5>
+iex(2)> names = [[:gnat, :pub], [:gnat, :sub], [:gnat, :message_received], [:gnat, :request], [:gnat, :unsub]]
+[
+  [:gnat, :pub],
+  [:gnat, :sub],
+  [:gnat, :message_received],
+  [:gnat, :request],
+  [:gnat, :unsub]
+]
+iex(3)> :telemetry.attach_many("my listener", names, metrics_function, %{my_config: true})
+:ok
+iex(4)> {:ok, gnat} = Gnat.start_link()
+{:ok, #PID<0.203.0>}
+iex(5)> Gnat.sub(gnat, self(), "topic")
+[[:gnat, :sub], 128000, %{topic: "topic"}, %{my_config: true}]
+{:ok, 1}
+iex(6)> Gnat.pub(gnat, "topic", "ohai")
+[[:gnat, :pub], 117000, %{topic: "topic"}, %{my_config: true}]
+[[:gnat, :message_received], 1, %{topic: "topic"}, %{my_config: true}]
+:ok
 ```
 
 The `pub`, `sub`, `request`, and `unsub` events all report the latency of those respective calls.
 The `message_received` event always reports a value of `1` because there isn't a good latency metric to report.
-All of the events include metadata with a `topic` key so you can split your metrics by topic (the `unsub` metric is the only one that doesn't have a `topic` available).
+All of the events (except `unsub`) include metadata with a `:topic` key so you can split your metrics by topic.
 
 ## Benchmarks
 
