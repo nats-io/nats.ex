@@ -7,8 +7,8 @@ defmodule Gnat.Mixfile do
       version: "0.6.0",
       elixir: "~> 1.5",
       elixirc_paths: elixirc_paths(Mix.env()),
-      build_embedded: Mix.env == :prod,
-      start_permanent: Mix.env == :prod,
+      build_embedded: Mix.env() == :prod,
+      start_permanent: Mix.env() == :prod,
       package: package(),
       propcheck: [counter_examples: "test/counter_examples"],
       dialyzer: [ignore_warnings: ".dialyzer_ignore.exs"],
@@ -16,7 +16,7 @@ defmodule Gnat.Mixfile do
       docs: [
         main: "readme",
         logo: "gnat.png",
-        extras: ["README.md"],
+        extras: ["README.md"]
       ]
     ]
   end
@@ -33,7 +33,7 @@ defmodule Gnat.Mixfile do
       {:jason, "~> 1.1"},
       {:nimble_parsec, "~> 0.5"},
       {:propcheck, "~> 1.0", only: :test},
-      {:telemetry, "~> 0.3"},
+      {:telemetry, "~> 0.3"}
     ]
   end
 
@@ -46,9 +46,17 @@ defmodule Gnat.Mixfile do
       licenses: ["MIT"],
       links: %{
         "Github" => "https://github.com/mmmries/gnat",
-        "Docs" => "https://hexdocs.pm/gnat",
+        "Docs" => "https://hexdocs.pm/gnat"
       },
-      maintainers: ["Jon Carstens", "Devin Christensen", "Dave Hackett","Steve Newell", "Michael Ries", "Garrett Thornburg", "Masahiro Tokioka"],
+      maintainers: [
+        "Jon Carstens",
+        "Devin Christensen",
+        "Dave Hackett",
+        "Steve Newell",
+        "Michael Ries",
+        "Garrett Thornburg",
+        "Masahiro Tokioka"
+      ]
     ]
   end
 end
