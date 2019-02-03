@@ -7,6 +7,10 @@ elixir:
  - 1.6.6
  - 1.7.4
  - 1.8.1
+matrix:
+  exclude:
+    elixir: 1.8.1
+    otp_release: 19.3
 env:
  - N=400 MIX_ENV=test
 branches:
