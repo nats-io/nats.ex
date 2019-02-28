@@ -161,8 +161,7 @@ defmodule Gnat do
   def unsub(pid, sid, opts \\ []) do
     start = :erlang.monotonic_time()
     result = GenServer.call(pid, {:unsub, sid, opts})
-    latency = :erlang.monotonic_time() - start
-    :telemetry.execute([:gnat, :unsub], %{latency: latency})
+    :telemetry.execute([:gnat, :unsub], %{latency: :erlang.monotonic_time() - start})
     result
   end
 
