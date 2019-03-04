@@ -33,6 +33,7 @@ defmodule GnatPropertyTest do
   property "auto-unsubscribes after n messages" do
     numtests(@numtests, forall {%{subject: subject, payload: payload}, max_messages} <- {message(), pos_integer()} do
       {:ok, ref} = Gnat.sub(:test_connection, self(), subject)
+      :timer.sleep(10)
       :ok = Gnat.unsub(:test_connection, ref, max_messages: max_messages)
       Enum.each(1..max_messages, fn(_) ->
         {:ok, 2} = Gnat.active_subscriptions(:test_connection)

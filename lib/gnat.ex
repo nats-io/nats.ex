@@ -338,7 +338,7 @@ defmodule Gnat do
   end
   defp process_message({:msg, topic, sid, reply_to, body}, state) do
     unless is_nil(state.receivers[sid]) do
-      :telemetry.execute([:gnat, :message_received], %{latency: 1}, %{topic: topic})
+      :telemetry.execute([:gnat, :message_received], %{count: 1}, %{topic: topic})
       send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to, sid: sid, gnat: self()}}
       update_subscriptions_after_delivering_message(state, sid)
     else
