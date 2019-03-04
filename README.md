@@ -28,8 +28,8 @@ Gnat uses [telemetry](https://hex.pm/packages/telemetry) to make instrumentation
 If you want to record metrics around the number of messages or latency of message publishes, subscribes, requests, etc you can do the following in your project:
 
 ```elixir
-iex(1)> metrics_function = fn(event_name, event_value, event_meta, config) ->
-  IO.inspect([event_name, event_value, event_meta, config])
+iex(1)> metrics_function = fn(event_name, measurements, event_meta, config) ->
+  IO.inspect([event_name, measurements, event_meta, config])
   :ok
 end
 #Function<4.128620087/4 in :erl_eval.expr/5>
@@ -46,16 +46,16 @@ iex(3)> :telemetry.attach_many("my listener", names, metrics_function, %{my_conf
 iex(4)> {:ok, gnat} = Gnat.start_link()
 {:ok, #PID<0.203.0>}
 iex(5)> Gnat.sub(gnat, self(), "topic")
-[[:gnat, :sub], 128000, %{topic: "topic"}, %{my_config: true}]
+[[:gnat, :sub], %{latency: 128000}, %{topic: "topic"}, %{my_config: true}]
 {:ok, 1}
 iex(6)> Gnat.pub(gnat, "topic", "ohai")
-[[:gnat, :pub], 117000, %{topic: "topic"}, %{my_config: true}]
-[[:gnat, :message_received], 1, %{topic: "topic"}, %{my_config: true}]
+[[:gnat, :pub], %{latency: 117000}, %{topic: "topic"}, %{my_config: true}]
+[[:gnat, :message_received], %{count: 1}, %{topic: "topic"}, %{my_config: true}]
 :ok
 ```
 
 The `pub`, `sub`, `request`, and `unsub` events all report the latency of those respective calls.
-The `message_received` event always reports a value of `1` because there isn't a good latency metric to report.
+The `message_received` event reports a number of messages like `%{count: 1}` because there isn't a good latency metric to report.
 All of the events (except `unsub`) include metadata with a `:topic` key so you can split your metrics by topic.
 
 ## Benchmarks
