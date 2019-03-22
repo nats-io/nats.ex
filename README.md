@@ -66,18 +66,18 @@ To this end, there is a `bench` branch on this project which includes a `server.
 As of this commit, the [latest benchmark on a 16-core server](https://gist.github.com/mmmries/08fe44fdd47a6f8838936f41170f270a) shows that you can make 170k+ req/sec or up to 192MB/sec.
 
 The `bench/*.exs` files also contain some straight-line single-cpu performance tests.
-As of this commit my 2014 macbook pro shows.
+As of this commit my 2018 macbook pro shows.
 
 |   | ips | average | deviation | median |
 | - | --- | ------- | --------- | ------ |
-| parse-128 | 317.75 K | 3.18 μs | ±1661.95% | 3 μs |
-| pub - 128 | 34.07 K | 29.35 μs | ±50.34% | 26 μs |
-| req-reply-128 | 3.90 K | 256.58 μs | ±25.75% | 243 μs |
+| parse-128 | 487.67 K | 2.19 μs | ±1701.54% | 2 μs |
+| pub - 128 | 96.37 K | 10.38 μs | ±102.94% | 10 μs |
+| req-reply-128 | 8.32 K | 120.16 μs | ±23.68% | 114 μs |
 
 ## Development
 
 Before running the tests make sure you have a locally running copy of `gnatsd` (`brew install gnatsd`).
-We currently use version `1.3.0` in CI, but anything higher than `0.9.6` should be fine.
+We currently use version `1.4.1` in CI, but anything higher than `0.9.6` should be fine.
 The typical `mix test` will run all the basic unit tests.
 
 You can also run the `multi_server` set of tests that test connectivity to different
