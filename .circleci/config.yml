@@ -1,0 +1,40 @@
+version: 2.1
+
+default_version: &default_version 1.8.1
+
+jobs:
+  build:
+    parameters:
+      version:
+        description: Elixir Version
+        type: string
+        default: *default_version
+
+    parallelism: 1
+    docker:
+      - image: elixir:<< parameters.version >>
+      - image: nats:1.4.1
+
+    working_directory: ~/app
+
+    steps:
+      - checkout  # check out source code to working directory
+      - restore_cache:
+          keys:
+            #- v1-{{ parameters.version }}-{{ checksum "mix.lock" }} # how we will cache dialyzer stuff
+            - v1-{{ checksum "mix.lock" }}
+      - run: MIX_ENV=test mix do deps.get, compile
+      - save_cache:
+          key: v1-{{ checksum "mix.lock" }}
+          paths:
+          - "deps"
+          - "_build"
+      - run: mix test
+
+workflows:
+  version: 2.1
+  testing_all_versions:
+    jobs:
+      - build:
+          name: "Test Elixir 1.8.1"
+          version: 1.8.1
