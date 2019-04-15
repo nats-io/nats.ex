@@ -23,12 +23,15 @@ jobs:
           keys:
             #- v1-{{ parameters.version }}-{{ checksum "mix.lock" }} # how we will cache dialyzer stuff
             - v1-{{ checksum "mix.lock" }}
+      - run: mix local.hex --force
+      - run: mix local.rebar --force
       - run: MIX_ENV=test mix do deps.get, compile
       - save_cache:
           key: v1-{{ checksum "mix.lock" }}
           paths:
           - "deps"
           - "_build"
+          - "~/.mix"
       - run: mix test
 
 workflows:
