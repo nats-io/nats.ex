@@ -13,12 +13,25 @@ jobs:
     parallelism: 1
     docker:
       - image: elixir:<< parameters.version >>
-      - image: nats:1.4.1
 
     working_directory: ~/app
 
     steps:
       - checkout  # check out source code to working directory
+      - run: wget https://github.com/nats-io/gnatsd/releases/download/v1.4.1/gnatsd-v1.4.1-linux-amd64.zip
+      - run: unzip gnatsd-v1.4.1-linux-amd64.zip
+      - run:
+          command: ./gnatsd-v1.4.1-linux-amd64/gnatsd
+          background: true
+      - run:
+          command: ./gnatsd-v1.4.1-linux-amd64/gnatsd -p 4223 --user bob --pass alice
+          background: true
+      - run:
+          command: ./gnatsd-v1.4.1-linux-amd64/gnatsd -p 4224 --tls --tlscert test/fixtures/server.pem --tlskey test/fixtures/key.pem
+          background: true
+      - run:
+          command: ./gnatsd-v1.4.1-linux-amd64/gnatsd -p 4225 --tls --tlscert test/fixtures/server.pem --tlskey test/fixtures/key.pem --tlscacert test/fixtures/ca.pem --tlsverify
+          background: true
       - restore_cache:
           keys:
             #- v1-{{ parameters.version }}-{{ checksum "mix.lock" }} # how we will cache dialyzer stuff
@@ -32,7 +45,7 @@ jobs:
           - "deps"
           - "_build"
           - "~/.mix"
-      - run: mix test
+      - run: mix test --include multi_server
 
 workflows:
   version: 2.1
