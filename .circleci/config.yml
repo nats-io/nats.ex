@@ -46,6 +46,7 @@ jobs:
           - "_build"
           - "~/.mix"
       - run: mix test --include multi_server
+      - run: N=400 mix test --only property
 
 workflows:
   version: 2.1
@@ -53,4 +54,10 @@ workflows:
     jobs:
       - build:
           name: "Test Elixir 1.8.1"
-          version: 1.8.1
+          version: 1.8.1 
+      - build:
+          name: "Test Elixir 1.7.4"
+          version: 1.7.4
+      - build:
+          name: "Test Elixir 1.6.6"
+          version: 1.6.6
