@@ -34,19 +34,47 @@ jobs:
           background: true
       - restore_cache:
           keys:
-            #- v1-{{ parameters.version }}-{{ checksum "mix.lock" }} # how we will cache dialyzer stuff
-            - v1-{{ checksum "mix.lock" }}
+            - build-{{parameters.version}}
       - run: mix local.hex --force
       - run: mix local.rebar --force
       - run: MIX_ENV=test mix do deps.get, compile
       - save_cache:
-          key: v1-{{ checksum "mix.lock" }}
+          key: build-{{parameters.version}}
           paths:
           - "deps"
           - "_build"
           - "~/.mix"
       - run: mix test --include multi_server
       - run: N=400 mix test --only property
+  lint:
+    parameters:
+      version:
+        description: Elixir Version
+        type: string
+        default: *default_version
+
+    parallelism: 1
+    docker:
+      - image: elixir:<< parameters.version >>
+
+    working_directory: ~/app
+
+    steps:
+      - checkout  # check out source code to working directory
+      - restore_cache:
+          keys:
+            - lint-{{parameters.version}}-{{ checksum "mix.lock" }}
+      - run: mix local.hex --force
+      - run: mix local.rebar --force
+      - run: mix do deps.get, compile
+      - run: mix format --check-formatted
+      - run: mix dialyzer --halt-exit-status
+      - save_cache:
+          key: lint-{{parameters.version}}-{{ checksum "mix.lock" }}
+          paths:
+          - "deps"
+          - "_build"
+          - "~/.mix"
 
 workflows:
   version: 2.1
@@ -61,3 +89,5 @@ workflows:
       - build:
           name: "Test Elixir 1.6.6"
           version: 1.6.6
+      - lint:
+          name: "Check formatting and Types"
