@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/mmmries/gnat.svg?branch=master)](https://travis-ci.org/mmmries/gnat)
+[![CircleCI](https://circleci.com/gh/nats-io/nats.ex/tree/master.svg?style=svg)](https://circleci.com/gh/nats-io/nats.ex/tree/master)
 
 ![gnat](gnat.png)
 
