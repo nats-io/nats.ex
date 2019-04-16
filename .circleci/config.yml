@@ -34,12 +34,12 @@ jobs:
           background: true
       - restore_cache:
           keys:
-            - build-{{parameters.version}}
+            - build-<<parameters.version>>
       - run: mix local.hex --force
       - run: mix local.rebar --force
       - run: MIX_ENV=test mix do deps.get, compile
       - save_cache:
-          key: build-{{parameters.version}}
+          key: build-<<parameters.version>>
           paths:
           - "deps"
           - "_build"
@@ -63,14 +63,14 @@ jobs:
       - checkout  # check out source code to working directory
       - restore_cache:
           keys:
-            - lint-{{parameters.version}}-{{ checksum "mix.lock" }}
+            - lint-<<parameters.version>>-{{ checksum "mix.lock" }}
       - run: mix local.hex --force
       - run: mix local.rebar --force
       - run: mix do deps.get, compile
       - run: mix format --check-formatted
       - run: mix dialyzer --halt-exit-status
       - save_cache:
-          key: lint-{{parameters.version}}-{{ checksum "mix.lock" }}
+          key: lint-<<parameters.version>>-{{ checksum "mix.lock" }}
           paths:
           - "deps"
           - "_build"
