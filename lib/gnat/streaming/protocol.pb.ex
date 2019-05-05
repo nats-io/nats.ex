@@ -1,7 +1,7 @@
 # based on https://github.com/nats-io/go-nats-streaming/blob/3e2ff0719c7a6219b4e791e19c782de98c701f4a/pb/protocol.proto
 # version 0.4.2 of go-nats-streaming
 # Generated using https://github.com/tony612/protobuf-elixir#generate-elixir-code and then changed the namespace from Pb.* to Gnat.StreamingProtocol.*
-defmodule Gnat.StreamingProtocol.PubMsg do
+defmodule Gnat.Streaming.Protocol.PubMsg do
   @moduledoc false
   use Protobuf, syntax: :proto3
 
@@ -25,7 +25,7 @@ defmodule Gnat.StreamingProtocol.PubMsg do
   field :sha256, 10, type: :bytes
 end
 
-defmodule Gnat.StreamingProtocol.PubAck do
+defmodule Gnat.Streaming.Protocol.PubAck do
   @moduledoc false
   use Protobuf, syntax: :proto3
 
@@ -39,7 +39,7 @@ defmodule Gnat.StreamingProtocol.PubAck do
   field :error, 2, type: :string
 end
 
-defmodule Gnat.StreamingProtocol.MsgProto do
+defmodule Gnat.Streaming.Protocol.MsgProto do
   @moduledoc false
   use Protobuf, syntax: :proto3
 
@@ -63,7 +63,7 @@ defmodule Gnat.StreamingProtocol.MsgProto do
   field :CRC32, 10, type: :uint32
 end
 
-defmodule Gnat.StreamingProtocol.Ack do
+defmodule Gnat.Streaming.Protocol.Ack do
   @moduledoc false
   use Protobuf, syntax: :proto3
 
@@ -77,7 +77,7 @@ defmodule Gnat.StreamingProtocol.Ack do
   field :sequence, 2, type: :uint64
 end
 
-defmodule Gnat.StreamingProtocol.ConnectRequest do
+defmodule Gnat.Streaming.Protocol.ConnectRequest do
   @moduledoc false
   use Protobuf, syntax: :proto3
 
@@ -99,7 +99,7 @@ defmodule Gnat.StreamingProtocol.ConnectRequest do
   field :pingMaxOut, 6, type: :int32
 end
 
-defmodule Gnat.StreamingProtocol.ConnectResponse do
+defmodule Gnat.Streaming.Protocol.ConnectResponse do
   @moduledoc false
   use Protobuf, syntax: :proto3
 
@@ -143,7 +143,7 @@ defmodule Gnat.StreamingProtocol.ConnectResponse do
   field :publicKey, 100, type: :string
 end
 
-defmodule Gnat.StreamingProtocol.Ping do
+defmodule Gnat.Streaming.Protocol.Ping do
   @moduledoc false
   use Protobuf, syntax: :proto3
 
@@ -155,7 +155,7 @@ defmodule Gnat.StreamingProtocol.Ping do
   field :connID, 1, type: :bytes
 end
 
-defmodule Gnat.StreamingProtocol.PingResponse do
+defmodule Gnat.Streaming.Protocol.PingResponse do
   @moduledoc false
   use Protobuf, syntax: :proto3
 
@@ -167,7 +167,7 @@ defmodule Gnat.StreamingProtocol.PingResponse do
   field :error, 1, type: :string
 end
 
-defmodule Gnat.StreamingProtocol.SubscriptionRequest do
+defmodule Gnat.Streaming.Protocol.SubscriptionRequest do
   @moduledoc false
   use Protobuf, syntax: :proto3
 
@@ -203,12 +203,12 @@ defmodule Gnat.StreamingProtocol.SubscriptionRequest do
   field :maxInFlight, 5, type: :int32
   field :ackWaitInSecs, 6, type: :int32
   field :durableName, 7, type: :string
-  field :startPosition, 10, type: Gnat.StreamingProtocol.StartPosition, enum: true
+  field :startPosition, 10, type: Gnat.Streaming.Protocol.StartPosition, enum: true
   field :startSequence, 11, type: :uint64
   field :startTimeDelta, 12, type: :int64
 end
 
-defmodule Gnat.StreamingProtocol.SubscriptionResponse do
+defmodule Gnat.Streaming.Protocol.SubscriptionResponse do
   @moduledoc false
   use Protobuf, syntax: :proto3
 
@@ -222,7 +222,7 @@ defmodule Gnat.StreamingProtocol.SubscriptionResponse do
   field :error, 3, type: :string
 end
 
-defmodule Gnat.StreamingProtocol.UnsubscribeRequest do
+defmodule Gnat.Streaming.Protocol.UnsubscribeRequest do
   @moduledoc false
   use Protobuf, syntax: :proto3
 
@@ -240,7 +240,7 @@ defmodule Gnat.StreamingProtocol.UnsubscribeRequest do
   field :durableName, 4, type: :string
 end
 
-defmodule Gnat.StreamingProtocol.CloseRequest do
+defmodule Gnat.Streaming.Protocol.CloseRequest do
   @moduledoc false
   use Protobuf, syntax: :proto3
 
@@ -252,7 +252,7 @@ defmodule Gnat.StreamingProtocol.CloseRequest do
   field :clientID, 1, type: :string
 end
 
-defmodule Gnat.StreamingProtocol.CloseResponse do
+defmodule Gnat.Streaming.Protocol.CloseResponse do
   @moduledoc false
   use Protobuf, syntax: :proto3
 
@@ -264,7 +264,7 @@ defmodule Gnat.StreamingProtocol.CloseResponse do
   field :error, 1, type: :string
 end
 
-defmodule Gnat.StreamingProtocol.StartPosition do
+defmodule Gnat.Streaming.Protocol.StartPosition do
   @moduledoc false
   use Protobuf, enum: true, syntax: :proto3
 
