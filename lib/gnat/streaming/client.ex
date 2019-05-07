@@ -1,10 +1,33 @@
 defmodule Gnat.Streaming.Client do
-  use GenServer
+  @behaviour :gen_statem
+
+  @enforce_keys [:client_id, :conn_id, :connection_name]
+  defstruct client_id: nil,
+            conn_id: nil,
+            connection_name: nil,
+            connection_pid: nil,
+            close_subject: nil,
+            heartbeat_subject: nil,
+            pub_subject: nil,
+            sub_subject: nil,
+            unsub_subject: nil
+
+  @type t :: %__MODULE__{
+    client_id: String.t,
+    conn_id: String.t,
+    connection_name: atom(),
+    connection_pid: pid() | nil,
+    close_subject: String.t | nil,
+    pub_subject: String.t | nil,
+    sub_subject: String.t | nil,
+    unsub_subject: String.t | nil
+  }
+
   require Logger
   alias Gnat.Streaming.Protocol
 
   def start_link(settings, options \\ []) do
-    GenServer.start_link(__MODULE__, settings, options)
+    :gen_statem.start_link(__MODULE__, settings, options)
   end
 
   @spec pub(GenServer.server, String.t, binary(), keyword()) :: :ok | {:error, term()}
@@ -22,75 +45,113 @@ defmodule Gnat.Streaming.Client do
     end
   end
 
-  @impl GenServer
+  # Callback Functions
+
+  @impl :gen_statem
+  def callback_mode(), do: :state_functions
+
+  @impl :gen_statem
   def init(settings) do
     Process.flag(:trap_exit, true)
-    send self(), :connect
-    state = %{
-      client_id: Map.fetch!(settings, :client_id),
-      conn_id: Map.get(settings, :conn_id) || nuid(),
-      connection_name: Map.fetch!(settings, :connection_name),
-      connection_pid: nil,
-      connect_response: nil,
-      status: :disconnected,
-    }
-    {:ok, state}
+    state = new(settings)
+    {:ok, :disconnected, state, [{:next_event, :internal, :connect}]}
   end
 
-  @impl GenServer
-  def handle_call(:pub_info, _from, %{status: :connected}=state) do
-    pub_info = {:ok, state.client_id, state.connect_response.pubPrefix, state.connection_pid}
-    {:reply, pub_info, state}
-  end
-
-  @impl GenServer
-  def handle_info(:connect, %{connection_name: name}=state) do
-    case Process.whereis(name) do
-      nil ->
-        Process.send_after(self(), :connect, 2_000)
-        {:noreply, state}
-      connection_pid ->
-        _ref = Process.monitor(connection_pid)
-        heartbeat_subject = "#{state.client_id}.#{state.conn_id}.heartbeat"
-        req = Protocol.ConnectRequest.new(clientID: state.client_id, connID: state.conn_id, heartbeatInbox: heartbeat_subject) |> Protocol.ConnectRequest.encode()
-        {:ok, _sid} = Gnat.sub(connection_pid, self(), heartbeat_subject)
-        case Gnat.request(connection_pid, "_STAN.discover.test-cluster", req) do
-          {:ok, %{body: msg}} ->
-            msg = Protocol.ConnectResponse.decode(msg) |> IO.inspect
-            {:noreply, %{state | status: :connected, connection_pid: connection_pid, connect_response: msg}}
-          {:error, reason} ->
-            Process.send_after(self(), :connect, 2_000)
-            Logger.error("Failed to connect to NATS Streaming server: #{inspect(reason)}")
-            {:noreply, state}
-        end
-    end
-  end
-  # receive heartbeat messages and respond
-  def handle_info({:msg, %{body: "", reply_to: reply_to}}, state) do
-    Gnat.pub(state.connection_pid, reply_to, "")
-    {:noreply, state}
-  end
-  # the connection has died, we need to reset our state and try to reconnect
-  def handle_info({:DOWN, _ref, :process, connection_pid, reason}, %{connection_pid: connection_pid}=state) do
-    Logger.info("connection down #{inspect(reason)}")
-    Process.send_after(self(), :connect, 2_000)
-    {:noreply, %{state | status: :disconnected, connection_pid: nil, connect_response: nil}}
-  end
-  # Ignore DOWN and task result messages from the spawned tasks
-  def handle_info({:DOWN, _ref, :process, _task_pid, _reason}, state), do: {:noreply, state}
-  def handle_info({ref, _result}, state) when is_reference(ref), do: {:noreply, state}
-
-  def handle_info(other, state) do
-    Logger.error "#{__MODULE__} received unexpected message #{inspect other}"
-    {:noreply, state}
-  end
-
-  @impl GenServer
-  def terminate(:shutdown, _state) do
+  @impl :gen_statem
+  def terminate(:shutdown, _state, _data) do
+    Logger.error "#{__MODULE__} TODO - I should send a CloseRequest to notify the broker that I'm going away"
     # TODO Send CloseRequest https://nats.io/documentation/streaming/nats-streaming-protocol/#CLOSEREQ
   end
-  def terminate(reason, _state) do
+  def terminate(reason, _state, _data) do
     Logger.error "#{__MODULE__} unexpected shutdown #{inspect reason}"
+  end
+
+  # Internal State Functions
+
+  @doc false
+  def new(settings) do
+    connection_name = Keyword.fetch!(settings, :connection_name)
+    client_id = Keyword.get(settings, :client_id) || nuid()
+    conn_id = Keyword.get(settings, :conn_id) || nuid()
+    heartbeat_subject = "#{client_id}.#{conn_id}.heartbeat"
+    %__MODULE__{client_id: client_id, conn_id: conn_id, connection_name: connection_name, heartbeat_subject: heartbeat_subject}
+  end
+
+  @doc false
+  def disconnected(:internal, :connect, %__MODULE__{connection_name: connection_name}) do
+    maybe_pid = Process.whereis(connection_name)
+    {:keep_state_and_data, [{:next_event, :internal, {:find_connection, maybe_pid}}]}
+  end
+  def disconnected(:timeout, :reconnect, state), do: disconnected(:internal, :connect, state)
+  def disconnected(:internal, {:find_connection, nil}, _state) do
+    {:keep_state_and_data, [{:timeout, 250, :reconnect}]}
+  end
+  def disconnected(:internal, {:find_connection, pid}, state) when is_pid(pid) do
+    state = %__MODULE__{state | connection_pid: pid}
+    actions = [{:next_event, :internal, :monitor_and_subscribe}]
+    {:next_state, :connected, state, actions}
+  end
+
+  @doc false
+  def connected(:internal, :monitor_and_subscribe, %__MODULE__{} = state) do
+    _ref = Process.monitor(state.connection_pid)
+    {:ok, _sid} = Gnat.sub(state.connection_pid, self(), state.heartbeat_subject)
+    actions = [{:next_event, :internal, :register}]
+    {:keep_state_and_data, actions}
+  end
+  def connected(:internal, :register, %__MODULE__{} = state) do
+    req = Protocol.ConnectRequest.new(
+      clientID: state.client_id,
+      connID: state.conn_id,
+      heartbeatInbox: state.heartbeat_subject
+    ) |> Protocol.ConnectRequest.encode()
+
+    case Gnat.request(state.connection_pid, "_STAN.discover.test-cluster", req) do
+      {:ok, %{body: msg}} ->
+        msg = Protocol.ConnectResponse.decode(msg) |> IO.inspect
+        actions = [{:next_event, :internal, {:connect_response, msg}}]
+        {:keep_state_and_data, actions}
+      {:error, reason} ->
+        Logger.error("Failed to connect to NATS Streaming server: #{inspect(reason)}")
+        actions = [{:timeout, 1_000, :reregister}]
+        {:keep_state_and_data, actions}
+    end
+  end
+  def connected(:timeout, :reregister, state), do: connected(:internal, :register, state)
+  def connected(:internal, {:connect_response, response}, %__MODULE__{} = state) do
+    if response.error == "" do
+      state =
+        state
+        |> Map.put(:close_subject, response.closeRequests)
+        |> Map.put(:pub_subject, "#{response.pubPrefix}.#{state.client_id}.#{state.conn_id}")
+        |> Map.put(:sub_subject, response.subRequests)
+        |> Map.put(:unsub_subject, response.unsubRequests)
+      {:next_state, :registered, state, []}
+    else
+      Logger.error("Got Connection Error From NATS Streaming server #{response.error}")
+      {:keep_state_and_data, [{:timeout, 1_000, :reregister}]}
+    end
+  end
+  def connected(:info, {:DOWN, _ref, :process, pid, _reason}, %__MODULE__{connection_pid: pid} = state) do
+    state = %__MODULE__{state | connection_pid: nil}
+    {:next_state, :disconnected, state, [{:timeout, 250, :reconnect}]}
+  end
+
+  @doc false
+  def registered({:call, from}, :pub_info, state) do
+    pub_info = {state.client_id, state.pub_subject, state.connection_pid}
+    {:keep_state_and_data, [{:reply, from, {:ok, pub_info}}]}
+  end
+  def registered(:info, {:msg, %{body: "", reply_to: reply_to}}, _state) do
+    {:keep_state_and_data, [{:next_event, :internal, {:pub, reply_to, ""}}]}
+  end
+  def registered(:internal, {:pub, subject, body}, %__MODULE__{} = state) do
+    :ok = Gnat.pub(state.connection_pid, subject, body)
+    {:keep_state_and_data, []}
+  end
+  def registered(:info, {:DOWN, _ref, :process, pid, _reason}, %__MODULE__{connection_pid: pid} = state) do
+    state = %__MODULE__{state | connection_pid: nil, close_subject: nil, pub_subject: nil, sub_subject: nil, unsub_subject: nil}
+    {:next_state, :disconnected, state, [{:timeout, 250, :reconnect}]}
   end
 
   defp encode_pub_msg(subject, payload, guid, reply_to, client_id) do
