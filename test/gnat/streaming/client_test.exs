@@ -23,7 +23,7 @@ defmodule Gnat.Streaming.ClientTest do
     test "failed connect attempts keep the state the same and retries connection" do
       {:ok, :disconnected, state, _actions} = Client.init(connection_name: :wat)
       assert {:keep_state_and_data, actions} = Client.disconnected(:internal, {:find_connection, nil}, state)
-      assert actions == [{:timeout, 250, :reconnect}]
+      assert actions == [{{:timeout, :reconnect}, 250, :reconnect}]
     end
 
     test "finding the connection moves to connected status, tries to register client" do
@@ -31,6 +31,12 @@ defmodule Gnat.Streaming.ClientTest do
       assert {:next_state, :connected, state, actions} = Client.disconnected(:internal, {:find_connection, self()}, state)
       assert state.connection_pid == self()
       assert actions == [{:next_event, :internal, :monitor_and_subscribe}]
+    end
+
+    test "it returns an error for pub info" do
+      {:ok, :disconnected, state, _actions} = Client.init(connection_name: :wat)
+      assert {:keep_state_and_data, actions} = Client.disconnected({:call, :from}, :pub_info, state)
+      assert actions == [{:reply, :from, {:error, :disconnected}}]
     end
   end
 
@@ -54,14 +60,19 @@ defmodule Gnat.Streaming.ClientTest do
     test "failed connect_response does a delayed re-register", %{state: state} do
       response = Map.put(@connect_response, :error, "500 unknown error")
       assert {:keep_state_and_data, actions} = Client.connected(:internal, {:connect_response, response}, state)
-      assert actions == [{:timeout, 1_000, :reregister}]
+      assert actions == [{{:timeout, :reregister}, 1_000, :reregister}]
     end
 
     test "connection dying pushes back to disconnected status", %{state: state} do
       down_message = {:DOWN, make_ref(), :process, state.connection_pid, :malnurished}
       assert {:next_state, :disconnected, state, actions} = Client.connected(:info, down_message, state)
       assert state.connection_pid == nil
-      assert actions = [{:timeout, 250, :reconnect}]
+      assert actions = [{{:timeout, :reconnect}, 250, :reconnect}]
+    end
+
+    test "it returns an error for pub info", %{state: state} do
+      assert {:keep_state_and_data, actions} = Client.connected({:call, :from}, :pub_info, state)
+      assert actions == [{:reply, :from, {:error, :not_registered}}]
     end
   end
 
@@ -93,7 +104,7 @@ defmodule Gnat.Streaming.ClientTest do
       assert state.pub_subject == nil
       assert state.sub_subject == nil
       assert state.unsub_subject == nil
-      assert actions = [{:timeout, 250, :reconnect}]
+      assert actions = [{{:timeout, :reconnect}, 250, :reconnect}]
     end
   end
 end

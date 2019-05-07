@@ -34,8 +34,7 @@ defmodule Gnat.Streaming.Client do
   def pub(streaming_client, subject, payload, options \\ []) do
     reply_to = Keyword.get(options, :reply_to)
     guid = Keyword.get(options, :guid) || nuid()
-    with {:ok, client_id, pub_prefix, connection_pid} <- GenServer.call(streaming_client, :pub_info),
-         pub_subject <- "#{pub_prefix}.me",
+    with {:ok, {client_id, pub_subject, connection_pid}} <- :gen_statem.call(streaming_client, :pub_info),
          pub_msg <- encode_pub_msg(subject, payload, guid, reply_to, client_id),
          {:ok, %{body: pb}} <- Gnat.request(connection_pid, pub_subject, pub_msg) do
       case Protocol.PubAck.decode(pb) do
@@ -71,8 +70,8 @@ defmodule Gnat.Streaming.Client do
   @doc false
   def new(settings) do
     connection_name = Keyword.fetch!(settings, :connection_name)
-    client_id = Keyword.get(settings, :client_id) || nuid()
-    conn_id = Keyword.get(settings, :conn_id) || nuid()
+    client_id = Keyword.get(settings, :client_id) || :crypto.strong_rand_bytes(12) |> Base.encode16()
+    conn_id = Keyword.get(settings, :conn_id) || :crypto.strong_rand_bytes(12) |> Base.encode16()
     heartbeat_subject = "#{client_id}.#{conn_id}.heartbeat"
     %__MODULE__{client_id: client_id, conn_id: conn_id, connection_name: connection_name, heartbeat_subject: heartbeat_subject}
   end
@@ -82,14 +81,17 @@ defmodule Gnat.Streaming.Client do
     maybe_pid = Process.whereis(connection_name)
     {:keep_state_and_data, [{:next_event, :internal, {:find_connection, maybe_pid}}]}
   end
-  def disconnected(:timeout, :reconnect, state), do: disconnected(:internal, :connect, state)
+  def disconnected({:timeout, :reconnect}, _, state), do: disconnected(:internal, :connect, state)
   def disconnected(:internal, {:find_connection, nil}, _state) do
-    {:keep_state_and_data, [{:timeout, 250, :reconnect}]}
+    {:keep_state_and_data, [{{:timeout, :reconnect}, 250, :reconnect}]}
   end
   def disconnected(:internal, {:find_connection, pid}, state) when is_pid(pid) do
     state = %__MODULE__{state | connection_pid: pid}
     actions = [{:next_event, :internal, :monitor_and_subscribe}]
     {:next_state, :connected, state, actions}
+  end
+  def disconnected({:call, from}, _call, _state) do
+    {:keep_state_and_data, [{:reply, from, {:error, :disconnected}}]}
   end
 
   @doc false
@@ -113,11 +115,11 @@ defmodule Gnat.Streaming.Client do
         {:keep_state_and_data, actions}
       {:error, reason} ->
         Logger.error("Failed to connect to NATS Streaming server: #{inspect(reason)}")
-        actions = [{:timeout, 1_000, :reregister}]
+        actions = [{{:timeout, :reregister}, 1_000, :reregister}]
         {:keep_state_and_data, actions}
     end
   end
-  def connected(:timeout, :reregister, state), do: connected(:internal, :register, state)
+  def connected({:timeout, :reregister}, _, state), do: connected(:internal, :register, state)
   def connected(:internal, {:connect_response, response}, %__MODULE__{} = state) do
     if response.error == "" do
       state =
@@ -129,12 +131,15 @@ defmodule Gnat.Streaming.Client do
       {:next_state, :registered, state, []}
     else
       Logger.error("Got Connection Error From NATS Streaming server #{response.error}")
-      {:keep_state_and_data, [{:timeout, 1_000, :reregister}]}
+      {:keep_state_and_data, [{{:timeout, :reregister}, 1_000, :reregister}]}
     end
   end
   def connected(:info, {:DOWN, _ref, :process, pid, _reason}, %__MODULE__{connection_pid: pid} = state) do
     state = %__MODULE__{state | connection_pid: nil}
-    {:next_state, :disconnected, state, [{:timeout, 250, :reconnect}]}
+    {:next_state, :disconnected, state, [{{:timeout, :reconnect}, 250, :reconnect}]}
+  end
+  def connected({:call, from}, _call, _state) do
+    {:keep_state_and_data, [{:reply, from, {:error, :not_registered}}]}
   end
 
   @doc false
@@ -151,7 +156,7 @@ defmodule Gnat.Streaming.Client do
   end
   def registered(:info, {:DOWN, _ref, :process, pid, _reason}, %__MODULE__{connection_pid: pid} = state) do
     state = %__MODULE__{state | connection_pid: nil, close_subject: nil, pub_subject: nil, sub_subject: nil, unsub_subject: nil}
-    {:next_state, :disconnected, state, [{:timeout, 250, :reconnect}]}
+    {:next_state, :disconnected, state, [{{:timeout, :reconnect}, 250, :reconnect}]}
   end
 
   defp encode_pub_msg(subject, payload, guid, reply_to, client_id) do
