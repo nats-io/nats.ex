@@ -27,14 +27,18 @@ defmodule Gnat.Streaming.Client do
   alias Gnat.Streaming.Protocol
 
   def start_link(settings, options \\ []) do
-    :gen_statem.start_link(__MODULE__, settings, options)
+    case Keyword.get(options, :name) do
+      nil -> :gen_statem.start_link(__MODULE__, settings, options)
+      name when is_atom(name) -> :gen_statem.start_link({:local, name}, __MODULE__, settings, options)
+      name -> :gen_statem.start_link(name, __MODULE__, settings, options)
+    end
   end
 
   @spec pub(GenServer.server, String.t, binary(), keyword()) :: :ok | {:error, term()}
   def pub(streaming_client, subject, payload, options \\ []) do
     reply_to = Keyword.get(options, :reply_to)
     guid = Keyword.get(options, :guid) || nuid()
-    with {:ok, {client_id, pub_subject, connection_pid}} <- :gen_statem.call(streaming_client, :pub_info),
+    with {:ok, {client_id, pub_subject, connection_pid}} <- pub_info(streaming_client),
          pub_msg <- encode_pub_msg(subject, payload, guid, reply_to, client_id),
          {:ok, %{body: pb}} <- Gnat.request(connection_pid, pub_subject, pub_msg) do
       case Protocol.PubAck.decode(pb) do
@@ -42,6 +46,16 @@ defmodule Gnat.Streaming.Client do
         %Protocol.PubAck{error: err} -> {:error, err}
       end
     end
+  end
+
+  @spec pub_info(GenServer.server) :: {:ok, {String.t, String.t, pid()}} | {:error, term()}
+  def pub_info(streaming_client) do
+    :gen_statem.call(streaming_client, :pub_info)
+  end
+
+  @spec sub_info(GenServer.server) :: {:ok, {String.t, String.t, pid()}} | {:error, term()}
+  def sub_info(streaming_client) do
+    :gen_statem.call(streaming_client, :sub_info)
   end
 
   # Callback Functions
@@ -143,9 +157,13 @@ defmodule Gnat.Streaming.Client do
   end
 
   @doc false
-  def registered({:call, from}, :pub_info, state) do
+  def registered({:call, from}, :pub_info, %__MODULE__{} = state) do
     pub_info = {state.client_id, state.pub_subject, state.connection_pid}
     {:keep_state_and_data, [{:reply, from, {:ok, pub_info}}]}
+  end
+  def registered({:call, from}, :sub_info, %__MODULE__{} = state) do
+    sub_info = {state.client_id, state.sub_subject, state.connection_pid}
+    {:keep_state_and_data, [{:reply, from, {:ok, sub_info}}]}
   end
   def registered(:info, {:msg, %{body: "", reply_to: reply_to}}, _state) do
     {:keep_state_and_data, [{:next_event, :internal, {:pub, reply_to, ""}}]}
