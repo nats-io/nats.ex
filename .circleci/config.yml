@@ -18,10 +18,12 @@ jobs:
 
     steps:
       - checkout  # check out source code to working directory
-      - run: wget https://github.com/nats-io/gnatsd/releases/download/v1.4.1/gnatsd-v1.4.1-linux-amd64.zip
+      - run: wget https://github.com/nats-io/nats-server/releases/download/v1.4.1/gnatsd-v1.4.1-linux-amd64.zip
       - run: unzip gnatsd-v1.4.1-linux-amd64.zip
+      - run: wget https://github.com/nats-io/nats-streaming-server/releases/download/v0.14.1/nats-streaming-server-v0.14.1-linux-amd64.zip
+      - run: unzip nats-streaming-server-v0.14.1-linux-amd64.zip
       - run:
-          command: ./gnatsd-v1.4.1-linux-amd64/gnatsd
+          command: ./nats-streaming-server-v0.14.1-linux-amd64/nats-streaming-server
           background: true
       - run:
           command: ./gnatsd-v1.4.1-linux-amd64/gnatsd -p 4223 --user bob --pass alice
