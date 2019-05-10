@@ -1,27 +1,31 @@
 defmodule Gnat.Streaming.Subscription do
   @behaviour :gen_statem
 
-  @enforce_keys [:client_name, :subject]
+  @enforce_keys [:client_name, :consuming_function, :subject, :task_supervisor_pid]
   defstruct ack_subject: nil,
             ack_wait_in_sec: 30,
             client_id: nil,
             client_name: nil,
+            consuming_function: nil,
             connection_pid: nil,
             inbox: nil,
             max_in_flight: 100,
             sub_subject: nil,
-            subject: nil
+            subject: nil,
+            task_supervisor_pid: nil
 
   @type t :: %__MODULE__{
     ack_subject: String.t,
     ack_wait_in_sec: non_neg_integer(),
     client_id: String.t | nil,
     client_name: atom(),
+    consuming_function: {atom(), atom()},
     connection_pid: pid() | nil,
     inbox: String.t | nil,
     max_in_flight: non_neg_integer(),
     sub_subject: String.t,
-    subject: String.t
+    subject: String.t,
+    task_supervisor_pid: pid()
   }
 
   require Logger
@@ -39,7 +43,8 @@ defmodule Gnat.Streaming.Subscription do
   @impl :gen_statem
   def init(settings) do
     Process.flag(:trap_exit, true)
-    state = new(settings)
+    {:ok, task_supervisor_pid} = Task.Supervisor.start_link()
+    state = new(settings, task_supervisor_pid)
     {:ok, :disconnected, state, [{:next_event, :internal, :connect}]}
   end
 
@@ -50,16 +55,22 @@ defmodule Gnat.Streaming.Subscription do
     # TODO Send CloseRequest https://nats.io/documentation/streaming/nats-streaming-protocol/#UNSUBREQ
   end
   def terminate(reason, _state, _data) do
-    Logger.error "#{__MODULE__} unexpected shutdown #{inspect reason}"
+    Logger.error "#{__MODULE__} unexpected shutdown #{inspect(reason)}"
   end
 
   # Internal State Functions
 
   @doc false
-  def new(settings) do
+  def new(settings, task_supervisor_pid) do
     client_name = Keyword.fetch!(settings, :client_name)
+    {mod, fun} = Keyword.fetch!(settings, :consuming_function)
     subject = Keyword.fetch!(settings, :subject)
-    %__MODULE__{client_name: client_name, subject: subject}
+    %__MODULE__{
+      client_name: client_name,
+      consuming_function: {mod, fun},
+      subject: subject,
+      task_supervisor_pid: task_supervisor_pid
+    }
   end
 
   @doc false
@@ -96,7 +107,7 @@ defmodule Gnat.Streaming.Subscription do
     ) |> Protocol.SubscriptionRequest.encode()
     case Gnat.request(state.connection_pid, state.sub_subject, req) do
       {:ok, %{body: msg}} ->
-        msg = Protocol.SubscriptionResponse.decode(msg) |> IO.inspect()
+        msg = Protocol.SubscriptionResponse.decode(msg)
         actions = [{:next_event, :internal, {:subscription_response, msg}}]
         {:keep_state_and_data, actions}
       {:error, reason} ->
@@ -125,5 +136,34 @@ defmodule Gnat.Streaming.Subscription do
     state = %__MODULE__{state | ack_subject: nil, client_id: nil, connection_pid: nil, inbox: nil, sub_subject: nil}
     actions = [{{:timeout, :reconnect}, 250, :reconnect}]
     {:next_state, :disconnected, state, actions}
+  end
+  # ignore down messages for task processes
+  def subscribed(:info, {:DOWN, _ref, :process, task_pid, _reason}, _state) do
+    Logger.error("DOWN #{inspect(task_pid)}")
+    {:keep_state_and_data, []}
+  end
+  # ignore task finished messages
+  def subscribed(:info, {ref, _return_value}, _state) when is_reference(ref) do
+    {:keep_state_and_data, []}
+  end
+  def subscribed(:info, {:msg, %{body: protobuf}}, %__MODULE__{} = state) do
+    Task.Supervisor.async_nolink(state.task_supervisor_pid, __MODULE__, :consume_message, [protobuf, state.consuming_function, state.connection_pid, state.ack_subject])
+
+    {:keep_state_and_data, []}
+  end
+
+  def consume_message(protobuf, {mod, fun}, connection_pid, ack_subject) do
+    pub_msg = Protocol.MsgProto.decode(protobuf)
+    message = %Gnat.Streaming.Message{
+      ack_subject: ack_subject,
+      connection_pid: connection_pid,
+      data: pub_msg.data,
+      redelivered: pub_msg.redelivered,
+      reply: pub_msg.reply,
+      sequence: pub_msg.sequence,
+      subject: pub_msg.subject,
+      timestamp: pub_msg.timestamp
+    }
+    apply(mod, fun, [message])
   end
 end

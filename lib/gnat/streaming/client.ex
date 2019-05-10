@@ -124,7 +124,7 @@ defmodule Gnat.Streaming.Client do
 
     case Gnat.request(state.connection_pid, "_STAN.discover.test-cluster", req) do
       {:ok, %{body: msg}} ->
-        msg = Protocol.ConnectResponse.decode(msg) |> IO.inspect
+        msg = Protocol.ConnectResponse.decode(msg)
         actions = [{:next_event, :internal, {:connect_response, msg}}]
         {:keep_state_and_data, actions}
       {:error, reason} ->

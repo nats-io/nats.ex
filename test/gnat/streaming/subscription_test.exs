@@ -8,7 +8,7 @@ defmodule Gnat.Streaming.SubscriptionTest do
 
   describe "disconnected state" do
     test "it starts in a disconnected state and tries to get connected" do
-      assert {:ok, :disconnected, state, actions} = Subscription.init(client_name: :wat, subject: "eagleton.parks")
+      assert {:ok, :disconnected, state, actions} = Subscription.init(client_name: :wat, consuming_function: {__MODULE__, :consume}, subject: "eagleton.parks")
       assert actions == [{:next_event, :internal, :connect}]
       assert state.client_id == nil
       assert state.connection_pid == nil
@@ -17,13 +17,13 @@ defmodule Gnat.Streaming.SubscriptionTest do
     end
 
     test "failed connect attempts keep the state the same and retries connection" do
-      {:ok, :disconnected, state, _actions} = Subscription.init(client_name: :wat, subject: "eagleton.parks")
+      {:ok, :disconnected, state, _actions} = Subscription.init(client_name: :wat, consuming_function: {__MODULE__, :consume}, subject: "eagleton.parks")
       assert {:keep_state_and_data, actions} = Subscription.disconnected(:internal, {:client_info, {:error, :disconnected}}, state)
       assert actions == [{{:timeout, :reconnect}, 250, :reconnect}]
     end
 
     test "finding the connection moves to connected status, tries to register client" do
-      {:ok, :disconnected, state, _actions} = Subscription.init(client_name: :wat, subject: "eagleton.parks")
+      {:ok, :disconnected, state, _actions} = Subscription.init(client_name: :wat, consuming_function: {__MODULE__, :consume}, subject: "eagleton.parks")
       assert {:next_state, :connected, state, actions} = Subscription.disconnected(:internal, {:client_info, {:ok, {"client_id", "sub_subject", self()}}}, state)
       assert state.client_id == "client_id"
       assert state.connection_pid == self()
@@ -35,7 +35,7 @@ defmodule Gnat.Streaming.SubscriptionTest do
 
   describe "connected state" do
     setup do
-      {:ok, :disconnected, state, _actions} = Subscription.init(client_name: :wat, subject: "eagleton.parks")
+      {:ok, :disconnected, state, _actions} = Subscription.init(client_name: :wat, consuming_function: {__MODULE__, :consume}, subject: "eagleton.parks")
       {:next_state, :connected, state, _actions} = Subscription.disconnected(:internal, {:client_info, {:ok, {"client_id", "sub_subject", self()}}}, state)
       {:ok, %{state: state}}
     end
@@ -66,7 +66,7 @@ defmodule Gnat.Streaming.SubscriptionTest do
 
   describe "subscribed state" do
     setup do
-      {:ok, :disconnected, state, _actions} = Subscription.init(client_name: :wat, subject: "eagleton.parks")
+      {:ok, :disconnected, state, _actions} = Subscription.init(client_name: :wat, consuming_function: {__MODULE__, :consume}, subject: "eagleton.parks")
       {:next_state, :connected, state, _actions} = Subscription.disconnected(:internal, {:client_info, {:ok, {"client_id", "sub_subject", self()}}}, state)
       {:next_state, :subscribed, state, _actions} = Subscription.connected(:internal, {:subscription_response, @subscription_response}, state)
       {:ok, %{state: state}}
@@ -80,6 +80,10 @@ defmodule Gnat.Streaming.SubscriptionTest do
       assert state.connection_pid == nil
       assert state.inbox == nil
       assert actions = [{{:timeout, :reconnect}, 250, :reconnect}]
+    end
+
+    test "receiving messages from streaming server" do
+      # {:msg, %{body: pr_encoded_message, gnat: #PID<0.207.0>, reply_to: nil, sid: 2, topic: "3AFF97418E2AABEAAF7EE830.ohai.INBOX"}}
     end
   end
 end
