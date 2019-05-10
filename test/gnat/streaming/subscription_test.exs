@@ -82,8 +82,11 @@ defmodule Gnat.Streaming.SubscriptionTest do
       assert actions = [{{:timeout, :reconnect}, 250, :reconnect}]
     end
 
-    test "receiving messages from streaming server" do
-      # {:msg, %{body: pr_encoded_message, gnat: #PID<0.207.0>, reply_to: nil, sid: 2, topic: "3AFF97418E2AABEAAF7EE830.ohai.INBOX"}}
+    test "task_supervisor_pid dying stays in the same state, but replaces the TaskSupervisor", %{state: state} do
+      down_message = {:DOWN, make_ref(), :process, state.task_supervisor_pid, :DEAD}
+      assert {:keep_state, new_state} = Subscription.subscribed(:info, down_message, state)
+      assert new_state.task_supervisor_pid != state.task_supervisor_pid
+      assert Process.alive?(new_state.task_supervisor_pid)
     end
   end
 end

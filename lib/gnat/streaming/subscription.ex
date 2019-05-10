@@ -132,14 +132,20 @@ defmodule Gnat.Streaming.Subscription do
   end
 
   @doc false
+  @spec subscribed(:gen_statem.event_type, term(), term()) :: :gen_statem.event_handler_result(atom())
   def subscribed(:info, {:DOWN, _ref, :process, pid, _reason}, %__MODULE__{connection_pid: pid} = state) do
     state = %__MODULE__{state | ack_subject: nil, client_id: nil, connection_pid: nil, inbox: nil, sub_subject: nil}
     actions = [{{:timeout, :reconnect}, 250, :reconnect}]
     {:next_state, :disconnected, state, actions}
   end
+  # restart the task supervisor if it crashes
+  def subscribed(:info, {:DOWN, _ref, :process, pid, _reason}, %__MODULE__{task_supervisor_pid: pid} = state) do
+    {:ok, task_supervisor_pid} = Task.Supervisor.start_link()
+    state = %__MODULE__{state | task_supervisor_pid: task_supervisor_pid}
+    {:keep_state, state}
+  end
   # ignore down messages for task processes
-  def subscribed(:info, {:DOWN, _ref, :process, task_pid, _reason}, _state) do
-    Logger.error("DOWN #{inspect(task_pid)}")
+  def subscribed(:info, {:DOWN, _ref, :process, _task_pid, _reason}, _state) do
     {:keep_state_and_data, []}
   end
   # ignore task finished messages
