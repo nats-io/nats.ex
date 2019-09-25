@@ -22,6 +22,16 @@ receive do
 end
 ```
 
+## Authentication
+
+```elixir
+# with user and password
+{:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, username: "joe", password: "123", auth_required: true})
+
+# with token
+{:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, token: "secret", auth_required: true})
+```
+
 ## Instrumentation
 
 Gnat uses [telemetry](https://hex.pm/packages/telemetry) to make instrumentation data available to clients.
@@ -68,11 +78,11 @@ As of this commit, the [latest benchmark on a 16-core server](https://gist.githu
 The `bench/*.exs` files also contain some straight-line single-cpu performance tests.
 As of this commit my 2018 macbook pro shows.
 
-|   | ips | average | deviation | median |
-| - | --- | ------- | --------- | ------ |
-| parse-128 | 487.67 K | 2.19 μs | ±1701.54% | 2 μs |
-| pub - 128 | 96.37 K | 10.38 μs | ±102.94% | 10 μs |
-| req-reply-128 | 8.32 K | 120.16 μs | ±23.68% | 114 μs |
+|               | ips      | average   | deviation | median |
+| ------------- | -------- | --------- | --------- | ------ |
+| parse-128     | 487.67 K | 2.19 μs   | ±1701.54% | 2 μs   |
+| pub - 128     | 96.37 K  | 10.38 μs  | ±102.94%  | 10 μs  |
+| req-reply-128 | 8.32 K   | 120.16 μs | ±23.68%   | 114 μs |
 
 ## Development
 

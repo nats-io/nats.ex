@@ -31,6 +31,10 @@ defmodule Gnat.Handshake do
     opts = Jason.encode!(%{user: username, pass: password, verbose: false}, maps: :strict)
     socket_write(connection_settings, socket, "CONNECT #{opts}\r\n")
   end
+  defp send_connect_message(socket, %{auth_required: true}=_options, %{token: token}=connection_settings) do
+    opts = Jason.encode!(%{auth_token: token, verbose: false}, maps: :strict)
+    socket_write(connection_settings, socket, "CONNECT #{opts}\r\n")
+  end
   defp send_connect_message(socket, _options, connection_settings) do
     socket_write(connection_settings, socket, "CONNECT {\"verbose\": false}\r\n")
   end
