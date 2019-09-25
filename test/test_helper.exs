@@ -92,6 +92,19 @@ defmodule CheckForExpectedNatsServers do
                   "--tlskey test/fixtures/key.pem " <>
                   "--tlscacert test/fixtures/ca.pem --tlsverify"
     end
+
+    case :gen_tcp.connect('localhost', 4226, [:binary]) do
+      {:ok, socket} ->
+        :gen_tcp.close(socket)
+      {:error, reason} ->
+        Mix.raise "Cannot connect to gnatsd" <>
+                  " (tcp://localhost:4226):" <>
+                  " #{:inet.format_error(reason)}\n" <>
+                  "You probably need to start a gnatsd " <>
+                  "server that requires authentication with " <>
+                  "the following command `gnatsd -p 4226 " <>
+                  "--auth SpecialToken`."
+    end
   end
   def check_for_tag(_), do: :ok
 end

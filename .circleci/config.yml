@@ -1,6 +1,6 @@
 version: 2.1
 
-default_version: &default_version 1.8.1
+default_version: &default_version 1.8.2
 
 jobs:
   build:
@@ -31,6 +31,9 @@ jobs:
           background: true
       - run:
           command: ./gnatsd-v1.4.1-linux-amd64/gnatsd -p 4225 --tls --tlscert test/fixtures/server.pem --tlskey test/fixtures/key.pem --tlscacert test/fixtures/ca.pem --tlsverify
+          background: true
+      - run:
+          command: ./gnatsd-v1.4.1-linux-amd64/gnatsd -p 4226 --auth SpecialToken
           background: true
       - restore_cache:
           keys:
@@ -81,8 +84,11 @@ workflows:
   testing_all_versions:
     jobs:
       - build:
-          name: "Test Elixir 1.8.1"
-          version: 1.8.1 
+          name: "Test Elixir 1.9.1"
+          version: 1.9.1 
+      - build:
+          name: "Test Elixir 1.8.2"
+          version: 1.8.2 
       - build:
           name: "Test Elixir 1.7.4"
           version: 1.7.4
