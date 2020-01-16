@@ -1,6 +1,6 @@
 version: 2.1
 
-default_version: &default_version 1.8.2
+default_version: &default_version 1.9.4
 
 jobs:
   build:
@@ -18,22 +18,22 @@ jobs:
 
     steps:
       - checkout  # check out source code to working directory
-      - run: wget https://github.com/nats-io/gnatsd/releases/download/v1.4.1/gnatsd-v1.4.1-linux-amd64.zip
-      - run: unzip gnatsd-v1.4.1-linux-amd64.zip
+      - run: wget https://github.com/nats-io/nats-server/releases/download/v2.1.2/nats-server-v2.1.2-linux-amd64.zip
+      - run: unzip nats-server-v2.1.2-linux-amd64.zip
       - run:
-          command: ./gnatsd-v1.4.1-linux-amd64/gnatsd
+          command: ./nats-server-v2.1.2-linux-amd64/nats-server
           background: true
       - run:
-          command: ./gnatsd-v1.4.1-linux-amd64/gnatsd -p 4223 --user bob --pass alice
+          command: ./nats-server-v2.1.2-linux-amd64/nats-server -p 4223 --user bob --pass alice
           background: true
       - run:
-          command: ./gnatsd-v1.4.1-linux-amd64/gnatsd -p 4224 --tls --tlscert test/fixtures/server.pem --tlskey test/fixtures/key.pem
+          command: ./nats-server-v2.1.2-linux-amd64/nats-server -p 4224 --tls --tlscert test/fixtures/server-cert.pem --tlskey test/fixtures/server-key.pem
           background: true
       - run:
-          command: ./gnatsd-v1.4.1-linux-amd64/gnatsd -p 4225 --tls --tlscert test/fixtures/server.pem --tlskey test/fixtures/key.pem --tlscacert test/fixtures/ca.pem --tlsverify
+          command: ./nats-server-v2.1.2-linux-amd64/nats-server -p 4225 --tls --tlscert test/fixtures/server-cert.pem --tlskey test/fixtures/server-key.pem --tlscacert test/fixtures/ca.pem --tlsverify
           background: true
       - run:
-          command: ./gnatsd-v1.4.1-linux-amd64/gnatsd -p 4226 --auth SpecialToken
+          command: ./nats-server-v2.1.2-linux-amd64/nats-server -p 4226 --auth SpecialToken
           background: true
       - restore_cache:
           keys:
@@ -84,16 +84,13 @@ workflows:
   testing_all_versions:
     jobs:
       - build:
-          name: "Test Elixir 1.9.1"
-          version: 1.9.1 
+          name: "Test Elixir 1.9.4"
+          version: 1.9.4
       - build:
           name: "Test Elixir 1.8.2"
           version: 1.8.2 
       - build:
           name: "Test Elixir 1.7.4"
           version: 1.7.4
-      - build:
-          name: "Test Elixir 1.6.6"
-          version: 1.6.6
       - lint:
           name: "Check formatting and Types"

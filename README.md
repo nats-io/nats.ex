@@ -86,8 +86,8 @@ As of this commit my 2018 macbook pro shows.
 
 ## Development
 
-Before running the tests make sure you have a locally running copy of `gnatsd` (`brew install gnatsd`).
-We currently use version `1.4.1` in CI, but anything higher than `0.9.6` should be fine.
+Before running the tests make sure you have a locally running copy of `nats-server` (`brew install nats-server`).
+We currently use version `2.1.2` in CI, but anything higher than `0.9.6` should be fine.
 The typical `mix test` will run all the basic unit tests.
 
 You can also run the `multi_server` set of tests that test connectivity to different

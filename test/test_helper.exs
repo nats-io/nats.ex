@@ -74,8 +74,8 @@ defmodule CheckForExpectedNatsServers do
                   "You probably need to start a gnatsd " <>
                   "server that requires tls with " <>
                   "a command like `gnatsd -p 4224 " <>
-                  "--tls --tlscert test/fixtures/server.pem " <>
-                  "--tlskey test/fixtures/key.pem`."
+                  "--tls --tlscert test/fixtures/server-cert.pem " <>
+                  "--tlskey test/fixtures/server-key.pem`."
     end
 
     case :gen_tcp.connect('localhost', 4225, [:binary]) do
@@ -88,8 +88,8 @@ defmodule CheckForExpectedNatsServers do
                   "You probably need to start a gnatsd " <>
                   "server that requires tls with " <>
                   "a command like `gnatsd -p 4225 --tls " <>
-                  "--tlscert test/fixtures/server.pem " <>
-                  "--tlskey test/fixtures/key.pem " <>
+                  "--tlscert test/fixtures/server-cert.pem " <>
+                  "--tlskey test/fixtures/server-key.pem " <>
                   "--tlscacert test/fixtures/ca.pem --tlsverify"
     end
 
