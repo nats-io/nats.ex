@@ -4,8 +4,8 @@ defmodule Gnat.Mixfile do
   def project do
     [
       app: :gnat,
-      version: "0.7.0",
-      elixir: "~> 1.6",
+      version: "1.0.0",
+      elixir: "~> 1.7",
       elixirc_paths: elixirc_paths(Mix.env()),
       build_embedded: Mix.env() == :prod,
       start_permanent: Mix.env() == :prod,

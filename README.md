@@ -32,6 +32,28 @@ end
 {:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, token: "secret", auth_required: true})
 ```
 
+## TLS Connections
+
+[Nats Server](https://github.com/nats-io/nats-server) is often configured to accept or require TLS connections.
+In order to connect to these clusters you'll want to pass some extra TLS settings to your `Gnat` connection.
+
+```elixir
+# using a basic TLS connection
+{:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, tls: true})
+
+# Passing a Client Certificate for verification
+{:ok, gnat} = Gnat.start_link(%{tls: true, ssl_opts: [certfile: "client-cert.pem", keyfile: "client-key.pem"]})
+```
+
+## Resiliency
+
+If you would like to stay connected to a cluster of nats servers, you should consider using `Gnat.ConnectionSupervisor`.
+This can be added to your supervision tree in your project and will handle automatically re-connecting to the cluster.
+
+For long-lived subscriptions consider using `Gnat.ConsumerSupervisor`.
+This can also be added to your supervision tree and use a supervised connection to re-establish a subscription.
+It also handles details like handling each message in a supervised process so you isolate failures and get OTP logs when an unexpected error occurs.
+
 ## Instrumentation
 
 Gnat uses [telemetry](https://hex.pm/packages/telemetry) to make instrumentation data available to clients.
