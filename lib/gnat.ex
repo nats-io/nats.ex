@@ -42,7 +42,7 @@ defmodule Gnat do
   end
 
   @doc """
-  Gracefull shuts down a connection
+  Gracefully shuts down a connection
 
   ```
   {:ok, gnat} = Gnat.start_link()
