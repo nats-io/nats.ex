@@ -5,7 +5,7 @@ defmodule BenchPublisher do
 
     (1..num_senders)
     |> Enum.map(fn(_i) -> kick_off_async_publish(messages_per_sender) end)
-    |> Enum.map(fn(task) -> Task.await(task) end)
+    |> Enum.map(fn(task) -> Task.await(task, 100_000) end)
   end
 
   def sync_publish(num_senders, messages_per_sender) do
@@ -13,7 +13,7 @@ defmodule BenchPublisher do
 
     (1..num_senders)
     |> Enum.map(fn(_i) -> kick_off_sync_publish(pid, messages_per_sender) end)
-    |> Enum.map(fn(task) -> Task.await(task) end)
+    |> Enum.map(fn(task) -> Task.await(task, 100_000) end)
 
     Gnat.stop(pid)
   end
@@ -43,8 +43,15 @@ defmodule BenchPublisher do
 end
 
 defmodule BenchSubscriber do
-  def listen_for(how_many_messages, started_at) do
-    listen_for(how_many_messages, [], started_at)
+  def listen_for(how_many_messages, publish_messages) do
+    {:ok, gnat} = Gnat.start_link()
+    task = Task.async(fn ->
+      {:ok, _ref} = Gnat.sub(gnat, self(), "bench")
+      listen_for(how_many_messages, [], :erlang.monotonic_time())
+    end)
+    publish_messages.()
+    Task.await(task, 600_000)
+    Gnat.stop(gnat)
   end
 
   def listen_for(0, samples, started_at) do
@@ -66,7 +73,7 @@ defmodule BenchSubscriber do
     %{50 => median, 99 => ninety_ninth} = stats.percentiles
     messages_per_second = (stats.sample_size / duration) * :erlang.convert_time_unit(1, :second, :native)
 
-    IO.puts "\t\t#{:erlang.round(messages_per_second)} msg/sec, median: #{:erlang.round(median / 1_000_000)}ms, 99%: #{:erlang.round(ninety_ninth / 1_000_000)}ms"
+    IO.puts "\t\t#{:erlang.round(messages_per_second)} msg/sec, median: #{:erlang.round(median / 1_000)}µs, 99%: #{:erlang.round(ninety_ninth / 1_000)}µs, min: #{:erlang.round(stats.minimum / 1_000)}µs"
   end
   def listen_for(how_many_messages, list, started_at) do
     receive do
@@ -75,32 +82,31 @@ defmodule BenchSubscriber do
         latency = :erlang.monotonic_time() - timestamp
         listen_for(how_many_messages - 1, [latency | list], started_at)
     after
-      1_000 -> raise "Timed out waiting for messages"
+      10_000 -> raise "Timed out waiting for messages"
     end
   end
 end
 
-{:ok, sub_conn} = Gnat.start_link()
-{:ok, _ref} = Gnat.sub(sub_conn, self(), "bench")
-
 scenarios = [
-  {10, 10_000},
-  {100, 1_000},
-  {1_000, 100},
+  {1, 500_000},
+  {10, 50_000},
+  {100, 5_000},
+  {1_000, 500},
 ]
 
 Enum.each(scenarios, fn({num_senders, messages_per_sender}) ->
   total_messages = num_senders * messages_per_sender
   IO.puts "## #{num_senders} publishers"
+
   IO.puts "\tSync"
-  started_at = :erlang.monotonic_time()
-  BenchPublisher.sync_publish(num_senders, messages_per_sender)
-  BenchSubscriber.listen_for(total_messages, started_at)
+  BenchSubscriber.listen_for(total_messages, fn ->
+    BenchPublisher.sync_publish(num_senders, messages_per_sender)
+  end)
 
   IO.puts "\tAsync"
-  started_at = :erlang.monotonic_time()
-  BenchPublisher.async_publish(num_senders, messages_per_sender)
-  BenchSubscriber.listen_for(total_messages, started_at)
+  BenchSubscriber.listen_for(total_messages, fn ->
+    BenchPublisher.async_publish(num_senders, messages_per_sender)
+  end)
   BenchPublisher.cleanup_async_pubs()
 end)
 
