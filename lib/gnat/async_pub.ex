@@ -14,6 +14,8 @@ defmodule Gnat.AsyncPub do
     GenServer.call(pid, {:pub, topic, message, opts})
   end
 
+  def stop(pid), do: GenServer.call(pid, :stop)
+
   @impl GenServer
   def init(%{connection_name: name}=queue_settings) when is_atom(name) do
     queue_settings =
@@ -27,6 +29,10 @@ defmodule Gnat.AsyncPub do
   def handle_call({:pub, _topic, _message, _opts}=todo, _from, state) do
     state = update_in(state, [:queue], fn(q) -> :queue.in(todo, q) end)
     {:reply, :ok, state, 0}
+  end
+  def handle_call(:stop, _from, state) do
+    # wait for queue to empty?
+    {:stop, :normal, :ok, state}
   end
 
   @impl GenServer
