@@ -29,34 +29,71 @@ defmodule Gnat.AsyncTest do
     assert_receive {:msg, %{topic: "async_pub_t2", body: "Ron Swanson", reply_to: "me"}}, 1000
   end
 
-  @tag capture_log: true
   test "a graceful shutdown is attempted when being shutdown by a supervisor" do
-    # start anonymous connection and subscribe to topic
-    {:ok, pid} = Gnat.start_link()
-    {:ok, _ref} = Gnat.sub(pid, self(), "async_pub_t3")
+    log = ExUnit.CaptureLog.capture_log(fn ->
+      # start anonymous connection and subscribe to topic
+      {:ok, pid} = Gnat.start_link()
+      {:ok, _ref} = Gnat.sub(pid, self(), "async_pub_t3")
 
-    # start async pub and send it a message before its connection is available
-    {:ok, async} = Async.start_link(%{connection_name: :async_pub_c3, name: :async_pub_q3})
-    assert :ok = Async.pub(:async_pub_q3, "async_pub_t3", "Ron Swanson", reply_to: "me")
+      # start async pub and send it a message before its connection is available
+      {:ok, async} = Async.start_link(%{
+        connection_name: :async_pub_c3,
+        name: :async_pub_q3,
+        graceful_shutdown_timeout: 5_000,
+      })
+      assert :ok = Async.pub(:async_pub_q3, "async_pub_t3", "Ron Swanson", reply_to: "me")
 
-    # initiate a graceful shutdown - this must be done in another process because Supervisor.stop is synchronous
-    test_pid = self()
-    spawn_link(fn ->
-      stopped = Supervisor.stop(async, :normal)
-      Process.send(test_pid, {:shutdown, stopped}, [])
+      # initiate a graceful shutdown - this must be done in another process because Supervisor.stop is synchronous
+      test_pid = self()
+      spawn_link(fn ->
+        stopped = Supervisor.stop(async, :normal)
+        Logger.info("Supervisor.stop returned #{inspect(stopped)}")
+        Process.send(test_pid, {:shutdown, stopped}, [])
+      end)
+      :timer.sleep(15) # give a small amount of time for the shutdown signal to be received
+      assert {:error, :shutting_down} = Async.pub(:async_pub_q3, "async_pub_t3", "Ron Swanson", reply_to: "me")
+
+      # start the connection that our async pub wants to use
+      {:ok, _pid} = Gnat.start_link(%{}, name: :async_pub_c3)
+
+      # it should have used the new connection to publish our message and then we get it from our
+      # anonymous connection
+      assert_receive {:msg, %{topic: "async_pub_t3", body: "Ron Swanson", reply_to: "me"}}, 1000
+
+      # The graceful shutdown should complete with a :normal reason and the process should be gone
+      assert_receive {:shutdown, :ok}, 6000
+      refute Process.alive?(async)
     end)
-    :timer.sleep(5) # give a small amount of time for the shutdown signal to be received
-    assert {:error, :shutting_down} = Async.pub(:async_pub_q3, "async_pub_t3", "Ron Swanson", reply_to: "me")
+    refute log =~ "Timed out waiting for the async_pub_q3 async queue to drain"
+  end
 
-    # start the connection that our async pub wants to use
-    {:ok, _pid} = Gnat.start_link(%{}, name: :async_pub_c3)
+  test "logs an error if the queue does not drain before the timeout is reached" do
+    log = ExUnit.CaptureLog.capture_log(fn ->
+      # start anonymous connection and subscribe to topic
+      {:ok, pid} = Gnat.start_link()
+      {:ok, _ref} = Gnat.sub(pid, self(), "async_pub_t4")
 
-    # it should have used the new connection to publish our message and then we get it from our
-    # anonymous connection
-    assert_receive {:msg, %{topic: "async_pub_t3", body: "Ron Swanson", reply_to: "me"}}, 1000
+      # start async pub and send it a message before its connection is available
+      {:ok, async} = Async.start_link(%{
+        connection_name: :async_pub_c4,
+        name: :async_pub_q4,
+        graceful_shutdown_timeout: 100
+      })
+      assert :ok = Async.pub(:async_pub_q4, "async_pub_t4", "Ron Swanson", reply_to: "me")
 
-    # The graceful shutdown should complete with a :normal reason and the process should be gone
-    assert_receive {:shutdown, :ok}, 6000
-    refute Process.alive?(async)
+      # initiate a graceful shutdown - this must be done in another process because Supervisor.stop is synchronous
+      test_pid = self()
+      spawn_link(fn ->
+        stopped = Supervisor.stop(async, :normal)
+        Process.send(test_pid, {:shutdown, stopped}, [])
+      end)
+      :timer.sleep(15) # give a small amount of time for the shutdown signal to be received
+      assert {:error, :shutting_down} = Async.pub(:async_pub_q4, "async_pub_t4", "Ron Swanson", reply_to: "me")
+
+      # The graceful shutdown should complete with a :normal reason and the process should be gone
+      assert_receive {:shutdown, :ok}, 1000
+      refute Process.alive?(async)
+    end)
+    assert log =~ "Timed out waiting for the async_pub_q4 async queue to drain"
   end
 end

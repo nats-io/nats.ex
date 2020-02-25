@@ -24,6 +24,7 @@ defmodule Gnat.Async.Queue do
       |> Map.merge(queue_settings)
       |> Map.put(:queue, :queue.new())
       |> Map.put(:in_flight, %{})
+      |> Map.put(:shutdown_pid, nil)
       |> Map.put(:status, :running)
     {:ok, queue_settings, 0}
   end
@@ -40,7 +41,9 @@ defmodule Gnat.Async.Queue do
   @impl GenServer
   def handle_info(:timeout, state) do
     if :queue.is_empty(state.queue) do
+      Logger.info("#{__MODULE__} empty queue with #{inspect(state)}")
       if state.status == @shutting_down_status do
+        Process.send(state.shutdown_pid, :finished_shutdown, [])
         {:stop, :normal, state}
       else
         {:noreply, state, @pause}
@@ -54,9 +57,9 @@ defmodule Gnat.Async.Queue do
     in_flight = Map.delete(state.in_flight, ref)
     {:noreply, %{state | in_flight: in_flight}, 0}
   end
-  def handle_info(:shutdown, state) do
+  def handle_info({:shutdown, pid}, state) do
     Logger.info("#{__MODULE__} starting graceful shutdown")
-    {:noreply, %{state | status: @shutting_down_status}, 0}
+    {:noreply, %{state | status: @shutting_down_status, shutdown_pid: pid}, 0}
   end
   def handle_info(other, state) do
     Logger.error("#{__MODULE__} Received Unexpected Message: #{inspect(other)}")

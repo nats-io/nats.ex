@@ -1,6 +1,7 @@
 defmodule Gnat.Async.Terminator do
   @moduledoc false
 
+  require Logger
   use GenServer
 
   def start_link(settings) do
@@ -13,7 +14,20 @@ defmodule Gnat.Async.Terminator do
   end
 
   def terminate(:shutdown, state) do
-    Process.send(state.name, :shutdown, [])
-    :timer.sleep(5_000)
+    Process.send(state.name, {:shutdown, self()}, [])
+    receive do
+      :finished_shutdown -> nil
+    after
+      state.graceful_shutdown_timeout ->
+        Logger.error("#{__MODULE__} Timed out waiting for the #{state.name} async queue to drain")
+        :error_logger.error_report([
+          type: :gnat_async_terminator_timeout,
+          message: "Timed out waiting for the #{state.name} async queue to drain"
+        ])
+    end
+  end
+
+  def terminator(reason, _state) do
+    Logger.error("#{__MODULE__} shutting down with unexpected reason #{inspect(reason)}")
   end
 end
