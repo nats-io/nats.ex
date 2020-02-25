@@ -47,7 +47,6 @@ defmodule Gnat.AsyncTest do
       test_pid = self()
       spawn_link(fn ->
         stopped = Supervisor.stop(async, :normal)
-        Logger.info("Supervisor.stop returned #{inspect(stopped)}")
         Process.send(test_pid, {:shutdown, stopped}, [])
       end)
       :timer.sleep(15) # give a small amount of time for the shutdown signal to be received

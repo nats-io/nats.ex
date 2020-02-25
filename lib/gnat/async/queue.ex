@@ -41,8 +41,8 @@ defmodule Gnat.Async.Queue do
   @impl GenServer
   def handle_info(:timeout, state) do
     if :queue.is_empty(state.queue) do
-      Logger.info("#{__MODULE__} empty queue with #{inspect(state)}")
       if state.status == @shutting_down_status do
+        Logger.info("#{__MODULE__} Completed Graceful Shutdown of #{state.name}")
         Process.send(state.shutdown_pid, :finished_shutdown, [])
         {:stop, :normal, state}
       else
