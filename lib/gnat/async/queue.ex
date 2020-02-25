@@ -1,4 +1,6 @@
-defmodule Gnat.AsyncPub do
+defmodule Gnat.Async.Queue do
+  @moduledoc false
+
   use GenServer
   require Logger
 
@@ -7,20 +9,16 @@ defmodule Gnat.AsyncPub do
   @pause 25
   @shutting_down_status :shutting_down
 
-  def start_link(queue_settings \\ %{}, opts \\ []) do
-    GenServer.start_link(__MODULE__, queue_settings, opts)
+  def start_link(%{name: name}=settings) do
+    GenServer.start_link(__MODULE__, settings, [name: name])
   end
 
-  @type pub_error :: :shutting_down | :queue_full | :memory_full
-  @spec pub(GenServer.server, String.t, binary(), keyword()) :: :ok | {:error, pub_error()}
   def pub(pid, topic, message, opts \\ []) do
     GenServer.call(pid, {:pub, topic, message, opts})
   end
 
   @impl GenServer
   def init(%{connection_name: name}=queue_settings) when is_atom(name) do
-    Process.flag(:trap_exit, true)
-    Process.flag(:trap_exit, true)
     queue_settings =
       @default_queue_settings
       |> Map.merge(queue_settings)
@@ -63,17 +61,6 @@ defmodule Gnat.AsyncPub do
   def handle_info(other, state) do
     Logger.error("#{__MODULE__} Received Unexpected Message: #{inspect(other)}")
     {:noreply, state, 0}
-  end
-
-  @impl GenServer
-  def terminate(:shutdown, _state) do
-    Process.send(self(), :shutdown, [])
-  end
-  def terminate(:normal, _state) do
-    Logger.info("#{__MODULE__} finished graceful shutdown")
-  end
-  def terminate(reason, _state) do
-    Logger.error("#{__MODULE__} unexpected shutdown #{inspect(reason)}")
   end
 
   defp try_to_send_message(%{queue: queue, connection_name: name, in_flight: in_flight}=state) do
