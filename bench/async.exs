@@ -1,7 +1,10 @@
 defmodule BenchPublisher do
+  alias Gnat.Async
+
   def async_publish(num_senders, messages_per_sender) do
     {:ok, _pid} = Gnat.start_link(%{}, name: :gnat)
-    {:ok, _pid} = Gnat.AsyncPub.start_link(%{connection_name: :gnat}, name: :async_pub)
+    {:ok, pid} = Async.start_link(%{connection_name: :gnat, name: :async_pub})
+    true = Process.register(pid, :async_supervisor)
 
     (1..num_senders)
     |> Enum.map(fn(_i) -> kick_off_async_publish(messages_per_sender) end)
@@ -22,7 +25,7 @@ defmodule BenchPublisher do
     Task.async(fn ->
       (1..num_messages)
       |> Enum.each(fn(_i) ->
-        Gnat.AsyncPub.pub(:async_pub, "bench", :erlang.monotonic_time() |> Integer.to_string())
+        Async.pub(:async_pub, "bench", :erlang.monotonic_time() |> Integer.to_string())
       end)
     end)
   end
@@ -38,7 +41,7 @@ defmodule BenchPublisher do
 
   def cleanup_async_pubs do
     Gnat.stop(:gnat)
-    Gnat.AsyncPub.stop(:async_pub)
+    :ok = Supervisor.stop(:async_supervisor)
   end
 end
 
