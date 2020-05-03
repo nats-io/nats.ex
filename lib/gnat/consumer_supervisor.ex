@@ -60,8 +60,10 @@ defmodule Gnat.ConsumerSupervisor do
         _ref = Process.monitor(connection_pid)
         subscriptions = Enum.map(state.subscription_topics, fn(topic_and_queue_group) ->
           topic = Map.fetch!(topic_and_queue_group, :topic)
-          queue_group = Map.get(topic_and_queue_group, :queue_group)
-          {:ok, subscription} = Gnat.sub(connection_pid, self(), topic, queue_group: queue_group)
+          {:ok, subscription} = case Map.get(topic_and_queue_group, :queue_group) do
+            nil -> Gnat.sub(connection_pid, self(), topic)
+            queue_group -> Gnat.sub(connection_pid, self(), topic, queue_group: queue_group)
+          end
           subscription
         end)
         {:noreply, %{state | status: :connected, connection_pid: connection_pid, subscriptions: subscriptions}}
