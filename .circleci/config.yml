@@ -35,6 +35,9 @@ jobs:
       - run:
           command: ./nats-server-v2.1.2-linux-amd64/nats-server -p 4226 --auth SpecialToken
           background: true
+      - run:
+        command: ./nats-server-v2.1.2-linux-amd64/nats-server -p 4227 -c test/fixtures/nkey_config
+        background: true
       - restore_cache:
           keys:
             - build-<<parameters.version>>
