@@ -6,10 +6,10 @@ case :gen_tcp.connect('localhost', 4222, [:binary]) do
   {:ok, socket} ->
     :gen_tcp.close(socket)
   {:error, reason} ->
-    Mix.raise "Cannot connect to gnatsd" <>
+    Mix.raise "Cannot connect to nats-server" <>
               " (http://localhost:4222):" <>
               " #{:inet.format_error(reason)}\n" <>
-              "You probably need to start gnatsd."
+              "You probably need to start nats-server."
 end
 
 # this is used by some property tests, see test/gnat_property_test.exs
@@ -43,10 +43,10 @@ defmodule CheckForExpectedNatsServers do
       {:ok, socket} ->
         :gen_tcp.close(socket)
       {:error, reason} ->
-        Mix.raise "Cannot connect to gnatsd" <>
+        Mix.raise "Cannot connect to nats-server" <>
                   " (tcp://localhost:4222):" <>
                   " #{:inet.format_error(reason)}\n" <>
-                  "You probably need to start gnatsd."
+                  "You probably need to start nats-server."
     end
   end
 
@@ -55,12 +55,12 @@ defmodule CheckForExpectedNatsServers do
       {:ok, socket} ->
         :gen_tcp.close(socket)
       {:error, reason} ->
-        Mix.raise "Cannot connect to gnatsd" <>
+        Mix.raise "Cannot connect to nats-server" <>
                   " (tcp://localhost:4223):" <>
                   " #{:inet.format_error(reason)}\n" <>
-                  "You probably need to start a gnatsd " <>
+                  "You probably need to start a nats-server " <>
                   "server that requires authentication with " <>
-                  "the following command `gnatsd -p 4223 " <>
+                  "the following command `nats-server -p 4223 " <>
                   "--user bob --pass alice`."
     end
 
@@ -68,12 +68,12 @@ defmodule CheckForExpectedNatsServers do
       {:ok, socket} ->
         :gen_tcp.close(socket)
       {:error, reason} ->
-        Mix.raise "Cannot connect to gnatsd" <>
+        Mix.raise "Cannot connect to nats-server" <>
                   " (tcp://localhost:4224):" <>
                   " #{:inet.format_error(reason)}\n" <>
-                  "You probably need to start a gnatsd " <>
+                  "You probably need to start a nats-server " <>
                   "server that requires tls with " <>
-                  "a command like `gnatsd -p 4224 " <>
+                  "a command like `nats-server -p 4224 " <>
                   "--tls --tlscert test/fixtures/server-cert.pem " <>
                   "--tlskey test/fixtures/server-key.pem`."
     end
@@ -82,12 +82,12 @@ defmodule CheckForExpectedNatsServers do
       {:ok, socket} ->
         :gen_tcp.close(socket)
       {:error, reason} ->
-        Mix.raise "Cannot connect to gnatsd" <>
+        Mix.raise "Cannot connect to nats-server" <>
                   " (tcp://localhost:4225):" <>
                   " #{:inet.format_error(reason)}\n" <>
-                  "You probably need to start a gnatsd " <>
+                  "You probably need to start a nats-server " <>
                   "server that requires tls with " <>
-                  "a command like `gnatsd -p 4225 --tls " <>
+                  "a command like `nats-server -p 4225 --tls " <>
                   "--tlscert test/fixtures/server-cert.pem " <>
                   "--tlskey test/fixtures/server-key.pem " <>
                   "--tlscacert test/fixtures/ca.pem --tlsverify"
@@ -97,13 +97,26 @@ defmodule CheckForExpectedNatsServers do
       {:ok, socket} ->
         :gen_tcp.close(socket)
       {:error, reason} ->
-        Mix.raise "Cannot connect to gnatsd" <>
+        Mix.raise "Cannot connect to nats-server" <>
                   " (tcp://localhost:4226):" <>
                   " #{:inet.format_error(reason)}\n" <>
-                  "You probably need to start a gnatsd " <>
+                  "You probably need to start a nats-server " <>
                   "server that requires authentication with " <>
-                  "the following command `gnatsd -p 4226 " <>
+                  "the following command `nats-server -p 4226 " <>
                   "--auth SpecialToken`."
+    end
+
+    case :gen_tcp.connect('localhost', 4227, [:binary]) do
+      {:ok, socket} ->
+        :gen_tcp.close(socket)
+      {:error, reason} ->
+        Mix.raise "Cannot connect to nats-server" <>
+                  " (tcp://localhost:4227):" <>
+                  " #{:inet.format_error(reason)}\n" <>
+                  "You probably need to start a nats-server " <>
+                  "server that requires authentication with " <>
+                  "the following command `nats-server -p 4227 " <>
+                  "-c test/fixtures/nkey_config`."
     end
   end
   def check_for_tag(_), do: :ok

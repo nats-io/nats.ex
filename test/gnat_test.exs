@@ -66,6 +66,17 @@ defmodule GnatTest do
     assert Gnat.stop(gnat) == :ok
   end
 
+  @tag :multi_server
+  test "connect to a server which requires nkeys" do
+    connection_settings = %{
+      port: 4227,
+      nkey_seed: File.read!("test/fixtures/nkey_seed")
+    }
+    {:ok, gnat} = Gnat.start_link(connection_settings)
+    assert Gnat.ping(gnat) == :ok
+    assert Gnat.stop(gnat) == :ok
+  end
+
   test "subscribe to topic and receive a message" do
     {:ok, pid} = Gnat.start_link()
     {:ok, _ref} = Gnat.sub(pid, self(), "test")
