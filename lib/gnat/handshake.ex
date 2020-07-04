@@ -35,6 +35,20 @@ defmodule Gnat.Handshake do
     opts = Jason.encode!(%{auth_token: token, verbose: false}, maps: :strict)
     socket_write(connection_settings, socket, "CONNECT #{opts}\r\n")
   end
+  defp send_connect_message(socket, %{auth_required: true, nonce: nonce}=_options, %{nkey_seed: seed}=connection_settings) do
+    {:ok, nkey} = NKEYS.from_seed(seed)
+
+    signature = NKEYS.sign(nkey, nonce) |> Base.url_encode64() |> String.replace("=", "")
+    params = %{sig: signature, verbose: false, protocol: 1}
+    params = if Map.has_key?(connection_settings, :jwt) do
+      Map.put(params, :jwt, Map.get(connection_settings, :jwt))
+    else
+      public = NKEYS.public_nkey(nkey)
+      Map.put(params, :nkey, public)
+    end
+    opts = Jason.encode!(params, maps: :strict)
+    socket_write(connection_settings, socket, "CONNECT #{opts}\r\n")
+  end
   defp send_connect_message(socket, _options, connection_settings) do
     socket_write(connection_settings, socket, "CONNECT {\"verbose\": false}\r\n")
   end

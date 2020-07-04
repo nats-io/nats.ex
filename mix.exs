@@ -4,7 +4,7 @@ defmodule Gnat.Mixfile do
   def project do
     [
       app: :gnat,
-      version: "1.0.1",
+      version: "1.1.0",
       elixir: "~> 1.7",
       elixirc_paths: elixirc_paths(Mix.env()),
       build_embedded: Mix.env() == :prod,
@@ -32,6 +32,7 @@ defmodule Gnat.Mixfile do
       {:ex_doc, "~> 0.15", only: :dev},
       {:jason, "~> 1.1"},
       {:nimble_parsec, "~> 0.5"},
+      {:nkeys, "~> 0.2"},
       {:propcheck, "~> 1.0", only: :test},
       {:telemetry, "~> 0.4"}
     ]
