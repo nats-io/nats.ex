@@ -1,4 +1,8 @@
 [![CircleCI](https://circleci.com/gh/nats-io/nats.ex/tree/master.svg?style=svg)](https://circleci.com/gh/nats-io/nats.ex/tree/master)
+[![][hex-badge]][hex-url]
+
+[hex-badge]: https://img.shields.io/hexpm/v/gnat
+[hex-url]: https://hex.pm/packages/gnat
 
 ![gnat](gnat.png)
 
@@ -7,9 +11,11 @@
 A [nats.io](https://nats.io/) client for elixir.
 The goals of the project are resiliency, performance, and ease of use.
 
+> Hex documentation available here: https://hex.pm/packages/gnat
+
 ## Usage
 
-```elixir
+``` elixir
 {:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222})
 # Or if the server requires TLS you can start a connection with:
 # {:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, tls: true})
@@ -24,7 +30,7 @@ end
 
 ## Authentication
 
-```elixir
+``` elixir
 # with user and password
 {:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, username: "joe", password: "123", auth_required: true})
 
@@ -46,7 +52,7 @@ end
 [Nats Server](https://github.com/nats-io/nats-server) is often configured to accept or require TLS connections.
 In order to connect to these clusters you'll want to pass some extra TLS settings to your `Gnat` connection.
 
-```elixir
+``` elixir
 # using a basic TLS connection
 {:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, tls: true})
 
@@ -56,10 +62,10 @@ In order to connect to these clusters you'll want to pass some extra TLS setting
 
 ## Resiliency
 
-If you would like to stay connected to a cluster of nats servers, you should consider using `Gnat.ConnectionSupervisor`.
+If you would like to stay connected to a cluster of nats servers, you should consider using `Gnat.ConnectionSupervisor` .
 This can be added to your supervision tree in your project and will handle automatically re-connecting to the cluster.
 
-For long-lived subscriptions consider using `Gnat.ConsumerSupervisor`.
+For long-lived subscriptions consider using `Gnat.ConsumerSupervisor` .
 This can also be added to your supervision tree and use a supervised connection to re-establish a subscription.
 It also handles details like handling each message in a supervised process so you isolate failures and get OTP logs when an unexpected error occurs.
 
@@ -68,7 +74,7 @@ It also handles details like handling each message in a supervised process so yo
 Gnat uses [telemetry](https://hex.pm/packages/telemetry) to make instrumentation data available to clients.
 If you want to record metrics around the number of messages or latency of message publishes, subscribes, requests, etc you can do the following in your project:
 
-```elixir
+``` elixir
 iex(1)> metrics_function = fn(event_name, measurements, event_meta, config) ->
   IO.inspect([event_name, measurements, event_meta, config])
   :ok
@@ -95,9 +101,9 @@ iex(6)> Gnat.pub(gnat, "topic", "ohai")
 :ok
 ```
 
-The `pub`, `sub`, `request`, and `unsub` events all report the latency of those respective calls.
+The `pub` , `sub` , `request` , and `unsub` events all report the latency of those respective calls.
 The `message_received` event reports a number of messages like `%{count: 1}` because there isn't a good latency metric to report.
-All of the events (except `unsub`) include metadata with a `:topic` key so you can split your metrics by topic.
+All of the events (except `unsub` ) include metadata with a `:topic` key so you can split your metrics by topic.
 
 ## Benchmarks
 
@@ -117,12 +123,12 @@ As of this commit my 2018 macbook pro shows.
 
 ## Development
 
-Before running the tests make sure you have a locally running copy of `nats-server` (`brew install nats-server`).
+Before running the tests make sure you have a locally running copy of `nats-server` ( `brew install nats-server` ).
 We currently use version `2.1.2` in CI, but anything higher than `0.9.6` should be fine.
 The typical `mix test` will run all the basic unit tests.
 
 You can also run the `multi_server` set of tests that test connectivity to different
-`gnatsd` configurations. You can run these with `mix test --only multi_server`.
+`gnatsd` configurations. You can run these with `mix test --only multi_server` .
 The tests will tell you how to start the different configurations.
 
 There are also some property-based tests that generate a lot of test cases.
