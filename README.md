@@ -128,7 +128,7 @@ We currently use version `2.1.2` in CI, but anything higher than `0.9.6` should 
 The typical `mix test` will run all the basic unit tests.
 
 You can also run the `multi_server` set of tests that test connectivity to different
-`gnatsd` configurations. You can run these with `mix test --only multi_server` .
+`nats-server` configurations. You can run these with `mix test --only multi_server` .
 The tests will tell you how to start the different configurations.
 
 There are also some property-based tests that generate a lot of test cases.

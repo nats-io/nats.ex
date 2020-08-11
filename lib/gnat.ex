@@ -7,6 +7,7 @@ defmodule Gnat do
   require Logger
   alias Gnat.{Command, Parsec}
 
+  @type t :: GenServer.server()
   @type message :: %{topic: String.t, body: String.t, sid: non_neg_integer(), reply_to: String.t}
 
   @default_connection_settings %{
@@ -49,7 +50,7 @@ defmodule Gnat do
   :ok = Gnat.stop(gnat)
   ```
   """
-  @spec stop(GenServer.server) :: :ok
+  @spec stop(t()) :: :ok
   def stop(pid), do: GenServer.call(pid, :stop)
 
   @doc """
@@ -71,7 +72,7 @@ defmodule Gnat do
   end
   ```
   """
-  @spec sub(GenServer.server, pid(), String.t, keyword()) :: {:ok, non_neg_integer()} | {:ok, String.t} | {:error, String.t}
+  @spec sub(t(), pid(), String.t, keyword()) :: {:ok, non_neg_integer()} | {:ok, String.t} | {:error, String.t}
   def sub(pid, subscriber, topic, opts \\ []) do
     start = :erlang.monotonic_time()
     result = GenServer.call(pid, {:sub, subscriber, topic, opts})
@@ -96,7 +97,7 @@ defmodule Gnat do
   :ok = Gnat.pub(gnat, "characters", "Star Lord", reply_to: "me")
   ```
   """
-  @spec pub(GenServer.server, String.t, binary(), keyword()) :: :ok
+  @spec pub(t(), String.t, binary(), keyword()) :: :ok
   def pub(pid, topic, message, opts \\ []) do
     start = :erlang.monotonic_time()
     result = GenServer.call(pid, {:pub, topic, message, opts})
@@ -122,7 +123,7 @@ defmodule Gnat do
   end
   ```
   """
-  @spec request(GenServer.server, String.t, binary(), keyword()) :: {:ok, message} | {:error, :timeout}
+  @spec request(t(), String.t, binary(), keyword()) :: {:ok, message} | {:error, :timeout}
   def request(pid, topic, body, opts \\ []) do
     receive_timeout = Keyword.get(opts, :receive_timeout, 60_000)
     start = :erlang.monotonic_time()
@@ -157,7 +158,7 @@ defmodule Gnat do
   :ok = Gnat.unsub(gnat, subscription, max_messages: 2)
   ```
   """
-  @spec unsub(GenServer.server, non_neg_integer() | String.t, keyword()) :: :ok
+  @spec unsub(t(), non_neg_integer() | String.t, keyword()) :: :ok
   def unsub(pid, sid, opts \\ []) do
     start = :erlang.monotonic_time()
     result = GenServer.call(pid, {:unsub, sid, opts})
@@ -175,6 +176,7 @@ defmodule Gnat do
   :ok = Gnat.ping(gnat)
   ```
   """
+  @deprecated "Pinging is handled internally by the connection, this functionality will be removed"
   def ping(pid) do
     GenServer.call(pid, {:ping, self()})
     receive do
@@ -185,7 +187,7 @@ defmodule Gnat do
   end
 
   @doc "get the number of active subscriptions"
-  @spec active_subscriptions(GenServer.server) :: {:ok, non_neg_integer()}
+  @spec active_subscriptions(t()) :: {:ok, non_neg_integer()}
   def active_subscriptions(pid) do
     GenServer.call(pid, :active_subscriptions)
   end
