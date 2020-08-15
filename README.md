@@ -1,10 +1,7 @@
 [![CircleCI](https://circleci.com/gh/nats-io/nats.ex/tree/master.svg?style=svg)](https://circleci.com/gh/nats-io/nats.ex/tree/master)
-[![][hex-badge]][hex-url]
+[![Hex](https://img.shields.io/hexpm/v/gnat)](https://hex.pm/packages/gnat)
 
-[hex-badge]: https://img.shields.io/hexpm/v/gnat
-[hex-url]: https://hex.pm/packages/gnat
-
-![gnat](gnat.png)
+![NATS](https://branding.cncf.io/img/projects/nats/stacked/color/nats-stacked-color.svg)
 
 # Gnat
 

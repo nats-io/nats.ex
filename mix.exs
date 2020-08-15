@@ -4,7 +4,7 @@ defmodule Gnat.Mixfile do
   def project do
     [
       app: :gnat,
-      version: "1.1.1",
+      version: "1.1.2",
       elixir: "~> 1.7",
       elixirc_paths: elixirc_paths(Mix.env()),
       build_embedded: Mix.env() == :prod,
@@ -15,7 +15,7 @@ defmodule Gnat.Mixfile do
       deps: deps(),
       docs: [
         main: "readme",
-        logo: "gnat.png",
+        logo: "nats-icon-color.svg",
         extras: ["README.md"]
       ]
     ]
