@@ -21,7 +21,7 @@ defmodule Gnat.ConsumerSupervisor do
   worker(Gnat.ConsumerSupervisor, [consumer_supervisor_settings, [name: :rpc_consumer]], shutdown: 30_000)
   ```
 
-  The second argument is a keyword list that gets used as the GenServer options so you can pass a name that you want to register for the consumer process if you like. The `consuming_function` specific which module and function to call when messages arrive. The function will be called with a single argument which is a gnat message just like you get when you call `Gnat.sub` directly.
+  The second argument is a keyword list that gets used as the GenServer options so you can pass a name that you want to register for the consumer process if you like. The `:consuming_function` specifies which module and function to call when messages arrive. The function will be called with a single argument which is a `t:Gnat.message/0` just like you get when you call `Gnat.sub/4` directly.
 
   You can have a single consumer that subscribes to multiple topics or multiple consumers that subscribe to different topics and call different consuming functions. It is recommended that your `ConsumerSupervisor`s are present later in your supervision tree than your `ConnectionSupervisor`. That way during a shutdown the `ConsumerSupervisor` can attempt a graceful shutdown of the consumer before shutting down the connection.
   """

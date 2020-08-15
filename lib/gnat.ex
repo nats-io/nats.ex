@@ -8,7 +8,8 @@ defmodule Gnat do
   alias Gnat.{Command, Parsec}
 
   @type t :: GenServer.server()
-  @type message :: %{topic: String.t, body: String.t, sid: non_neg_integer(), reply_to: String.t}
+  @type message :: %{gnat: t(), topic: String.t, body: String.t, sid: non_neg_integer(), reply_to: String.t}
+  @type sent_message :: {:msg, message()}
 
   @default_connection_settings %{
     host: 'localhost',
@@ -62,6 +63,8 @@ defmodule Gnat do
   By default each subscriber will receive a copy of every message on the topic.
   When a queue_group is supplied messages will be spread among the subscribers
   in the same group. (see [nats queueing](https://nats.io/documentation/concepts/nats-queueing/))
+
+  The subscribed process will begin receiving messages with a structure of `t:sent_message/0`
 
   ```
   {:ok, gnat} = Gnat.start_link()
