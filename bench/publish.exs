@@ -8,4 +8,4 @@ inputs = %{
 
 Benchee.run(%{
   "pub" => fn(msg) -> :ok = Gnat.pub(client_pid, "echo", msg) end,
-}, time: 10, parallel: 1, console: [comparison: false], inputs: inputs)
+}, time: 10, parallel: 1, inputs: inputs, formatters: [{Benchee.Formatters.Console, comparisons: false}])

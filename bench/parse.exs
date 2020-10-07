@@ -11,4 +11,4 @@ inputs = %{
 parsec = Gnat.Parsec.new()
 Benchee.run(%{
   "parsec" => fn(tcp_packet) -> {_parse, [_msg]} = Gnat.Parsec.parse(parsec, tcp_packet) end,
-}, time: 10, parallel: 1, console: [comparison: false], inputs: inputs)
+}, time: 10, parallel: 1, inputs: inputs, formatters: [{Benchee.Formatters.Console, comparisons: false}])

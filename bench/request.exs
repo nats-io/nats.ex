@@ -33,4 +33,4 @@ inputs = %{
 
 Benchee.run(%{
   "request" => fn(msg) -> {:ok, %{body: _}} = Gnat.request(client_pid, "echo", msg) end,
-}, time: 10, parallel: 1, console: [comparison: false], inputs: inputs)
+}, time: 10, parallel: 1, inputs: inputs, formatters: [{Benchee.Formatters.Console, comparisons: false}])

@@ -1,5 +1,5 @@
 Application.put_env(:client, :num_connections, 4)
-num_requesters = 512
+num_requesters = 16
 requests_per_requester = 500
 
 defmodule Client do
