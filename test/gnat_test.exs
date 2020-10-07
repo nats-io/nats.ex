@@ -24,7 +24,6 @@ defmodule GnatTest do
     }
     {:ok, pid} = Gnat.start_link(connection_settings)
     assert Process.alive?(pid)
-    :ok = Gnat.ping(pid)
     :ok = Gnat.stop(pid)
   end
 
@@ -39,7 +38,6 @@ defmodule GnatTest do
     }
     {:ok, pid} = Gnat.start_link(connection_settings)
     assert Process.alive?(pid)
-    :ok = Gnat.ping(pid)
     :ok = Gnat.stop(pid)
   end
 
@@ -47,7 +45,6 @@ defmodule GnatTest do
   test "connet to a server which requires TLS" do
     connection_settings = %{port: 4224, tls: true}
     {:ok, gnat} = Gnat.start_link(connection_settings)
-    assert Gnat.ping(gnat) == :ok
     assert Gnat.stop(gnat) == :ok
   end
 
@@ -62,7 +59,6 @@ defmodule GnatTest do
       ],
     }
     {:ok, gnat} = Gnat.start_link(connection_settings)
-    assert Gnat.ping(gnat) == :ok
     assert Gnat.stop(gnat) == :ok
   end
 
@@ -73,7 +69,6 @@ defmodule GnatTest do
       nkey_seed: File.read!("test/fixtures/nkey_seed")
     }
     {:ok, gnat} = Gnat.start_link(connection_settings)
-    assert Gnat.ping(gnat) == :ok
     assert Gnat.stop(gnat) == :ok
   end
 
