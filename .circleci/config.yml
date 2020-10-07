@@ -1,6 +1,6 @@
 version: 2.1
 
-default_version: &default_version 1.10.3
+default_version: &default_version 1.10.4
 
 jobs:
   build:
@@ -74,7 +74,7 @@ jobs:
       - run: mix local.rebar --force
       - run: mix do deps.get, compile
       - run: mix format --check-formatted
-      - run: mix dialyzer --halt-exit-status
+      - run: mix dialyzer
       - save_cache:
           key: lint-<<parameters.version>>-{{ checksum "mix.lock" }}
           paths:
@@ -87,8 +87,8 @@ workflows:
   testing_all_versions:
     jobs:
       - build:
-          name: "Test Elixir 1.10.3"
-          version: 1.10.3
+          name: "Test Elixir 1.10.4"
+          version: 1.10.4
       - build:
           name: "Test Elixir 1.9.4"
           version: 1.9.4
