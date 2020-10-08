@@ -28,24 +28,4 @@ defmodule GnatPropertyTest do
       msg.body == payload
     end)
   end
-
-  @tag :property
-  property "auto-unsubscribes after n messages" do
-    numtests(@numtests, forall {%{subject: subject, payload: payload}, max_messages} <- {message(), pos_integer()} do
-      {:ok, ref} = Gnat.sub(:test_connection, self(), subject)
-      :timer.sleep(10)
-      :ok = Gnat.unsub(:test_connection, ref, max_messages: max_messages)
-      Enum.each(1..max_messages, fn(_) ->
-        {:ok, 2} = Gnat.active_subscriptions(:test_connection)
-        :ok = Gnat.pub(:test_connection, subject, payload)
-        receive do
-          {:msg, %{body: ^payload}} -> :ok
-          after 100 -> raise "did not receive message from #{subject} within 100ms"
-        end
-      end)
-      # Note: we always keep 1 active subscription setup for the purpose of request-reply
-      # usage. So there should still be one after the rest have cleaned themselves up.
-      Gnat.active_subscriptions(:test_connection) == {:ok, 1}
-    end)
-  end
 end
