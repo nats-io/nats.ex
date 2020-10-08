@@ -32,6 +32,43 @@ defmodule RpcEndpoint do
 end
 spawn(&RpcEndpoint.init/0)
 
+defmodule ExampleServer do
+  use Gnat.Server
+
+  def request(%{topic: "example.good", body: body}) do
+    {:reply, "Re: #{body}"}
+  end
+
+  def request(%{topic: "example.error"}) do
+    {:error, "oops"}
+  end
+
+  def request(%{topic: "example.raise"}) do
+    raise "oops"
+  end
+
+  def error(_msg, "oops") do
+    {:reply, "400 error"}
+  end
+
+  def error(_msg, %RuntimeError{message: "oops"}) do
+    {:reply, "500 error"}
+  end
+
+  def error(msg, other) do
+    require Logger
+    Logger.error("#{msg.topic} failed #{inspect(other)}")
+  end
+end
+
+{:ok, _pid} = Gnat.ConsumerSupervisor.start_link(%{
+  connection_name: :test_connection,
+  module: ExampleServer,
+  subscription_topics: [
+    %{topic: "example.*"}
+  ]
+})
+
 defmodule CheckForExpectedNatsServers do
   def check(tags) do
     check_for_default()
