@@ -1,10 +1,13 @@
 defmodule Gnat.Mixfile do
   use Mix.Project
 
+  @source_url "https://github.com/mmmries/gnat"
+  @version "1.2.0"
+
   def project do
     [
       app: :gnat,
-      version: "1.2.0",
+      version: @version,
       elixir: "~> 1.7",
       elixirc_paths: elixirc_paths(Mix.env()),
       build_embedded: Mix.env() == :prod,
@@ -16,7 +19,9 @@ defmodule Gnat.Mixfile do
       docs: [
         main: "readme",
         logo: "nats-icon-color.svg",
-        extras: ["README.md"]
+        source_ref: "v#{@version}",
+        source_url: @source_url,
+        extras: ["README.md", "CHANGELOG.md"]
       ]
     ]
   end
@@ -46,8 +51,8 @@ defmodule Gnat.Mixfile do
       description: "A nats client in pure elixir. Resiliance, Performance, Ease-of-Use.",
       licenses: ["MIT"],
       links: %{
-        "Github" => "https://github.com/mmmries/gnat",
-        "Docs" => "https://hexdocs.pm/gnat"
+        "Changelog" => "#{@source_url}/blob/master/CHANGELOG.md",
+        "Github" => @source_url
       },
       maintainers: [
         "Jon Carstens",
