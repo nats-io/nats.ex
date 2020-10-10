@@ -1,11 +1,14 @@
-[![CircleCI](https://circleci.com/gh/nats-io/nats.ex/tree/master.svg?style=svg)](https://circleci.com/gh/nats-io/nats.ex/tree/master)
-[![Hex](https://img.shields.io/hexpm/v/gnat)](https://hex.pm/packages/gnat)
+[![circleci.com](https://circleci.com/gh/nats-io/nats.ex/tree/master.svg?style=svg)](https://circleci.com/gh/nats-io/nats.ex/tree/master)
+[![hex.pm](https://img.shields.io/hexpm/v/gnat.svg)](https://hex.pm/packages/gnat)
+[![hex.pm](https://img.shields.io/hexpm/dt/gnat.svg)](https://hex.pm/packages/gnat)
+[![hex.pm](https://img.shields.io/hexpm/l/gnat.svg)](https://hex.pm/packages/gnat)
+[![github.com](https://img.shields.io/github/last-commit/nats-io/nats.ex.svg)](https://github.com/nats-io/nats.ex)
 
 ![NATS](https://branding.cncf.io/img/projects/nats/stacked/color/nats-stacked-color.svg)
 
 # Gnat
 
-A [nats.io](https://nats.io/) client for elixir.
+A [nats.io](https://nats.io/) client for Elixir.
 The goals of the project are resiliency, performance, and ease of use.
 
 > Hex documentation available here: https://hex.pm/packages/gnat
@@ -109,8 +112,8 @@ To this end, there is a `bench` branch on this project which includes a `server.
 
 As of this commit, the [latest benchmark on a 16-core server](https://gist.github.com/mmmries/08fe44fdd47a6f8838936f41170f270a) shows that you can make 170k+ req/sec or up to 192MB/sec.
 
-The `bench/*.exs` files also contain some straight-line single-cpu performance tests.
-As of this commit my 2018 macbook pro shows.
+The `bench/*.exs` files also contain some straight-line single-CPU performance tests.
+As of this commit my 2018 MacBook pro shows.
 
 |               | ips      | average   | deviation | median |
 | ------------- | -------- | --------- | --------- | ------ |
