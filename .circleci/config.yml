@@ -18,25 +18,25 @@ jobs:
 
     steps:
       - checkout  # check out source code to working directory
-      - run: wget https://github.com/nats-io/nats-server/releases/download/v2.1.9/nats-server-v2.1.9-linux-amd64.zip
-      - run: unzip nats-server-v2.1.9-linux-amd64.zip
+      - run: wget https://github.com/nats-io/nats-server/releases/download/v2.2.6/nats-server-v2.2.6-linux-amd64.zip
+      - run: unzip nats-server-v2.2.6-linux-amd64.zip
       - run:
-          command: ./nats-server-v2.1.9-linux-amd64/nats-server
+          command: ./nats-server-v2.2.6-linux-amd64/nats-server
           background: true
       - run:
-          command: ./nats-server-v2.1.9-linux-amd64/nats-server -p 4223 --user bob --pass alice
+          command: ./nats-server-v2.2.6-linux-amd64/nats-server -p 4223 --user bob --pass alice
           background: true
       - run:
-          command: ./nats-server-v2.1.9-linux-amd64/nats-server -p 4224 --tls --tlscert test/fixtures/server-cert.pem --tlskey test/fixtures/server-key.pem
+          command: ./nats-server-v2.2.6-linux-amd64/nats-server -p 4224 --tls --tlscert test/fixtures/server-cert.pem --tlskey test/fixtures/server-key.pem
           background: true
       - run:
-          command: ./nats-server-v2.1.9-linux-amd64/nats-server -p 4225 --tls --tlscert test/fixtures/server-cert.pem --tlskey test/fixtures/server-key.pem --tlscacert test/fixtures/ca.pem --tlsverify
+          command: ./nats-server-v2.2.6-linux-amd64/nats-server -p 4225 --tls --tlscert test/fixtures/server-cert.pem --tlskey test/fixtures/server-key.pem --tlscacert test/fixtures/ca.pem --tlsverify
           background: true
       - run:
-          command: ./nats-server-v2.1.9-linux-amd64/nats-server -p 4226 --auth SpecialToken
+          command: ./nats-server-v2.2.6-linux-amd64/nats-server -p 4226 --auth SpecialToken
           background: true
       - run:
-          command: ./nats-server-v2.1.9-linux-amd64/nats-server -p 4227 -c test/fixtures/nkey_config
+          command: ./nats-server-v2.2.6-linux-amd64/nats-server -p 4227 -c test/fixtures/nkey_config
           background: true
       - restore_cache:
           keys:
