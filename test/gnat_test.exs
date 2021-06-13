@@ -81,12 +81,32 @@ defmodule GnatTest do
     :ok = Gnat.stop(pid)
   end
 
+  test "subscribe to topic and receive a message with headers" do
+    {:ok, pid} = Gnat.start_link()
+    {:ok, _ref} = Gnat.sub(pid, self(), "sub_with_headers")
+    headers = [{"X", "foo"}]
+    :ok = Gnat.pub(pid, "sub_with_headers", "yo dawg", headers: headers)
+
+    assert_receive {:msg, %{topic: "sub_with_headers", body: "yo dawg", reply_to: nil, headers: [{"x", "foo"}]}}, 1000
+    :ok = Gnat.stop(pid)
+  end
+
   test "subscribe receive a message with a reply_to" do
     {:ok, pid} = Gnat.start_link()
     {:ok, _ref} = Gnat.sub(pid, self(), "with_reply")
     :ok = Gnat.pub(pid, "with_reply", "yo dawg", reply_to: "me")
 
     assert_receive {:msg, %{topic: "with_reply", reply_to: "me", body: "yo dawg"}}, 1000
+    :ok = Gnat.stop(pid)
+  end
+
+  test "subscribe receive a message with a reply_to and headers" do
+    {:ok, pid} = Gnat.start_link()
+    {:ok, _ref} = Gnat.sub(pid, self(), "with_reply")
+    headers = [{"x", "y"}]
+    :ok = Gnat.pub(pid, "with_reply", "yo dawg", reply_to: "me", headers: headers)
+
+    assert_receive {:msg, %{topic: "with_reply", reply_to: "me", body: "yo dawg", headers: ^headers}}, 1000
     :ok = Gnat.stop(pid)
   end
 
