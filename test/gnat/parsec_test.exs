@@ -34,6 +34,22 @@ defmodule Gnat.ParsecTest do
     assert parsed_message == {:msg, "topic", 13, inbox, "test\r\nline"}
   end
 
+  test "parsing messages with headers - single header no reply" do
+    binary = "HMSG SUBJECT 1 23 30\r\nNATS/1.0\r\nHeader: X\r\n\r\nPAYLOAD\r\n"
+
+    {state, [parsed]} = Parsec.new() |> Parsec.parse(binary)
+    assert state.partial == nil
+    assert parsed == {:hmsg, "SUBJECT", 1, nil, [{"header", "X"}], "PAYLOAD"}
+  end
+
+  test "parsing messages with headers - single header" do
+    binary = "HMSG SUBJECT 1 REPLY 23 30\r\nNATS/1.0\r\nHeader: X\r\n\r\nPAYLOAD\r\n"
+
+    {state, [parsed]} = Parsec.new() |> Parsec.parse(binary)
+    assert state.partial == nil
+    assert parsed == {:hmsg, "SUBJECT", 1, "REPLY",[{"header", "X"}], "PAYLOAD"}
+  end
+
   test "parsing PING message" do
     {parser_state, [parsed_message]} = Parsec.new |> Parsec.parse("PING\r\n")
     assert parser_state.partial == nil
