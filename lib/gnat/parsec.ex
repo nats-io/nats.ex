@@ -11,6 +11,10 @@ defmodule Gnat.Parsec do
   op_msg = ascii_char([?m,?M])
            |> ascii_char([?s,?S])
            |> ascii_char([?g,?G])
+  op_hmsg = ascii_char([?h,?H])
+           |> ascii_char([?m,?M])
+           |> ascii_char([?s,?S])
+           |> ascii_char([?g,?G])
   op_err = ascii_char([?-])
            |> ascii_char([?e,?E])
            |> ascii_char([?r,?R])
@@ -46,6 +50,17 @@ defmodule Gnat.Parsec do
           length
         ])
         |> ignore(string("\r\n"))
+  hmsg = replace(op_hmsg, :hmsg)
+         |> ignore(whitespace)
+         |> concat(subject)
+         |> ignore(whitespace)
+         |> concat(sid)
+         |> ignore(whitespace)
+         |> choice([
+           subject |> ignore(whitespace) |> concat(length) |> ignore(whitespace) |> concat(length),
+           length |> ignore(whitespace) |> concat(length)
+         ])
+         |> ignore(string("\r\n"))
   ok = replace(op_ok |> string("\r\n"), :ok)
   ping = replace(op_ping |> string("\r\n"), :ping)
   pong = replace(op_pong |> string("\r\n"), :pong)
@@ -54,7 +69,7 @@ defmodule Gnat.Parsec do
          |> utf8_string([not: ?\r], min: 2)
          |> ignore(string("\r\n"))
 
-  defparsecp :command, choice([msg, ok, ping, pong, info, err])
+  defparsecp :command, choice([msg, hmsg, ok, ping, pong, info, err])
 
   def new, do: %__MODULE__{}
 
@@ -82,6 +97,10 @@ defmodule Gnat.Parsec do
         finish_msg(subject, sid, nil, length, rest, string)
       {:ok, [:msg, subject, sid, reply_to, length], rest, _, _, _} ->
         finish_msg(subject, sid, reply_to, length, rest, string)
+      {:ok, [:hmsg, subject, sid, header_length, total_length], rest, _, _, _} ->
+        finish_hmsg(subject, sid, nil, header_length, total_length, rest, string)
+      {:ok, [:hmsg, subject, sid, reply_to, header_length, total_length], rest, _, _, _} ->
+        finish_hmsg(subject, sid, reply_to, header_length, total_length, rest, string)
       {:ok, [atom], rest, _, _, _} ->
         {:ok, atom, rest}
       {:ok, [:info, json], rest, _, _, _} ->
@@ -93,10 +112,31 @@ defmodule Gnat.Parsec do
     end
   end
 
+  def parse_headers("NATS/1.0\r\n" <> headers) do
+    case :cow_http.parse_headers(headers) do
+      {parsed, ""} -> {:ok, parsed}
+      _other -> {:error, "Could not parse headers"}
+    end
+  end
+  def parse_headers(_other) do
+    {:error, "Could not parse headers"}
+  end
+
   def finish_msg(subject, sid, reply_to, length, rest, string) do
     case rest do
       << body::size(length)-binary, "\r\n", rest::binary>> ->
         {:ok, {:msg, subject, sid, reply_to, body}, rest}
+      _other ->
+        {:error, string}
+    end
+  end
+
+  def finish_hmsg(subject, sid, reply_to, header_length, total_length, rest, string) do
+    payload_length = total_length - header_length
+    case rest do
+      << headers::size(header_length)-binary, payload::size(payload_length)-binary, "\r\n", rest::binary>> ->
+        {:ok, headers} = parse_headers(headers)
+        {:ok, {:hmsg, subject, sid, reply_to, headers, payload}, rest}
       _other ->
         {:error, string}
     end
