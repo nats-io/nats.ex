@@ -2,7 +2,9 @@ defmodule Gnat.Handshake do
   alias Gnat.Parsec
 
   @moduledoc """
-  This module provides a single function which handles all of the variations of establishing a connection to a gnatsd server and just returns {:ok, socket} or {:error, reason}
+  This module provides a single function which handles all of the
+  variations of establishing a connection to a nats server and just
+  returns {:ok, socket} or {:error, reason}
   """
   def connect(settings) do
     host = settings.host |> to_charlist
@@ -12,50 +14,58 @@ defmodule Gnat.Handshake do
     end
   end
 
-  defp perform_handshake(tcp, connection_settings) do
+  @doc false
+  def negotiate_settings(server_settings, user_settings) do
+    %{verbose: false}
+    |> negotiate_auth(server_settings, user_settings)
+  end
+
+  defp perform_handshake(tcp, user_settings) do
     receive do
       {:tcp, ^tcp, operation} ->
-        {_, [{:info, options}]} = Parsec.parse(Parsec.new(), operation)
-        {:ok, socket} = upgrade_connection(tcp, options, connection_settings)
-        send_connect_message(socket, options, connection_settings)
+        {_, [{:info, server_settings}]} = Parsec.parse(Parsec.new(), operation)
+        {:ok, socket} = upgrade_connection(tcp, user_settings)
+        settings = negotiate_settings(server_settings, user_settings)
+        :ok = send_connect(user_settings, settings, socket)
         {:ok, socket}
       after 1000 ->
         {:error, "timed out waiting for info"}
     end
   end
 
-  defp socket_write(%{tls: true}, socket, iodata), do: :ssl.send(socket, iodata)
-  defp socket_write(_, socket, iodata), do: :gen_tcp.send(socket, iodata)
+  defp send_connect(%{tls: true}, settings, socket) do
+    :ssl.send(socket, "CONNECT " <> Jason.encode!(settings, maps: :strict) <> "\r\n")
+  end
+  defp send_connect(_, settings, socket) do
+    :gen_tcp.send(socket, "CONNECT " <> Jason.encode!(settings, maps: :strict) <> "\r\n")
+  end
 
-  defp send_connect_message(socket, %{auth_required: true}=_options, %{username: username, password: password}=connection_settings) do
-    opts = Jason.encode!(%{user: username, pass: password, verbose: false}, maps: :strict)
-    socket_write(connection_settings, socket, "CONNECT #{opts}\r\n")
+  defp negotiate_auth(settings, %{auth_required: true}=_server, %{username: username, password: password}=_user) do
+    Map.merge(settings, %{user: username, pass: password})
   end
-  defp send_connect_message(socket, %{auth_required: true}=_options, %{token: token}=connection_settings) do
-    opts = Jason.encode!(%{auth_token: token, verbose: false}, maps: :strict)
-    socket_write(connection_settings, socket, "CONNECT #{opts}\r\n")
+  defp negotiate_auth(settings, %{auth_required: true}=_server, %{token: token}=_user) do
+    Map.merge(settings, %{auth_token: token})
   end
-  defp send_connect_message(socket, %{auth_required: true, nonce: nonce}=_options, %{nkey_seed: seed}=connection_settings) do
+  defp negotiate_auth(settings, %{auth_required: true, nonce: nonce}=_server, %{nkey_seed: seed, jwt: jwt}=_user) do
     {:ok, nkey} = NKEYS.from_seed(seed)
-
     signature = NKEYS.sign(nkey, nonce) |> Base.url_encode64() |> String.replace("=", "")
-    params = %{sig: signature, verbose: false, protocol: 1}
-    params = if Map.has_key?(connection_settings, :jwt) do
-      Map.put(params, :jwt, Map.get(connection_settings, :jwt))
-    else
-      public = NKEYS.public_nkey(nkey)
-      Map.put(params, :nkey, public)
-    end
-    opts = Jason.encode!(params, maps: :strict)
-    socket_write(connection_settings, socket, "CONNECT #{opts}\r\n")
+
+    Map.merge(settings, %{sig: signature, protocol: 1, jwt: jwt})
   end
-  defp send_connect_message(socket, _options, connection_settings) do
-    socket_write(connection_settings, socket, "CONNECT {\"verbose\": false}\r\n")
+  defp negotiate_auth(settings, %{auth_required: true, nonce: nonce}=_server, %{nkey_seed: seed}=_user) do
+    {:ok, nkey} = NKEYS.from_seed(seed)
+    signature = NKEYS.sign(nkey, nonce) |> Base.url_encode64() |> String.replace("=", "")
+    public = NKEYS.public_nkey(nkey)
+
+    Map.merge(settings, %{sig: signature, protocol: 1, nkey: public})
+  end
+  defp negotiate_auth(settings, _server, _user) do
+    settings
   end
 
-  defp upgrade_connection(tcp, %{tls_required: true}, %{tls: true, ssl_opts: opts}) do
+  defp upgrade_connection(tcp, %{tls: true, ssl_opts: opts}) do
     :ok = :inet.setopts(tcp, [active: true])
     :ssl.connect(tcp, opts, 1_000)
   end
-  defp upgrade_connection(tcp, _server_settings, _connection_settions), do: {:ok, tcp}
+  defp upgrade_connection(tcp, _settings), do: {:ok, tcp}
 end
