@@ -18,6 +18,7 @@ defmodule Gnat.Handshake do
   def negotiate_settings(server_settings, user_settings) do
     %{verbose: false}
     |> negotiate_auth(server_settings, user_settings)
+    |> negotiate_headers(server_settings, user_settings)
   end
 
   defp perform_handshake(tcp, user_settings) do
@@ -60,6 +61,20 @@ defmodule Gnat.Handshake do
     Map.merge(settings, %{sig: signature, protocol: 1, nkey: public})
   end
   defp negotiate_auth(settings, _server, _user) do
+    settings
+  end
+
+  defp negotiate_headers(settings, %{headers: true} = _server, user_settings) do
+    if Map.get(user_settings, :headers, true) do
+      Map.put(settings, :headers, true)
+    else
+      Map.put(settings, :headers, false)
+    end
+  end
+  defp negotiate_headers(_settings, _server, %{headers: true} = _user) do
+    raise "NATS Server does not support headers, but your connection settings specify header support"
+  end
+  defp negotiate_headers(settings, _server, _user) do
     settings
   end
 
