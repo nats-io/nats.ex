@@ -103,6 +103,7 @@ defmodule Gnat do
   @spec pub(t(), String.t, binary(), keyword()) :: :ok
   def pub(pid, topic, message, opts \\ []) do
     start = :erlang.monotonic_time()
+    opts = prepare_headers(opts)
     result = GenServer.call(pid, {:pub, topic, message, opts})
     latency = :erlang.monotonic_time() - start
     :telemetry.execute([:gnat, :pub], %{latency: latency} , %{topic: topic})
@@ -310,6 +311,15 @@ defmodule Gnat do
 
   defp nuid(), do: :crypto.strong_rand_bytes(12) |> Base.encode64
 
+  defp prepare_headers(opts) do
+    if Keyword.has_key?(opts, :headers) do
+      headers = :cow_http.headers(Keyword.get(opts, :headers))
+      Keyword.put(opts, :headers, headers)
+    else
+      opts
+    end
+  end
+
   defp socket_close(%{socket: socket, connection_settings: %{tls: true}}), do: :ssl.close(socket)
   defp socket_close(%{socket: socket}), do: :gen_tcp.close(socket)
 
@@ -345,6 +355,25 @@ defmodule Gnat do
     unless is_nil(state.receivers[sid]) do
       :telemetry.execute([:gnat, :message_received], %{count: 1}, %{topic: topic})
       send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to, sid: sid, gnat: self()}}
+      update_subscriptions_after_delivering_message(state, sid)
+    else
+      Logger.error "#{__MODULE__} got message for sid #{sid}, but that is no longer registered"
+      state
+    end
+  end
+  defp process_message({:hmsg, topic, @request_sid, reply_to, headers, body}, state) do
+    if Map.has_key?(state.request_receivers, topic) do
+      send state.request_receivers[topic], {:msg, %{topic: topic, body: body, reply_to: reply_to, gnat: self(), headers: headers}}
+      state
+    else
+      Logger.error "#{__MODULE__} got a response for a request, but that is no longer registered"
+      state
+    end
+  end
+  defp process_message({:hmsg, topic, sid, reply_to, headers, body}, state) do
+    unless is_nil(state.receivers[sid]) do
+      :telemetry.execute([:gnat, :message_received], %{count: 1}, %{topic: topic})
+      send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to, sid: sid, gnat: self(), headers: headers}}
       update_subscriptions_after_delivering_message(state, sid)
     else
       Logger.error "#{__MODULE__} got message for sid #{sid}, but that is no longer registered"
