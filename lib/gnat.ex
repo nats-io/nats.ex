@@ -129,9 +129,17 @@ defmodule Gnat do
   """
   @spec request(t(), String.t, binary(), keyword()) :: {:ok, message} | {:error, :timeout}
   def request(pid, topic, body, opts \\ []) do
-    receive_timeout = Keyword.get(opts, :receive_timeout, 60_000)
     start = :erlang.monotonic_time()
-    {:ok, subscription} = GenServer.call(pid, {:request, %{recipient: self(), body: body, topic: topic}})
+    receive_timeout = Keyword.get(opts, :receive_timeout, 60_000)
+    req = %{recipient: self(), body: body, topic: topic}
+    opts = prepare_headers(opts)
+    req =
+      case Keyword.get(opts, :headers) do
+        nil -> req
+        headers -> Map.put(req, :headers, headers)
+      end
+
+    {:ok, subscription} = GenServer.call(pid, {:request, req})
     response = receive do
       {:msg, %{topic: ^subscription}=msg} -> {:ok, msg}
       after receive_timeout ->
@@ -266,7 +274,13 @@ defmodule Gnat do
   def handle_call({:request, request}, _from, state) do
     inbox = make_new_inbox(state)
     new_state = %{state | request_receivers: Map.put(state.request_receivers, inbox, request.recipient)}
-    pub = Command.build(:pub, request.topic, request.body, reply_to: inbox)
+    pub =
+      case request do
+        %{headers: headers} ->
+          Command.build(:pub, request.topic, request.body, headers: headers, reply_to: inbox)
+        _ ->
+          Command.build(:pub, request.topic, request.body, reply_to: inbox)
+      end
     :ok = socket_write(new_state, [pub])
     {:reply, {:ok, inbox}, new_state}
   end
