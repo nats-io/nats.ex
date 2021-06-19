@@ -1,10 +1,15 @@
 # Changelog
 
+## 1.3
+
+* adding support for sending and receiving headers https://github.com/nats-io/nats.ex/pull/116
+
 ## 1.2
 
 * `Gnat.Server` behaviour with support in the `ConsumerSupervisor` https://github.com/nats-io/nats.ex/compare/1b1adc85e4b28231218ef87c7fc3445fce854377...b24a7e14325b51fbb93fde7e3d891d18b4fa8afb
 * avoid logging sensitive credentials https://github.com/nats-io/nats.ex/pull/105
-* deprecate Gnat.ping, improved typespecs https://github.com/nats-io/nats.ex/pull/103
+* deprecate Gnat.ping, improved typespecs https://github.com/nats-io/nats.ex/pull/103 
+* relax the version constraint on nimble_parsec https://github.com/nats-io/nats.ex/issues/112
 
 ## 1.1
 
