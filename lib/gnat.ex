@@ -8,7 +8,20 @@ defmodule Gnat do
   alias Gnat.{Command, Parsec}
 
   @type t :: GenServer.server()
-  @type message :: %{gnat: t(), topic: String.t, body: String.t, sid: non_neg_integer(), reply_to: String.t}
+  @type headers :: [{binary(), iodata()}]
+
+  # A message received from NATS will be delivered to your process in this form.
+  # Please note that the `:reply_to` and `:headers` keys are optional.
+  # They will only be present if the message was received from the NATS server with
+  # headers or a reply_to topic
+  @type message :: %{
+    gnat: t(),
+    topic: String.t(),
+    body: String.t(),
+    sid: non_neg_integer(),
+    reply_to: String.t(),
+    headers: headers()
+  }
   @type sent_message :: {:msg, message()}
 
   @default_connection_settings %{
@@ -44,7 +57,7 @@ defmodule Gnat do
   end
 
   @doc """
-  Gracefull shuts down a connection
+  Gracefully shuts down a connection
 
   ```
   {:ok, gnat} = Gnat.start_link()
@@ -99,6 +112,18 @@ defmodule Gnat do
   {:ok, gnat} = Gnat.start_link()
   :ok = Gnat.pub(gnat, "characters", "Star Lord", reply_to: "me")
   ```
+
+  If you want to publish a message with headers you can pass the `:headers` key in the `opts` like this.
+
+  ```
+  {:ok, gnat} = Gnat.start_link()
+  :ok = Gnat.pub(gnat, "listen", "Yo", headers: [{"foo", "bar"}])
+  ```
+
+  Headers must be passed as a `t:headers()` value (a list of tuples).
+  Sending and parsing headers has more overhead than typical nats messages
+  (see [the Nats 2.2 release notes for details](https://docs.nats.io/whats_new_22#message-headers)),
+  so only use them when they are really valuable.
   """
   @spec pub(t(), String.t, binary(), keyword()) :: :ok
   def pub(pid, topic, message, opts \\ []) do
@@ -118,6 +143,7 @@ defmodule Gnat do
 
   Supported options:
     * receive_timeout: an integer number of milliseconds to wait for a response. Defaults to 60_000
+    * headers: a set of headers you want to send with the request (see `Gnat.pub/4`)
 
   ```
   {:ok, gnat} = Gnat.start_link()
