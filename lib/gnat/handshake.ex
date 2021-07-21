@@ -1,10 +1,10 @@
 defmodule Gnat.Handshake do
+  @moduledoc false
   alias Gnat.Parsec
 
-  @moduledoc """
-  This module provides a single function which handles all of the
-  variations of establishing a connection to a nats server and just
-  returns {:ok, socket} or {:error, reason}
+  @doc """
+  This function handles all of the variations of establishing a connection to
+  a nats server and just returns {:ok, socket} or {:error, reason}
   """
   def connect(settings) do
     host = settings.host |> to_charlist
@@ -14,7 +14,6 @@ defmodule Gnat.Handshake do
     end
   end
 
-  @doc false
   def negotiate_settings(server_settings, user_settings) do
     %{verbose: false}
     |> negotiate_auth(server_settings, user_settings)

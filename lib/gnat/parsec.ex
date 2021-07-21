@@ -1,4 +1,5 @@
 defmodule Gnat.Parsec do
+  @moduledoc false
   defstruct partial: nil
 
   import NimbleParsec

@@ -1,4 +1,6 @@
 defmodule Gnat.Command do
+  @moduledoc false
+
   @newline "\r\n"
   @hpub "HPUB"
   @pub "PUB"
