@@ -40,7 +40,7 @@ defmodule Gnat.Mixfile do
       {:nimble_parsec, "~> 0.5 or ~> 1.0"},
       {:nkeys, "~> 0.2"},
       {:propcheck, "~> 1.0", only: :test},
-      {:telemetry, "~> 0.4"}
+      {:telemetry, "~> 0.4 or ~> 1.0"}
     ]
   end
 
