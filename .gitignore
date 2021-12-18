@@ -21,3 +21,6 @@ erl_crash.dump
 
 # Do not commit the counterexamples stored during property testing
 /test/counter_examples
+
+# ASDF file to for specifying which erlang/elixir version to use for local development
+.tool-versions
