@@ -1,14 +1,14 @@
 defmodule Gnat.Mixfile do
   use Mix.Project
 
-  @source_url "https://github.com/mmmries/gnat"
+  @source_url "https://github.com/nats-io/nats.ex"
   @version "1.3.0"
 
   def project do
     [
       app: :gnat,
       version: @version,
-      elixir: "~> 1.7",
+      elixir: "~> 1.9",
       elixirc_paths: elixirc_paths(Mix.env()),
       build_embedded: Mix.env() == :prod,
       start_permanent: Mix.env() == :prod,
