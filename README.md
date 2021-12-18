@@ -124,7 +124,7 @@ As of this commit my 2018 MacBook pro shows.
 ## Development
 
 Before running the tests make sure you have a locally running copy of `nats-server` ( `brew install nats-server` ).
-We currently use version `2.2.6` in CI, but anything higher than `2.2.0` should be fine.
+We currently use version `2.6.6` in CI, but anything higher than `2.2.0` should be fine.
 Versions from `0.9.6` up to `2.2.0` should work fine for everything except header support.
 The typical `mix test` will run all the basic unit tests.
 
