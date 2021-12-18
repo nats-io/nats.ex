@@ -1,6 +1,6 @@
 version: 2.1
 
-default_version: &default_version 1.11.3
+default_version: &default_version 1.13.1
 
 jobs:
   build:
@@ -87,8 +87,11 @@ workflows:
   testing_all_versions:
     jobs:
       - build:
-          name: "Test Elixir 1.12.2"
-          version: 1.12.2
+          name: "Test Elixir 1.13.1"
+          version: 1.13.1
+      - build:
+          name: "Test Elixir 1.12.3"
+          version: 1.12.3
       - build:
           name: "Test Elixir 1.11.4"
           version: 1.11.4
@@ -98,11 +101,5 @@ workflows:
       - build:
           name: "Test Elixir 1.9.4"
           version: 1.9.4
-      - build:
-          name: "Test Elixir 1.8.2"
-          version: 1.8.2 
-      - build:
-          name: "Test Elixir 1.7.4"
-          version: 1.7.4
       - lint:
           name: "Check formatting and Types"
