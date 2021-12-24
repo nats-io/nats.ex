@@ -201,6 +201,48 @@ defmodule GnatTest do
     assert msg.headers == headers
   end
 
+  test "request_multi convenience function with no maximum messages" do
+    topic = "req.multi"
+    {:ok, pid} = Gnat.start_link()
+    # start 4 servers to get 4 responses
+    Enum.each(1..4, fn _i ->
+      spin_up_echo_server_on_topic(self(), pid, topic)
+      assert_receive(true, 100)
+    end)
+
+    {:ok, messages} = Gnat.request_multi(pid, topic, "ohai", receive_timeout: 500)
+    assert Enum.count(messages) == 4
+    assert Enum.all?(messages, fn msg -> msg.body == "ohai" end)
+  end
+
+  test "request_multi convenience function with maximum messages" do
+    topic = "req.multi2"
+    {:ok, pid} = Gnat.start_link()
+    # start 4 servers to get 4 responses
+    Enum.each(1..4, fn _i ->
+      spin_up_echo_server_on_topic(self(), pid, topic)
+      assert_receive(true, 100)
+    end)
+
+    {:ok, messages} = Gnat.request_multi(pid, topic, "ohai", max_messages: 4, receive_timeout: 500)
+    assert Enum.count(messages) == 4
+    assert Enum.all?(messages, fn msg -> msg.body == "ohai" end)
+  end
+
+  test "request_multi convenience function with maximum messages not met" do
+    topic = "req.multi2"
+    {:ok, pid} = Gnat.start_link()
+    # start 4 servers to get 4 responses
+    Enum.each(1..4, fn _i ->
+      spin_up_echo_server_on_topic(self(), pid, topic)
+      assert_receive(true, 100)
+    end)
+
+    {:ok, messages} = Gnat.request_multi(pid, topic, "ohai", max_messages: 8, receive_timeout: 500)
+    assert Enum.count(messages) == 4
+    assert Enum.all?(messages, fn msg -> msg.body == "ohai" end)
+  end
+
   defp spin_up_echo_server_on_topic(ready, gnat, topic) do
     spawn(fn ->
       {:ok, subscription} = Gnat.sub(gnat, self(), topic)
