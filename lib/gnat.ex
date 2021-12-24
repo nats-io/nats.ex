@@ -166,15 +166,34 @@ defmodule Gnat do
       end
 
     {:ok, subscription} = GenServer.call(pid, {:request, req})
-    response = receive do
-      {:msg, %{topic: ^subscription}=msg} -> {:ok, msg}
-      after receive_timeout ->
-        {:error, :timeout}
-    end
+    response = receive_request_response(subscription, receive_timeout)
     :ok = unsub(pid, subscription)
     latency = :erlang.monotonic_time() - start
     :telemetry.execute([:gnat, :request],  %{latency: latency}, %{topic: topic})
     response
+  end
+
+  @spec request_multi(t(), String.t(), binary(), keyword()) :: {:ok, list(message())}
+  def request_multi(pid, topic, body, opts \\ []) do
+    start = :erlang.monotonic_time()
+    receive_timeout_ms = Keyword.get(opts, :receive_timeout, 60_000)
+    expiration = System.monotonic_time(:millisecond) + receive_timeout_ms
+    max_messages = Keyword.get(opts, :max_messages, -1)
+
+    req = %{recipient: self(), body: body, topic: topic}
+    opts = prepare_headers(opts)
+    req =
+      case Keyword.get(opts, :headers) do
+        nil -> req
+        headers -> Map.put(req, :headers, headers)
+      end
+
+    {:ok, subscription} = GenServer.call(pid, {:request, req})
+    responses = receive_multi_request_responses(subscription, expiration, max_messages)
+    :ok = unsub(pid, subscription)
+    latency = :erlang.monotonic_time() - start
+    :telemetry.execute([:gnat, :request_multi],  %{latency: latency}, %{topic: topic})
+    {:ok, responses}
   end
 
   @doc """
@@ -465,5 +484,30 @@ defmodule Gnat do
                   n -> put_in(receivers, [sid, :unsub_after], n - 1)
                 end
     %{state | receivers: receivers}
+  end
+
+  defp receive_multi_request_responses(_sub, _exp, 0), do: []
+
+  defp receive_multi_request_responses(subscription, expiration, max_messages) do
+    timeout = expiration - :erlang.monotonic_time(:millisecond)
+    cond do
+      timeout < 1 ->
+        []
+      true ->
+        case receive_request_response(subscription, timeout) do
+          {:error, :timeout} ->
+            []
+          {:ok, msg} ->
+            [msg | receive_multi_request_responses(subscription, expiration, max_messages - 1)]
+        end
+    end
+  end
+
+  defp receive_request_response(subscription, timeout) do
+    receive do
+      {:msg, %{topic: ^subscription}=msg} -> {:ok, msg}
+      after timeout ->
+        {:error, :timeout}
+    end
   end
 end
