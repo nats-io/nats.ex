@@ -173,6 +173,23 @@ defmodule Gnat do
     response
   end
 
+  @doc """
+  Send a request and listen for multiple responses synchronously
+
+  This function makes it easy to do a scatter-gather operation where you wait for a limited time
+  and optionally a maximum number of replies.
+
+  Supported options:
+    * receive_timeout: an integer number of milliseconds to wait for responses. Defaults to 60_000
+    * max_messages: an integer number of messages to listen for. Defaults to -1 meaning unlimited
+    * headers: a set of headers you want to send with the request (see `Gnat.pub/4`)
+
+  ```
+  {:ok, gnat} = Gnat.start_link()
+  {:ok, responses} = Gnat.request_multi(gnat, "i_can_haz_fries", "plZZZZZ!?!?", max_messages: 5)
+  Enum.count(responses) #=> 5
+  ```
+  """
   @spec request_multi(t(), String.t(), binary(), keyword()) :: {:ok, list(message())}
   def request_multi(pid, topic, body, opts \\ []) do
     start = :erlang.monotonic_time()
