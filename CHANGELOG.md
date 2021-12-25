@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4
+
+* add the `Gnat.request_multi/4` function https://github.com/nats-io/nats.ex/pull/120
+* add elixir 1.13 to the test matrix
+
 ## 1.3
 
 * adding support for sending and receiving headers https://github.com/nats-io/nats.ex/pull/116
