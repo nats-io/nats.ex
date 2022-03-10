@@ -31,6 +31,7 @@ defmodule Gnat do
     connection_timeout: 3_000,
     ssl_opts: [],
     tls: false,
+    inbox_prefix: "_INBOX.",
   }
 
   @request_sid 0
@@ -44,6 +45,8 @@ defmodule Gnat do
   {:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, tls: true})
   # if the server requires TLS and a client certificate you can start a connection with:
   {:ok, gnat} = Gnat.start_link(%{tls: true, ssl_opts: [certfile: "client-cert.pem", keyfile: "client-key.pem"]})
+  # you can customize default "_INBOX." inbox prefix with:
+  {:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, inbox_prefix: "my_prefix._INBOX."})
   ```
 
   You can also pass arbitrary SSL or TCP options in the `tcp_opts` and `ssl_opts` keys.
@@ -272,13 +275,16 @@ defmodule Gnat do
     case Gnat.Handshake.connect(connection_settings) do
       {:ok, socket} ->
         parser = Parsec.new
+
+        request_inbox_prefix = Map.fetch!(connection_settings, :inbox_prefix) <> "#{nuid()}."
+
         state = %{socket: socket,
                   connection_settings: connection_settings,
                   next_sid: 1,
                   receivers: %{},
                   parser: parser,
                   request_receivers: %{},
-                  request_inbox_prefix: "_INBOX.#{nuid()}."}
+                  request_inbox_prefix: request_inbox_prefix}
 
         state = create_request_subscription(state)
         {:ok, state}
