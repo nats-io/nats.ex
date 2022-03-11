@@ -274,4 +274,15 @@ defmodule GnatTest do
     {:stop, :timeout} = Gnat.init(connection_settings)
     assert_in_delta System.monotonic_time(:millisecond) - start, 200, 10
   end
+
+  test "request-reply with custom inbox prefix" do
+    topic = "req-resp"
+    {:ok, pid} = Gnat.start_link(%{inbox_prefix: "custom._INBOX."})
+    spin_up_echo_server_on_topic(self(), pid, topic)
+    # Wait for server to spawn and subscribe.
+    assert_receive(true, 100)
+    headers = [{"accept", "json"}]
+    {:ok, msg} = Gnat.request(pid, topic, "ohai", receive_timeout: 500, headers: headers)
+    assert "custom._INBOX." <> _ = msg.topic
+  end
 end
