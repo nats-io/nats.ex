@@ -44,8 +44,14 @@ defmodule Gnat do
   }
 
   @typedoc """
+  [Info Protocol](https://docs.nats.io/reference/reference-protocols/nats-protocol#info)
+
   * `client_id` - An optional unsigned integer (64 bits) representing the internal client identifier in the server. This can be used to filter client connections in monitoring, correlate with error logs, etc...
   * `client_ip` - The IP address the client is connecting from
+  * `cluster` - The name of the cluster if any
+  * `cluster_dynamic` - If the cluster is dynamic
+  * `connect_urls` - An optional list of server urls that a client can connect to.
+  * `ws_connect_urls` - An optional list of server urls that a websocket client can connect to.
   * `git_commit` - The git commit associated with this NATS version
   * `go` - The version of golang the NATS server was built with
   * `headers` - If messages can have headers in them
@@ -57,21 +63,36 @@ defmodule Gnat do
   * `server_id` - The unique identifier of the NATS server
   * `server_name` - A name for the server
   * `version` - The version of the NATS server
+  * `ldm` - If the server supports Lame Duck Mode notifications, and the current server has transitioned to lame duck, ldm will be set to true.
+  * `auth_required` - If this is set, then the client should try to authenticate upon connect.
+  * `tls_required` - If this is set, then the client must perform the TLS/1.2 handshake. Note, this used to be ssl_required and has been updated along with the protocol from SSL to TLS.
+  * `tls_verify` - If this is set, the client must provide a valid certificate during the TLS handshake.
+  * `tls_available` - If the server can use TLS
   """
   @type server_info :: %{
-    client_id: non_neg_integer(),
-    client_ip: binary(),
-    git_commit: binary(),
-    go: binary(),
-    headers: boolean(),
-    host: binary(),
-    jetstream: binary(),
-    max_payload: integer(),
-    port: non_neg_integer(),
-    proto: integer(),
-    server_id: binary(),
-    server_name: binary(),
-    version: binary(),
+    :client_id => non_neg_integer(),
+    :client_ip => binary(),
+    optional(:ip) => binary(),
+    optional(:cluster) => binary(),
+    optional(:cluster_dynamic) => boolean(),
+    optional(:connect_urls) => list(binary()),
+    optional(:ws_connect_urls) => list(binary()),
+    optional(:git_commit) => binary(),
+    :go => binary(),
+    :headers => boolean(),
+    :host => binary(),
+    optional(:jetstream) => binary(),
+    :max_payload => integer(),
+    :port => non_neg_integer(),
+    :proto => integer(),
+    :server_id => binary(),
+    :server_name => binary(),
+    :version => binary(),
+    optional(:ldm) => boolean(),
+    optional(:tls_verify) => boolean(),
+    optional(:tls_available) => boolean(),
+    optional(:tls_required) => boolean(),
+    optional(:auth_required) => boolean(),
   }
 
   @type connection :: %{
