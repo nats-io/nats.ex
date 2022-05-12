@@ -24,6 +24,61 @@ defmodule Gnat do
   }
   @type sent_message :: {:msg, message()}
 
+  @typedoc """
+  * `connection_timeout` - limits how long it can take to establish a connection to a server
+  * `host` - The location of the NATS server
+  * `port` - The port the NATS server is listening on
+  * `ssl_opts` - Options for connecting over SSL
+  * `tcp_opts` - Options for connecting over TCP
+  * `tls` - If the server should use a TLS connection
+  * `inbox_prefix` - Prefix to use for the message inbox of this connection
+  """
+  @type connection_settings :: %{
+    connection_timeout: non_neg_integer(),
+    host: binary(),
+    inbox_prefix: binary(),
+    port: non_neg_integer(),
+    ssl_opts: list(),
+    tcp_opts: list(),
+    tls: boolean()
+  }
+
+  @typedoc """
+  * `client_id` - An optional unsigned integer (64 bits) representing the internal client identifier in the server. This can be used to filter client connections in monitoring, correlate with error logs, etc...
+  * `client_ip` - The IP address the client is connecting from
+  * `git_commit` - The git commit associated with this NATS version
+  * `go` - The version of golang the NATS server was built with
+  * `headers` - If messages can have headers in them
+  * `host` - The IP address used to start the NATS server, by default this will be 0.0.0.0 and can be configured with -client_advertise host:port
+  * `jetstream` - If the server is using JetStream features
+  * `max_payload` - Maximum payload size, in bytes, that the server will accept from the client
+  * `port` - The port number the NATS server is configured to listen on
+  * `proto` - An integer indicating the protocol version of the server. The server version 1.2.0 sets this to 1 to indicate that it supports the "Echo" feature.
+  * `server_id` - The unique identifier of the NATS server
+  * `server_name` - A name for the server
+  * `version` - The version of the NATS server
+  """
+  @type server_info :: %{
+    client_id: non_neg_integer(),
+    client_ip: binary(),
+    git_commit: binary(),
+    go: binary(),
+    headers: boolean(),
+    host: binary(),
+    jetstream: binary(),
+    max_payload: integer(),
+    port: non_neg_integer(),
+    proto: integer(),
+    server_id: binary(),
+    server_name: binary(),
+    version: binary(),
+  }
+
+  @type connection :: %{
+    connection_settings: connection_settings(),
+    server_info: server_info()
+  }
+
   @default_connection_settings %{
     host: 'localhost',
     port: 4222,
