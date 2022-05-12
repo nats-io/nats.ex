@@ -324,17 +324,26 @@ defmodule Gnat do
     GenServer.call(pid, :active_subscriptions)
   end
 
+  @doc """
+  Get information about the NATS server the connection is for
+  """
+  @spec server_info(t()) :: server_info()
+  def server_info(name) do
+    GenServer.call(name, :server_info)
+  end
+
   @impl GenServer
   def init(connection_settings) do
     connection_settings = Map.merge(@default_connection_settings, connection_settings)
     case Gnat.Handshake.connect(connection_settings) do
-      {:ok, socket} ->
+      {:ok, socket, server_info} ->
         parser = Parsec.new
 
         request_inbox_prefix = Map.fetch!(connection_settings, :inbox_prefix) <> "#{nuid()}."
 
         state = %{socket: socket,
                   connection_settings: connection_settings,
+                  server_info: server_info,
                   next_sid: 1,
                   receivers: %{},
                   parser: parser,
@@ -434,6 +443,9 @@ defmodule Gnat do
   def handle_call(:active_subscriptions, _from, state) do
     active_subscriptions = Enum.count(state.receivers)
     {:reply, {:ok, active_subscriptions}, state}
+  end
+  def handle_call(:server_info, _from, state) do
+    {:reply, state.server_info, state}
   end
 
   defp create_request_subscription(%{request_inbox_prefix: request_inbox_prefix}=state) do
