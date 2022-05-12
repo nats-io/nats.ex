@@ -285,4 +285,11 @@ defmodule GnatTest do
     {:ok, msg} = Gnat.request(pid, topic, "ohai", receive_timeout: 500, headers: headers)
     assert "custom._INBOX." <> _ = msg.topic
   end
+
+  test "server_info/1 returns server info" do
+    {:ok, pid} = Gnat.start_link()
+    info = Gnat.server_info(pid)
+    assert Map.has_key?(info, :version)
+    assert is_binary(info.version)
+  end
 end

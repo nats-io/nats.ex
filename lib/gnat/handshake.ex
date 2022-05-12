@@ -27,7 +27,7 @@ defmodule Gnat.Handshake do
         {:ok, socket} = upgrade_connection(tcp, user_settings)
         settings = negotiate_settings(server_settings, user_settings)
         :ok = send_connect(user_settings, settings, socket)
-        {:ok, socket}
+        {:ok, socket, server_settings}
       after 1000 ->
         {:error, "timed out waiting for info"}
     end
