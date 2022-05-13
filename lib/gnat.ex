@@ -34,13 +34,13 @@ defmodule Gnat do
   * `inbox_prefix` - Prefix to use for the message inbox of this connection
   """
   @type connection_settings :: %{
-    connection_timeout: non_neg_integer(),
-    host: binary(),
-    inbox_prefix: binary(),
-    port: non_neg_integer(),
-    ssl_opts: list(),
-    tcp_opts: list(),
-    tls: boolean()
+    optional(:connection_timeout) => non_neg_integer(),
+    optional(:host) => binary(),
+    optional(:inbox_prefix) => binary(),
+    optional(:port) => non_neg_integer(),
+    optional(:ssl_opts) => list(),
+    optional(:tcp_opts) => list(),
+    optional(:tls) => boolean()
   }
 
   @typedoc """
@@ -95,11 +95,6 @@ defmodule Gnat do
     optional(:auth_required) => boolean(),
   }
 
-  @type connection :: %{
-    connection_settings: connection_settings(),
-    server_info: server_info()
-  }
-
   @default_connection_settings %{
     host: 'localhost',
     port: 4222,
@@ -130,7 +125,7 @@ defmodule Gnat do
 
   The final `opts` argument will be passed to the `GenServer.start_link` call so you can pass things like `[name: :gnat_connection]`.
   """
-  @spec start_link(map(), keyword()) :: GenServer.on_start
+  @spec start_link(connection_settings(), keyword()) :: GenServer.on_start
   def start_link(connection_settings \\ %{}, opts \\ []) do
     GenServer.start_link(__MODULE__, connection_settings, opts)
   end
