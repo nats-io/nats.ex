@@ -3,6 +3,7 @@
 ## 1.5
 
 * add the `inbox_prefix` option https://github.com/nats-io/nats.ex/pull/121
+* add the `Gnat.server_info/1` function https://github.com/nats-io/nats.ex/pull/124
 
 ## 1.4
 
