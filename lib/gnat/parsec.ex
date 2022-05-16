@@ -113,14 +113,20 @@ defmodule Gnat.Parsec do
     end
   end
 
-  def parse_headers("NATS/1.0\r\n" <> headers) do
-    case :cow_http.parse_headers(headers) do
-      {parsed, ""} -> {:ok, parsed}
-      _other -> {:error, "Could not parse headers"}
+  def parse_headers("NATS/1.0" <> rest) do
+    case String.split(rest, "\r\n", parts: 2) do
+      [_status_line, headers] ->
+        case :cow_http.parse_headers(headers) do
+          {parsed, ""} -> {:ok, parsed}
+          _other -> {:error, "Could not parse headers"}
+        end
+      _other ->
+        {:error, "Could not parse status line"}
     end
+
   end
   def parse_headers(_other) do
-    {:error, "Could not parse headers"}
+    {:error, "Could not parse status line prefix"}
   end
 
   def finish_msg(subject, sid, reply_to, length, rest, string) do
