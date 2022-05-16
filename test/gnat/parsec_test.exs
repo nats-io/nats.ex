@@ -50,6 +50,24 @@ defmodule Gnat.ParsecTest do
     assert parsed == {:hmsg, "SUBJECT", 1, "REPLY",[{"header", "X"}], "PAYLOAD"}
   end
 
+  # This example comes from https://github.com/nats-io/nats-architecture-and-design/blob/cb8f68af6ba730c00a6aa174dedaa217edd9edc6/adr/ADR-9.md
+  test "parsing idle heartbeat messages" do
+    binary = "HMSG my.messages 2  75 75\r\nNATS/1.0 100 Idle Heartbeat\r\nNats-Last-Consumer: 0\r\nNats-Last-Stream: 0\r\n\r\n\r\n"
+
+    {state, [parsed]} = Parsec.new() |> Parsec.parse(binary)
+    assert state.partial == nil
+    assert parsed == {:hmsg, "my.messages", 2, nil,[{"nats-last-consumer", "0"}, {"nats-last-stream", "0"}], ""}
+  end
+
+  # This example comes from https://github.com/nats-io/nats-architecture-and-design/blob/682d5cd5f21d18502da70025727128a407655250/adr/ADR-13.md
+  test "parsing no wait pull request responses" do
+    binary = "HMSG _INBOX.x7tkDPDLCOEknrfB4RH1V7.OgY4M7 2  28 28\r\nNATS/1.0 404 No Messages\r\n\r\n\r\n"
+
+    {state, [parsed]} = Parsec.new() |> Parsec.parse(binary)
+    assert state.partial == nil
+    assert parsed == {:hmsg, "_INBOX.x7tkDPDLCOEknrfB4RH1V7.OgY4M7", 2, nil, [], ""}
+  end
+
   test "parsing PING message" do
     {parser_state, [parsed_message]} = Parsec.new |> Parsec.parse("PING\r\n")
     assert parser_state.partial == nil
