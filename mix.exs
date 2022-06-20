@@ -49,7 +49,7 @@ defmodule Gnat.Mixfile do
 
   defp package do
     [
-      description: "A nats client in pure elixir. Resiliance, Performance, Ease-of-Use.",
+      description: "A nats client in pure elixir. Resilience, Performance, Ease-of-Use.",
       licenses: ["MIT"],
       links: %{
         "Changelog" => "#{@source_url}/blob/master/CHANGELOG.md",
