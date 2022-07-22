@@ -348,6 +348,14 @@ defmodule Gnat do
     GenServer.call(name, :server_info)
   end
 
+  @doc """
+  Get a randomly generated subscription inbox based on your inbox_prefix.
+  """
+  @spec make_new_inbox(t()) :: binary()
+  def make_new_inbox(pid) do
+    GenServer.call(pid, :make_new_inbox)
+  end
+
   @impl GenServer
   def init(connection_settings) do
     connection_settings = Map.merge(@default_connection_settings, connection_settings)
@@ -420,7 +428,7 @@ defmodule Gnat do
     {:noreply, state}
   end
   def handle_call({:request, request}, _from, state) do
-    inbox = make_new_inbox(state)
+    inbox = inbox_name(state)
     new_state = %{state | request_receivers: Map.put(state.request_receivers, inbox, request.recipient)}
     pub =
       case request do
@@ -463,6 +471,9 @@ defmodule Gnat do
   def handle_call(:server_info, _from, state) do
     {:reply, state.server_info, state}
   end
+  def handle_call(:make_new_inbox, _from, state) do
+    {:reply, inbox_name(state), state}
+  end
 
   defp create_request_subscription(%{request_inbox_prefix: request_inbox_prefix}=state) do
     # Example: "_INBOX.Jhf7AcTGP3x4dAV9.*"
@@ -472,7 +483,7 @@ defmodule Gnat do
     add_subscription_to_state(state, @request_sid, self())
   end
 
-  defp make_new_inbox(%{request_inbox_prefix: prefix}), do: prefix <> nuid()
+  defp inbox_name(%{request_inbox_prefix: prefix}), do: prefix <> nuid()
 
   defp nuid(), do: :crypto.strong_rand_bytes(12) |> Base.encode64
 

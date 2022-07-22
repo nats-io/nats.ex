@@ -292,4 +292,17 @@ defmodule GnatTest do
     assert Map.has_key?(info, :version)
     assert is_binary(info.version)
   end
+
+  test "make_new_inbox/1 returns an inbox name" do
+    {:ok, pid} = Gnat.start_link()
+    inbox = Gnat.make_new_inbox(pid)
+    assert inbox =~ "_INBOX."
+  end
+
+  test "make_new_inbox/1 uses custom prefix" do
+    {:ok, pid} = Gnat.start_link(%{inbox_prefix: "FOO"})
+    inbox = Gnat.make_new_inbox(pid)
+    assert inbox =~ "FOO"
+    refute inbox =~ "_INBOX."
+  end
 end
