@@ -363,7 +363,7 @@ defmodule Gnat do
       {:ok, socket, server_info} ->
         parser = Parsec.new
 
-        request_inbox_prefix = Map.fetch!(connection_settings, :inbox_prefix) <> "#{nuid()}."
+        request_inbox_prefix = inbox_name(connection_settings) <> "."
 
         state = %{socket: socket,
                   connection_settings: connection_settings,
@@ -428,7 +428,7 @@ defmodule Gnat do
     {:noreply, state}
   end
   def handle_call({:request, request}, _from, state) do
-    inbox = inbox_name(state)
+    inbox = state.request_inbox_prefix <> nuid()
     new_state = %{state | request_receivers: Map.put(state.request_receivers, inbox, request.recipient)}
     pub =
       case request do
@@ -472,7 +472,7 @@ defmodule Gnat do
     {:reply, state.server_info, state}
   end
   def handle_call(:make_new_inbox, _from, state) do
-    {:reply, inbox_name(state), state}
+    {:reply, inbox_name(state.connection_settings), state}
   end
 
   defp create_request_subscription(%{request_inbox_prefix: request_inbox_prefix}=state) do
@@ -483,7 +483,7 @@ defmodule Gnat do
     add_subscription_to_state(state, @request_sid, self())
   end
 
-  defp inbox_name(%{request_inbox_prefix: prefix}), do: prefix <> nuid()
+  defp inbox_name(%{inbox_prefix: prefix}), do: prefix <> nuid()
 
   defp nuid(), do: :crypto.strong_rand_bytes(12) |> Base.encode64
 
