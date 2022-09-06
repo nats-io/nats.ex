@@ -13,6 +13,12 @@ defmodule GnatTest do
     :ok = Gnat.stop(pid)
   end
 
+  test "connect to a server over IPv6" do
+    {:ok, pid} = Gnat.start_link(%{host: '::1', tcp_opts: [:binary, :inet6]})
+    assert Process.alive?(pid)
+    :ok = Gnat.stop(pid)
+  end
+
   @tag :multi_server
   test "connect to a server with user/pass authentication" do
     connection_settings = %{

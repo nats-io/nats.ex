@@ -118,6 +118,8 @@ defmodule Gnat do
   {:ok, gnat} = Gnat.start_link(%{tls: true, ssl_opts: [certfile: "client-cert.pem", keyfile: "client-key.pem"]})
   # you can customize default "_INBOX." inbox prefix with:
   {:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, inbox_prefix: "my_prefix._INBOX."})
+  # you can use IPv6 addresses too
+  {:ok, gnat} = Gnat.start_link(%{host: '::1', port: 4222, tcp_opts: [:inet6, :binary]})
   ```
 
   You can also pass arbitrary SSL or TCP options in the `tcp_opts` and `ssl_opts` keys.
