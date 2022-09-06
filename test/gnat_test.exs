@@ -13,6 +13,9 @@ defmodule GnatTest do
     :ok = Gnat.stop(pid)
   end
 
+  # We have to skip this test in CI builds because CircleCI doesn't enable IPv6 in it's docker
+  # configuration. See https://circleci.com/docs/faq#can-i-use-ipv6-in-my-tests
+  @tag :ci_skip
   test "connect to a server over IPv6" do
     {:ok, pid} = Gnat.start_link(%{host: '::1', tcp_opts: [:binary, :inet6]})
     assert Process.alive?(pid)
