@@ -87,8 +87,8 @@ workflows:
   testing_all_versions:
     jobs:
       - build:
-          name: "Test Elixir 1.13.1"
-          version: 1.13.1
+          name: "Test Elixir 1.13.4"
+          version: 1.13.4
       - build:
           name: "Test Elixir 1.12.3"
           version: 1.12.3
