@@ -50,7 +50,7 @@ jobs:
           - "deps"
           - "_build"
           - "~/.mix"
-      - run: mix test --include multi_server
+      - run: mix test --include multi_server --exclude ci_skip
       - run: N=400 mix test --only property
   lint:
     parameters:
