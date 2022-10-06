@@ -555,6 +555,9 @@ defmodule Gnat do
     send state.pinger, :pong
     state
   end
+  defp process_message(:ok, state) do
+    state
+  end
   defp process_message({:error, message}, state) do
     :error_logger.error_report([
       type: :gnat_error_from_broker,
