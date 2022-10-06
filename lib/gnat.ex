@@ -40,6 +40,7 @@ defmodule Gnat do
     optional(:port) => non_neg_integer(),
     optional(:ssl_opts) => list(),
     optional(:tcp_opts) => list(),
+    optional(:verbose) => boolean(),
     optional(:tls) => boolean()
   }
 
@@ -102,6 +103,7 @@ defmodule Gnat do
     connection_timeout: 3_000,
     ssl_opts: [],
     tls: false,
+    verbose: false,
     inbox_prefix: "_INBOX.",
   }
 

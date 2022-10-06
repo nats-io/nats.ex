@@ -15,7 +15,7 @@ defmodule Gnat.Handshake do
   end
 
   def negotiate_settings(server_settings, user_settings) do
-    %{verbose: false}
+    %{verbose: Map.get(user_settings, :verbose, false)}
     |> negotiate_auth(server_settings, user_settings)
     |> negotiate_headers(server_settings, user_settings)
   end
