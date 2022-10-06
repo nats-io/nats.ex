@@ -13,7 +13,7 @@ case :gen_tcp.connect('localhost', 4222, [:binary]) do
 end
 
 # this is used by some property tests, see test/gnat_property_test.exs
-Gnat.start_link(%{}, [name: :test_connection])
+Gnat.start_link(%{verbose: true}, [name: :test_connection])
 
 defmodule RpcEndpoint do
   def init do
