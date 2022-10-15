@@ -188,7 +188,7 @@ defmodule GnatTest do
     end
   end
 
-  test "request-reply convenience function with headers" do
+  test "request-reply convenience function" do
     topic = "req-resp"
     {:ok, pid} = Gnat.start_link()
     spin_up_echo_server_on_topic(self(), pid, topic)
@@ -198,7 +198,7 @@ defmodule GnatTest do
     assert msg.body == "ohai"
   end
 
-  test "request-reply convenience function" do
+  test "request-reply convenience function with headers" do
     topic = "req-resp"
     {:ok, pid} = Gnat.start_link()
     spin_up_echo_server_on_topic(self(), pid, topic)
@@ -208,6 +208,20 @@ defmodule GnatTest do
     {:ok, msg} = Gnat.request(pid, topic, "ohai", receive_timeout: 500, headers: headers)
     assert msg.body == "ohai"
     assert msg.headers == headers
+  end
+
+  @tag timeout: 100
+  test "request-reply no_responders" do
+    topic = "nobody-is-listening-to-this-topic"
+    {:ok, pid} = Gnat.start_link(%{no_responders: true})
+    assert {:error, :no_responders} = Gnat.request(pid, topic, "ohai")
+  end
+
+  @tag timeout: 100
+  test "request-reply timeout" do
+    topic = "nobody-is-listening-to-this-topic"
+    {:ok, pid} = Gnat.start_link()
+    assert {:error, :timeout} = Gnat.request(pid, topic, "ohai", receive_timeout: 5)
   end
 
   test "request_multi convenience function with no maximum messages" do

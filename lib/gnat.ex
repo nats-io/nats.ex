@@ -32,6 +32,7 @@ defmodule Gnat do
   * `tcp_opts` - Options for connecting over TCP
   * `tls` - If the server should use a TLS connection
   * `inbox_prefix` - Prefix to use for the message inbox of this connection
+  * `no_responders` - Used to indicate if you want to get an immediate `:no_responders` return when sending requests to a topic that has no responders registered
   """
   @type connection_settings :: %{
     optional(:connection_timeout) => non_neg_integer(),
@@ -40,7 +41,8 @@ defmodule Gnat do
     optional(:port) => non_neg_integer(),
     optional(:ssl_opts) => list(),
     optional(:tcp_opts) => list(),
-    optional(:tls) => boolean()
+    optional(:tls) => boolean(),
+    optional(:no_responders) => boolean(),
   }
 
   @typedoc """
@@ -103,6 +105,7 @@ defmodule Gnat do
     ssl_opts: [],
     tls: false,
     inbox_prefix: "_INBOX.",
+    no_responders: false
   }
 
   @request_sid 0
@@ -528,19 +531,38 @@ defmodule Gnat do
       state
     end
   end
-  defp process_message({:hmsg, topic, @request_sid, reply_to, headers, body}, state) do
+  defp process_message({:hmsg, topic, @request_sid, reply_to, status, description, headers, body}, state) do
     if Map.has_key?(state.request_receivers, topic) do
-      send state.request_receivers[topic], {:msg, %{topic: topic, body: body, reply_to: reply_to, gnat: self(), headers: headers}}
+      map = %{
+        topic: topic,
+        body: body,
+        reply_to: reply_to,
+        gnat: self(),
+        headers: headers,
+        status: status,
+        description: description
+      }
+      send state.request_receivers[topic], {:msg, map}
       state
     else
       Logger.error "#{__MODULE__} got a response for a request, but that is no longer registered"
       state
     end
   end
-  defp process_message({:hmsg, topic, sid, reply_to, headers, body}, state) do
+  defp process_message({:hmsg, topic, sid, reply_to, status, description, headers, body}, state) do
     unless is_nil(state.receivers[sid]) do
       :telemetry.execute([:gnat, :message_received], %{count: 1}, %{topic: topic})
-      send state.receivers[sid].recipient, {:msg, %{topic: topic, body: body, reply_to: reply_to, sid: sid, gnat: self(), headers: headers}}
+      map = %{
+        topic: topic,
+        body: body,
+        reply_to: reply_to,
+        sid: sid,
+        gnat: self(),
+        headers: headers,
+        status: status,
+        description: description
+      }
+      send state.receivers[sid].recipient, {:msg, map}
       update_subscriptions_after_delivering_message(state, sid)
     else
       Logger.error "#{__MODULE__} got message for sid #{sid}, but that is no longer registered"
@@ -613,7 +635,10 @@ defmodule Gnat do
 
   defp receive_request_response(subscription, timeout) do
     receive do
-      {:msg, %{topic: ^subscription}=msg} -> {:ok, msg}
+      {:msg, %{topic: ^subscription, status: "503"}} ->
+        {:error, :no_responders}
+      {:msg, %{topic: ^subscription}=msg} ->
+        {:ok, msg}
       after timeout ->
         {:error, :timeout}
     end
