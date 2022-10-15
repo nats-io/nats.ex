@@ -115,9 +115,23 @@ defmodule Gnat.Parsec do
 
   def parse_headers("NATS/1.0" <> rest) do
     case String.split(rest, "\r\n", parts: 2) do
+      [" " <> status, headers] ->
+
+        case :cow_http.parse_headers(headers) do
+          {parsed, ""} ->
+            case String.split(status, " ", parts: 2) do
+              [status, description] ->
+                {:ok, status, description, parsed}
+              [status] ->
+                {:ok, status, nil, parsed}
+            end
+
+          _other ->
+            {:error, "Could not parse headers"}
+        end
       [_status_line, headers] ->
         case :cow_http.parse_headers(headers) do
-          {parsed, ""} -> {:ok, parsed}
+          {parsed, ""} -> {:ok, nil, nil, parsed}
           _other -> {:error, "Could not parse headers"}
         end
       _other ->
@@ -142,8 +156,8 @@ defmodule Gnat.Parsec do
     payload_length = total_length - header_length
     case rest do
       << headers::size(header_length)-binary, payload::size(payload_length)-binary, "\r\n", rest::binary>> ->
-        {:ok, headers} = parse_headers(headers)
-        {:ok, {:hmsg, subject, sid, reply_to, headers, payload}, rest}
+        {:ok, status, description, headers} = parse_headers(headers)
+        {:ok, {:hmsg, subject, sid, reply_to, status, description, headers, payload}, rest}
       _other ->
         {:error, string}
     end

@@ -39,7 +39,7 @@ defmodule Gnat.ParsecTest do
 
     {state, [parsed]} = Parsec.new() |> Parsec.parse(binary)
     assert state.partial == nil
-    assert parsed == {:hmsg, "SUBJECT", 1, nil, [{"header", "X"}], "PAYLOAD"}
+    assert parsed == {:hmsg, "SUBJECT", 1, nil, nil, nil, [{"header", "X"}], "PAYLOAD"}
   end
 
   test "parsing messages with headers - single header" do
@@ -47,7 +47,7 @@ defmodule Gnat.ParsecTest do
 
     {state, [parsed]} = Parsec.new() |> Parsec.parse(binary)
     assert state.partial == nil
-    assert parsed == {:hmsg, "SUBJECT", 1, "REPLY",[{"header", "X"}], "PAYLOAD"}
+    assert parsed == {:hmsg, "SUBJECT", 1, "REPLY", nil, nil, [{"header", "X"}], "PAYLOAD"}
   end
 
   # This example comes from https://github.com/nats-io/nats-architecture-and-design/blob/cb8f68af6ba730c00a6aa174dedaa217edd9edc6/adr/ADR-9.md
@@ -56,7 +56,7 @@ defmodule Gnat.ParsecTest do
 
     {state, [parsed]} = Parsec.new() |> Parsec.parse(binary)
     assert state.partial == nil
-    assert parsed == {:hmsg, "my.messages", 2, nil,[{"nats-last-consumer", "0"}, {"nats-last-stream", "0"}], ""}
+    assert parsed == {:hmsg, "my.messages", 2, nil, "100", "Idle Heartbeat", [{"nats-last-consumer", "0"}, {"nats-last-stream", "0"}], ""}
   end
 
   # This example comes from https://github.com/nats-io/nats-architecture-and-design/blob/682d5cd5f21d18502da70025727128a407655250/adr/ADR-13.md
@@ -65,7 +65,15 @@ defmodule Gnat.ParsecTest do
 
     {state, [parsed]} = Parsec.new() |> Parsec.parse(binary)
     assert state.partial == nil
-    assert parsed == {:hmsg, "_INBOX.x7tkDPDLCOEknrfB4RH1V7.OgY4M7", 2, nil, [], ""}
+    assert parsed == {:hmsg, "_INBOX.x7tkDPDLCOEknrfB4RH1V7.OgY4M7", 2, nil, "404", "No Messages", [], ""}
+  end
+
+  test "parsing no_responders messages" do
+    binary = "HMSG _INBOX.10ahfXw89Nx5htVf.7Il73yuah/RHW6w8 0 16 16\r\nNATS/1.0 503\r\n\r\n\r\n"
+
+    {state, [parsed]} = Parsec.new() |> Parsec.parse(binary)
+    assert state.partial == nil
+    assert parsed == {:hmsg, "_INBOX.10ahfXw89Nx5htVf.7Il73yuah/RHW6w8", 0, nil, "503", nil, [], ""}
   end
 
   test "parsing PING message" do
