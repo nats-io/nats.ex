@@ -1,10 +1,9 @@
-[![circleci.com](https://circleci.com/gh/nats-io/nats.ex/tree/master.svg?style=svg)](https://circleci.com/gh/nats-io/nats.ex/tree/master)
 [![hex.pm](https://img.shields.io/hexpm/v/gnat.svg)](https://hex.pm/packages/gnat)
 [![hex.pm](https://img.shields.io/hexpm/dt/gnat.svg)](https://hex.pm/packages/gnat)
 [![hex.pm](https://img.shields.io/hexpm/l/gnat.svg)](https://hex.pm/packages/gnat)
 [![github.com](https://img.shields.io/github/last-commit/nats-io/nats.ex.svg)](https://github.com/nats-io/nats.ex)
 
-![NATS](https://branding.cncf.io/img/projects/nats/stacked/color/nats-stacked-color.svg)
+![NATS](https://nats.io/img/logos/nats-horizontal-color.png)
 
 # Gnat
 
