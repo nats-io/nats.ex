@@ -266,6 +266,12 @@ defmodule GnatTest do
     assert Enum.all?(messages, fn msg -> msg.body == "ohai" end)
   end
 
+  test "request_multi with no_responders" do
+    topic = "nobody.is.home"
+    {:ok, pid} = Gnat.start_link(%{no_responders: true})
+    assert {:error, :no_responders} = Gnat.request_multi(pid, topic, "ohai", max_messages: 2)
+  end
+
   defp spin_up_echo_server_on_topic(ready, gnat, topic) do
     spawn(fn ->
       {:ok, subscription} = Gnat.sub(gnat, self(), topic)

@@ -32,7 +32,7 @@ defmodule Gnat do
   * `tcp_opts` - Options for connecting over TCP
   * `tls` - If the server should use a TLS connection
   * `inbox_prefix` - Prefix to use for the message inbox of this connection
-  * `no_responders` - Used to indicate if you want to get an immediate `:no_responders` return when sending requests to a topic that has no responders registered
+  * `no_responders` - Enable the no responders behavior (see `Gnat.request/4`)
   """
   @type connection_settings :: %{
     optional(:connection_timeout) => non_neg_integer(),
@@ -231,8 +231,15 @@ defmodule Gnat do
     {:error, :timeout} -> :sad_cat
   end
   ```
+
+  ## No Responders
+
+  If you send a request to a topic that has no registered listeners, it is sometimes convenient to find out
+  right away, rather than waiting for a timeout to occur. In order to support this use-case, you can start
+  your Gnat connection with the `no_responders: true` option and this function will return very quickly with
+  an `{:error, :no_responders}` value. This behavior also works with `request_multi/4`
   """
-  @spec request(t(), String.t, binary(), keyword()) :: {:ok, message} | {:error, :timeout}
+  @spec request(t(), String.t, binary(), keyword()) :: {:ok, message} | {:error, :timeout} | {:error, :no_responders}
   def request(pid, topic, body, opts \\ []) do
     start = :erlang.monotonic_time()
     receive_timeout = Keyword.get(opts, :receive_timeout, 60_000)
@@ -269,7 +276,7 @@ defmodule Gnat do
   Enum.count(responses) #=> 5
   ```
   """
-  @spec request_multi(t(), String.t(), binary(), keyword()) :: {:ok, list(message())}
+  @spec request_multi(t(), String.t(), binary(), keyword()) :: {:ok, list(message())} | {:error, :no_responders}
   def request_multi(pid, topic, body, opts \\ []) do
     start = :erlang.monotonic_time()
     receive_timeout_ms = Keyword.get(opts, :receive_timeout, 60_000)
@@ -285,11 +292,15 @@ defmodule Gnat do
       end
 
     {:ok, subscription} = GenServer.call(pid, {:request, req})
-    responses = receive_multi_request_responses(subscription, expiration, max_messages)
+    result =
+      case receive_multi_request_responses(subscription, expiration, max_messages) do
+        {:error, :no_responders} -> {:error, :no_responders}
+        responses when is_list(responses) -> {:ok, responses}
+      end
     :ok = unsub(pid, subscription)
     latency = :erlang.monotonic_time() - start
     :telemetry.execute([:gnat, :request_multi],  %{latency: latency}, %{topic: topic})
-    {:ok, responses}
+    result
   end
 
   @doc """
@@ -625,6 +636,8 @@ defmodule Gnat do
         []
       true ->
         case receive_request_response(subscription, timeout) do
+          {:error, :no_responders} ->
+            {:error, :no_responders}
           {:error, :timeout} ->
             []
           {:ok, msg} ->
