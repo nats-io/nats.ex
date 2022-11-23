@@ -1,6 +1,6 @@
 version: 2.1
 
-default_version: &default_version 1.13.1
+default_version: &default_version 1.14.2
 
 jobs:
   build:
@@ -86,6 +86,9 @@ workflows:
   version: 2.1
   testing_all_versions:
     jobs:
+      - build:
+          name: "Test Elixir 1.14.2"
+          version: 1.14.2
       - build:
           name: "Test Elixir 1.13.4"
           version: 1.13.4
