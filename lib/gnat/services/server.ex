@@ -79,7 +79,7 @@ alias Gnat.Services.ServiceResponder
   * `version` - A required version number (w/out "v" prefix) conforming to semver rules
   * `queue_group` - An optional queue group for service subscriptions. If left off, "q" will be used.
   * `description` - An optional description of the service
-  * `metadata` - An optional arbitrary map of service metadata
+  * `metadata` - An optional string->string map of service metadata
   * `endpoints` - A required list of service endpoints. All services must have at least one endpoint
   """
   @type service_configuration :: %{
@@ -99,7 +99,7 @@ alias Gnat.Services.ServiceResponder
   * `name` - The required name of the endpoint
   * `group_name` - An optional group to which this endpoint belongs
   * `queue_group` - A queue group for this endpoint's subscription. If not supplied, "q" will be used.
-  * `metadata` - An optional map containing metadata for this endpoint
+  * `metadata` - An optional string->string map containing metadata for this endpoint
   """
   @type endpoint_configuration :: %{
     required(:name) => binary(),
