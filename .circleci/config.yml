@@ -92,15 +92,15 @@ workflows:
       - build:
           name: "Test Elixir 1.13.4"
           version: 1.13.4
-      - build:
-          name: "Test Elixir 1.12.3"
-          version: 1.12.3
-      - build:
-          name: "Test Elixir 1.11.4"
-          version: 1.11.4
-      - build:
-          name: "Test Elixir 1.10.4"
-          version: 1.10.4
+# - build:
+#     name: "Test Elixir 1.12.3"
+#     version: 1.12.3
+# - build:
+#     name: "Test Elixir 1.11.4"
+#     version: 1.11.4
+# - build:
+#     name: "Test Elixir 1.10.4"
+#     version: 1.10.4
 #   - build:
 #       name: "Test Elixir 1.9.4"
 #       version: 1.9.4
