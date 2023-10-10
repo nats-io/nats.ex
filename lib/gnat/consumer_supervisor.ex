@@ -85,7 +85,7 @@ defmodule Gnat.ConsumerSupervisor do
       subscription_topics: subscription_topics,
       subscriptions: [],
       task_supervisor_pid: task_supervisor_pid,
-      microservice_config: microservice,
+      service_config: microservice,
     }
 
     cond do
@@ -112,7 +112,7 @@ defmodule Gnat.ConsumerSupervisor do
         {:noreply, state}
       connection_pid ->
         _ref = Process.monitor(connection_pid)
-        state = if Map.get(state, :microservice_config) do
+        state = if Map.get(state, :service_config) do
           initialize_as_microservice(state, connection_pid)
         else
           initialize_as_manual_consumer(state, connection_pid)
@@ -135,7 +135,7 @@ defmodule Gnat.ConsumerSupervisor do
   end
 
   def handle_info({:msg, gnat_message}, %{module: module} = state) do
-    if Map.get(state, :microservice_config) do
+    if Map.get(state, :service_config) do
       Task.Supervisor.async_nolink(state.task_supervisor_pid, Gnat.Services.Server, :execute, [module, gnat_message, state.svc_responder_pid])
     else
       Task.Supervisor.async_nolink(state.task_supervisor_pid, Gnat.Server, :execute, [module, gnat_message])
@@ -204,7 +204,7 @@ defmodule Gnat.ConsumerSupervisor do
 
   defp initialize_as_microservice(state, connection_pid) do
     {:ok, responder_pid} = ServiceResponder.start_link(%{ state | connection_pid: connection_pid })
-    endpoints = get_in(state, [:microservice_config, :endpoints])
+    endpoints = get_in(state, [:service_config, :endpoints])
 
     subscriptions = Enum.map(endpoints, fn(ep) ->
       subject = ServiceResponder.derive_subscription_subject(ep)

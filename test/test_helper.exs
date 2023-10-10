@@ -32,7 +32,7 @@ defmodule RpcEndpoint do
 end
 spawn(&RpcEndpoint.init/0)
 
-defmodule ExampleMicroservice do
+defmodule ExampleService do
   use Gnat.Services.Server
 
   def request(%{topic: "calc.add", body: body}, _endpoint, _group) when body == "foo" do
@@ -95,10 +95,10 @@ end
 
 {:ok , _pid} = Gnat.ConsumerSupervisor.start_link(%{
   connection_name: :test_connection,
-  module: ExampleMicroservice,
+  module: ExampleService,
   service_definition: %{
     name: "exampleservice",
-    description: "This is an example microservice",
+    description: "This is an example service",
     version: "0.1.0",
     endpoints: [
       %{
