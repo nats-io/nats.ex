@@ -31,18 +31,18 @@ defmodule Gnat.ConsumerSupervisor do
 
   You can have a single consumer that subscribes to multiple topics or multiple consumers that subscribe to different topics and call different consuming functions. It is recommended that your `ConsumerSupervisor`s are present later in your supervision tree than your `ConnectionSupervisor`. That way during a shutdown the `ConsumerSupervisor` can attempt a graceful shutdown of the consumer before shutting down the connection.
 
-  If you want this consumer supervisor to host a NATS microservice, then you can specify a module that
-  implements the `Gnat.Services.Server` behavior. You'll need to specify the `microservice` field in the consumer
+  If you want this consumer supervisor to host a NATS service, then you can specify a module that
+  implements the `Gnat.Services.Server` behavior. You'll need to specify the `service_definition` field in the consumer
   supervisor settings and conforms to the `Gnat.Services.Server.service_configuration` type. Here is an example of configuring
-  the consumer supervisor to manage a microservice:
+  the consumer supervisor to manage a service:
 
   ```
   consumer_supervisor_settings = %{
     connection_name: :name_of_supervised_connection,
-    module: MyApp.Microservice, # a module that implements the Gnat.Services.Server behaviour
-    microservice: %{
+    module: MyApp.Service, # a module that implements the Gnat.Services.Server behaviour
+    service_definition: %{
       name: "exampleservice",
-      description: "This is an example microservice",
+      description: "This is an example service",
       version: "0.1.0",
       endpoints: [
         %{
@@ -75,7 +75,7 @@ defmodule Gnat.ConsumerSupervisor do
     {:ok, task_supervisor_pid} = Task.Supervisor.start_link()
     connection_name = Map.get(settings, :connection_name)
     subscription_topics = Map.get(settings, :subscription_topics)
-    microservice = Map.get(settings, :microservice)
+    microservice = Map.get(settings, :service_definition)
 
     state = %{
       connection_name: connection_name,

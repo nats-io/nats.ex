@@ -2,17 +2,17 @@ defmodule Gnat.Services.Server do
   require Logger
 
   @moduledoc """
-  A behavior for acting as a NATS microservice
+  A behavior for acting as a NATS service
 
-  Creating a microservice with this behavior works almost exactly the same as `Gnat.Server`,
+  Creating a service with this behavior works almost exactly the same as `Gnat.Server`,
   with the bonus that this service keeps track of requests, errors, processing time, and
   participates in service discovery and monitoring as defined by
-  the [NATS microservice protocol](https://github.com/nats-io/nats-architecture-and-design/blob/main/adr/ADR-32.md).
+  the [NATS service protocol](https://github.com/nats-io/nats-architecture-and-design/blob/main/adr/ADR-32.md).
 
 
   ## Example
 
-      defmodule MyApp.Microservice do
+      defmodule MyApp.Service do
         use Gnat.Services.Server
 
         # Classic subject matching
@@ -71,9 +71,9 @@ alias Gnat.Services.ServiceResponder
 
 
   @typedoc """
-  Service configuration is provided as part of the consumer supervisor settings in the `microservice` field.
-  You can specify _either_ the `subscription_topics` field for a reguar server or the `microservice` field for a
-  new NATS microservice.
+  Service configuration is provided as part of the consumer supervisor settings in the `service_definition` field.
+  You can specify _either_ the `subscription_topics` field for a reguar server or the `service_definition` field for a
+  new NATS service.
 
   * `name` - The name of the service. Needs to conform to the rules for NATS service names
   * `version` - A required version number (w/out "v" prefix) conforming to semver rules

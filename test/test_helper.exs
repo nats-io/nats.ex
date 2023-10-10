@@ -96,7 +96,7 @@ end
 {:ok , _pid} = Gnat.ConsumerSupervisor.start_link(%{
   connection_name: :test_connection,
   module: ExampleMicroservice,
-  microservice: %{
+  service_definition: %{
     name: "exampleservice",
     description: "This is an example microservice",
     version: "0.1.0",

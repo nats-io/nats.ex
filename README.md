@@ -68,8 +68,8 @@ For long-lived subscriptions consider using `Gnat.ConsumerSupervisor` .
 This can also be added to your supervision tree and use a supervised connection to re-establish a subscription.
 It also handles details like handling each message in a supervised process so you isolate failures and get OTP logs when an unexpected error occurs.
 
-## Microservices
-If you supply a module that implements the `Gnat.Services.Server` behavior and the `microservice` 
+## Services
+If you supply a module that implements the `Gnat.Services.Server` behavior and the `service_definition` 
 configuration field to a `Gnat.ConsumerSupervisor`, then this client will automatically take care
 of exposing the service to discovery, responding to pings, and maintaining and exposing statistics like request and error counts, and processing times.
 
