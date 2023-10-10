@@ -36,7 +36,7 @@ defmodule Gnat.Services.ServiceResponder do
   @spec init(map) :: {:ok, state()} | {:stop, String.t}
   def init(settings) do
     Process.flag(:trap_exit, true)
-    Logger.warning("NATS microservices feature is experimental and subject to change")
+
     if !validate_configuration(Map.get(settings, :microservice_config)) do
       {:stop, "Invalid service configuration"}
     else
