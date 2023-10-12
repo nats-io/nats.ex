@@ -272,9 +272,9 @@ defmodule Gnat.Services.ServiceResponder do
 
   defp valid_metadata?(nil), do: :ok
   defp valid_metadata?(md) do
-    bads = Map.filter(md, fn {k, v} ->
+    bads = Enum.filter(md, fn {k, v} ->
       !is_binary(k) or !is_binary(v)
-    end) |> map_size()
+    end) |> length()
 
     if bads == 0 do
       :ok
