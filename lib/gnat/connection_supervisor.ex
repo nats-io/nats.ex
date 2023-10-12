@@ -62,12 +62,15 @@ defmodule Gnat.ConnectionSupervisor do
       {:ok, gnat} -> {:noreply, %{state | gnat: gnat}}
       {:error, err} ->
         Logger.error "failed to connect #{inspect err}"
-        {:noreply, %{state | gnat: nil}} # we will get an :EXIT message and handle it there
+        Process.send_after(self(), :attempt_connection, state.backoff_period)
+        {:noreply, %{state | gnat: nil}}
     end
   end
-  def handle_info({:EXIT, _pid, reason}, %{gnat: nil}=state) do
-    Logger.error "failed to connect #{inspect reason}"
-    Process.send_after(self(), :attempt_connection, state.backoff_period)
+
+  # in OTP 25 and below, we will get back an EXIT message in addition to receiving the {:error, reason}
+  # tuple on from the start_link call above. So if we get an exit message when there is no connection tracked
+  # it means will have already scheduled a new attempt_connection
+  def handle_info({:EXIT, _pid, _reason}, %{gnat: nil}=state) do
     {:noreply, state}
   end
   def handle_info({:EXIT, _pid, reason}, state) do
