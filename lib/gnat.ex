@@ -379,9 +379,7 @@ defmodule Gnat do
   @impl GenServer
   def init(connection_settings) do
     connection_settings = Map.merge(@default_connection_settings, connection_settings)
-    if :ets.whereis(:endpoint_stats) == :undefined do
-      :ets.new(:endpoint_stats, [:public, :set, :named_table])
-    end
+
     case Gnat.Handshake.connect(connection_settings) do
       {:ok, socket, server_info} ->
         parser = Parsec.new
