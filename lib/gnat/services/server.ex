@@ -115,7 +115,7 @@ alias Gnat.Services.ServiceResponder
     try do
       {endpoint, group} = ServiceResponder.lookup_endpoint(responder_pid, message.topic)
 
-      case :timer.tc(fn -> apply(module, :request, [message, endpoint, group]) end) do
+      case :timer.tc(fn -> apply(module, :request, [message, endpoint, group]) end, :nanosecond) do
         {_elapsed, :ok} -> :done
         {elapsed_ns, {:reply, data}} ->
           send_reply(message, data)

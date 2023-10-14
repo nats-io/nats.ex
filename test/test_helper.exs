@@ -36,14 +36,14 @@ defmodule ExampleService do
   use Gnat.Services.Server
 
   def request(%{topic: "calc.add", body: body}, _endpoint, _group) when body == "foo" do
-    :timer.sleep(100)
+    :timer.sleep(10)
 
     {:reply, "6"}
   end
 
   def request(%{body: body}, "sub", "calc") when body == "foo" do
     # want some processing time to show up
-    :timer.sleep(100)
+    :timer.sleep(10)
     {:reply, "4"}
   end
 

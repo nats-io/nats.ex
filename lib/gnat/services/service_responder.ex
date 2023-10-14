@@ -32,6 +32,53 @@ defmodule Gnat.Services.ServiceResponder do
     GenServer.start_link(__MODULE__, settings, options)
   end
 
+  @spec derive_subscription_subject(Gnat.Services.Server.endpoint_configuration()) :: String.t
+  def derive_subscription_subject(endpoint) do
+    group_prefix = case Map.get(endpoint, :group_name) do
+      nil -> ""
+      prefix -> "#{prefix}."
+    end
+    subject = case Map.get(endpoint, :subject) do
+      nil -> endpoint.name
+      sub -> sub
+    end
+    "#{group_prefix}#{subject}"
+  end
+
+  def record_request(pid, subject, elapsed_ns) when is_pid(pid), do: GenServer.cast(pid, {:record_request, subject, elapsed_ns})
+  def record_request(_, _,_), do: :ok
+
+  def record_error(pid, subject, elapsed_ns, msg) when is_pid(pid), do: GenServer.cast(pid, {:record_error, subject, elapsed_ns, msg})
+  def record_error(_,_,_,_), do: :ok
+
+  def lookup_endpoint(pid, subject) when is_pid(pid), do: GenServer.call(pid, {:lookup_endpoint, subject})
+
+  def validate_configuration(configuration) when is_nil(configuration), do: {:error, ["Service definition cannot be null"]}
+  def validate_configuration(configuration) when not is_map(configuration), do: {:error, ["Service definition must be a map"]}
+  def validate_configuration(configuration) do
+    rules = [
+      {&valid_version?/1, configuration},
+      {&valid_name?/1, configuration},
+      {&valid_metadata?/1, Map.get(configuration, :metadata)}
+    ]
+    eprules = configuration.endpoints
+    |> Enum.map(fn ep ->
+      {&valid_endpoint?/1, ep}
+    end)
+
+    results = (rules ++ eprules) |> Enum.map(fn {pred, input} ->
+      apply(pred, [input])
+    end)
+    {_good, bad} = Enum.split_with(results, fn e -> e == :ok end)
+
+    if length(bad) == 0 do
+      :ok
+    else
+      {:error, bad |> Enum.map(fn {:error, m} -> m end) |> Enum.to_list()}
+    end
+  end
+
+
   @impl GenServer
   @spec init(map) :: {:ok, state()} | {:stop, String.t}
   def init(settings) do
@@ -87,14 +134,6 @@ defmodule Gnat.Services.ServiceResponder do
     Logger.error "#{__MODULE__} unexpected shutdown #{inspect reason}"
   end
 
-  def record_request(pid, subject, elapsed_ns) when is_pid(pid), do: GenServer.cast(pid, {:record_request, subject, elapsed_ns})
-  def record_request(_, _,_), do: :ok
-
-  def record_error(pid, subject, elapsed_ns, msg) when is_pid(pid), do: GenServer.cast(pid, {:record_error, subject, elapsed_ns, msg})
-  def record_error(_,_,_,_), do: :ok
-
-  def lookup_endpoint(pid, subject) when is_pid(pid), do: GenServer.call(pid, {:lookup_endpoint, subject})
-
   @impl true
   def handle_cast({:record_request, subject, elapsed_ns}, state) do
     counters = case :ets.lookup(:endpoint_stats, subject) do
@@ -140,7 +179,7 @@ defmodule Gnat.Services.ServiceResponder do
   end
 
   defp handle_ping(tail, state, rt, gnat) do
-    if should_respond(tail, state.config.name, state.instance_id) do
+    if should_respond?(tail, state.config.name, state.instance_id) do
       output = %WireProtocol.PingResponse{
         name: state.config.name,
         id: state.instance_id,
@@ -153,7 +192,7 @@ defmodule Gnat.Services.ServiceResponder do
   end
 
   defp handle_service_info(tail, state, rt, gnat) do
-    if should_respond(tail, state.config.name, state.instance_id) do
+    if should_respond?(tail, state.config.name, state.instance_id) do
       output = %WireProtocol.InfoResponse{
         name: state.config.name,
         description: state.config.description,
@@ -175,7 +214,7 @@ defmodule Gnat.Services.ServiceResponder do
   end
 
   defp handle_stats(tail, state, rt, gnat) do
-    if should_respond(tail, state.config.name, state.instance_id) do
+    if should_respond?(tail, state.config.name, state.instance_id) do
       output = %WireProtocol.StatsResponse{
         name: state.config.name,
         id: state.instance_id,
@@ -217,8 +256,8 @@ defmodule Gnat.Services.ServiceResponder do
     end
   end
 
-  @spec should_respond(list, String.t, String.t) :: boolean()
-  defp should_respond(tail, service_name, instance_id) do
+  @spec should_respond?(list, String.t, String.t) :: boolean()
+  defp should_respond?(tail, service_name, instance_id) do
     case tail do
       [] -> true
       [^service_name] -> true
@@ -227,30 +266,6 @@ defmodule Gnat.Services.ServiceResponder do
     end
   end
 
-  def validate_configuration(configuration) when is_nil(configuration), do: {:error, ["Service definition cannot be null"]}
-  def validate_configuration(configuration) when not is_map(configuration), do: {:error, ["Service definition must be a map"]}
-  def validate_configuration(configuration) do
-    rules = [
-      {&valid_version?/1, configuration},
-      {&valid_name?/1, configuration},
-      {&valid_metadata?/1, Map.get(configuration, :metadata)}
-    ]
-    eprules = configuration.endpoints
-    |> Enum.map(fn ep ->
-      {&valid_endpoint?/1, ep}
-    end)
-
-    results = (rules ++ eprules) |> Enum.map(fn {pred, input} ->
-      apply(pred, [input])
-    end)
-    {_good, bad} = Enum.split_with(results, fn e -> e == :ok end)
-
-    if length(bad) == 0 do
-      :ok
-    else
-      {:error, bad |> Enum.map(fn {:error, m} -> m end) |> Enum.to_list()}
-    end
-  end
 
   defp valid_version?(service_definition) do
     version = Map.get(service_definition, :version)
@@ -294,19 +309,6 @@ defmodule Gnat.Services.ServiceResponder do
           {:error, "Endpoint name '#{name}' is not valid"}
         e -> e
       end
-  end
-
-  @spec derive_subscription_subject(Gnat.Services.Server.endpoint_configuration()) :: String.t
-  def derive_subscription_subject(endpoint) do
-    group_prefix = case Map.get(endpoint, :group_name) do
-      nil -> ""
-      prefix -> "#{prefix}."
-    end
-    subject = case Map.get(endpoint, :subject) do
-      nil -> endpoint.name
-      sub -> sub
-    end
-    "#{group_prefix}#{subject}"
   end
 
   defp build_subject_map(endpoints) do
