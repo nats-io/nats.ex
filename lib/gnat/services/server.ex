@@ -115,16 +115,16 @@ alias Gnat.Services.ServiceResponder
     try do
       {endpoint, group} = ServiceResponder.lookup_endpoint(responder_pid, message.topic)
 
-      case :timer.tc(fn -> apply(module, :request, [message, endpoint, group]) end, :nanosecond) do
+      case :timer.tc(fn -> apply(module, :request, [message, endpoint, group]) end) do
         {_elapsed, :ok} -> :done
-        {elapsed_ns, {:reply, data}} ->
+        {elapsed_micros, {:reply, data}} ->
           send_reply(message, data)
-          :telemetry.execute([:gnat, :service_request], %{latency: elapsed_ns}, %{topic: message.topic, endpoint: endpoint, group: group})
-          ServiceResponder.record_request(responder_pid, message.topic, elapsed_ns )
-        {elapsed_ns, {:error, error}} ->
+          :telemetry.execute([:gnat, :service_request], %{latency: elapsed_micros}, %{topic: message.topic, endpoint: endpoint, group: group})
+          ServiceResponder.record_request(responder_pid, message.topic, elapsed_micros * 1000 )
+        {elapsed_micros, {:error, error}} ->
           execute_error(module, message, error)
-          :telemetry.execute([:gnat, :service_error], %{latency: elapsed_ns}, %{topic: message.topic, endpoint: endpoint, group: group})
-          ServiceResponder.record_error(responder_pid, message.topic, elapsed_ns, inspect(error))
+          :telemetry.execute([:gnat, :service_error], %{latency: elapsed_micros}, %{topic: message.topic, endpoint: endpoint, group: group})
+          ServiceResponder.record_error(responder_pid, message.topic, elapsed_micros * 1000, inspect(error))
         other -> execute_error(module, message, other)
       end
 
