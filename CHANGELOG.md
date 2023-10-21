@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7
+
+ * Added support for the NATS [services API](https://github.com/nats-io/nats.go/blob/main/micro/README.md), letting developers participate in service discovery and stats https://github.com/nats-io/nats.ex/pull/141
+
 ## 1.6
 
 * added the `no_responders` behavior https://github.com/nats-io/nats.ex/pull/137
