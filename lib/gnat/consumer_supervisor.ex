@@ -1,10 +1,7 @@
 defmodule Gnat.ConsumerSupervisor do
-  # required default, see https://github.com/nats-io/nats-architecture-and-design/blob/main/adr/ADR-32.md#request-handling
-  @default_service_queue_group "q"
-
   use GenServer
   require Logger
-
+  alias Gnat.Services.Service
 
   @moduledoc """
   A process that can supervise consumers for you
@@ -62,7 +59,6 @@ defmodule Gnat.ConsumerSupervisor do
   It's also possible to pass a `%{consuming_function: {YourModule, :your_function}}` rather than a `:module` in your settings.
   In that case no error handling or replying is taking care of for you, microservices cannot be used, and it will be up to your function to take whatever action you want with each message.
   """
-  alias Gnat.Services.ServiceResponder
   @spec start_link(map(), keyword()) :: GenServer.on_start
   def start_link(settings, options \\ []) do
     GenServer.start_link(__MODULE__, settings, options)
@@ -75,7 +71,6 @@ defmodule Gnat.ConsumerSupervisor do
     {:ok, task_supervisor_pid} = Task.Supervisor.start_link()
     connection_name = Map.get(settings, :connection_name)
     subscription_topics = Map.get(settings, :subscription_topics)
-    microservice = Map.get(settings, :service_definition)
 
     state = %{
       connection_name: connection_name,
@@ -84,23 +79,15 @@ defmodule Gnat.ConsumerSupervisor do
       status: :disconnected,
       subscription_topics: subscription_topics,
       subscriptions: [],
-      task_supervisor_pid: task_supervisor_pid,
-      service_config: microservice,
+      task_supervisor_pid: task_supervisor_pid
     }
 
-    cond do
-      Map.has_key?(settings, :module) ->
-        state = Map.put(state, :module, settings.module)
-        send self(), :connect
-        {:ok, state}
-
-      Map.has_key?(settings, :consuming_function) ->
-        state = Map.put(state, :consuming_function, settings.consuming_function)
-        send self(), :connect
-        {:ok, state}
-
-      true ->
-        {:error, "You must provide a module or consuming function for the consumer supervisor"}
+    with {:ok, state} <- maybe_append_service(state, settings),
+         {:ok, state} <- maybe_append_module(state, settings),
+         {:ok, state} <- maybe_append_consuming_function(state, settings),
+         :ok <- validate_state(state) do
+      send self(), :connect
+      {:ok, state}
     end
   end
 
@@ -112,13 +99,9 @@ defmodule Gnat.ConsumerSupervisor do
         {:noreply, state}
       connection_pid ->
         _ref = Process.monitor(connection_pid)
-        state = if Map.get(state, :service_config) do
-          initialize_as_microservice(state, connection_pid)
-        else
-          initialize_as_manual_consumer(state, connection_pid)
-        end
+        subscriptions = subscribe_to_topics(state, connection_pid)
 
-        {:noreply, %{state | status: :connected, connection_pid: connection_pid}}
+        {:noreply, %{state | status: :connected, connection_pid: connection_pid, subscriptions: subscriptions}}
     end
   end
 
@@ -134,12 +117,14 @@ defmodule Gnat.ConsumerSupervisor do
     {:noreply, Map.put(state, :task_supervisor_pid, task_supervisor_pid)}
   end
 
+  def handle_info({:msg, gnat_message}, %{service: service, module: module} = state) do
+    Task.Supervisor.async_nolink(state.task_supervisor_pid, Gnat.Services.Server, :execute, [module, gnat_message, service])
+
+    {:noreply, state}
+  end
+
   def handle_info({:msg, gnat_message}, %{module: module} = state) do
-    if Map.get(state, :service_config) do
-      Task.Supervisor.async_nolink(state.task_supervisor_pid, Gnat.Services.Server, :execute, [module, gnat_message, state.svc_responder_pid])
-    else
-      Task.Supervisor.async_nolink(state.task_supervisor_pid, Gnat.Server, :execute, [module, gnat_message])
-    end
+    Task.Supervisor.async_nolink(state.task_supervisor_pid, Gnat.Server, :execute, [module, gnat_message])
 
     {:noreply, state}
   end
@@ -189,8 +174,21 @@ defmodule Gnat.ConsumerSupervisor do
     end
   end
 
-  defp initialize_as_manual_consumer(state, connection_pid) do
-    subscriptions = Enum.map(state.subscription_topics, fn(topic_and_queue_group) ->
+  defp subscribe_to_topics(%{service: service}, connection_pid) do
+    Service.subscription_topics_with_queue_group(service)
+    |> Enum.map(fn
+      ({topic, nil}) ->
+        {:ok, subscription} = Gnat.sub(connection_pid, self(), topic)
+        subscription
+
+      ({topic, queue_group}) ->
+        {:ok, subscription} = Gnat.sub(connection_pid, self(), topic, queue_group: queue_group)
+        subscription
+    end)
+  end
+
+  defp subscribe_to_topics(state, connection_pid) do
+    Enum.map(state.subscription_topics, fn(topic_and_queue_group) ->
       topic = Map.fetch!(topic_and_queue_group, :topic)
       {:ok, subscription} = case Map.get(topic_and_queue_group, :queue_group) do
         nil -> Gnat.sub(connection_pid, self(), topic)
@@ -198,26 +196,43 @@ defmodule Gnat.ConsumerSupervisor do
       end
       subscription
     end)
-
-    %{ state | subscriptions: subscriptions }
   end
 
-  defp initialize_as_microservice(state, connection_pid) do
-    if :ets.whereis(:endpoint_stats) == :undefined do
-      :ets.new(:endpoint_stats, [:public, :set, :named_table])
+  defp maybe_append_service(state, %{service_definition: config}) do
+    case Service.init(config) do
+      {:ok, service} ->
+        {:ok, Map.put(state, :service, service)}
+
+      {:error, errors} ->
+        {:error, "Invalid service configuration: #{Enum.join(errors, ",")}"}
     end
-    {:ok, responder_pid} = ServiceResponder.start_link(%{ state | connection_pid: connection_pid })
-    endpoints = get_in(state, [:service_config, :endpoints])
-
-    subscriptions = Enum.map(endpoints, fn(ep) ->
-      subject = ServiceResponder.derive_subscription_subject(ep)
-      queue_group = Map.get(ep, :queue_group, @default_service_queue_group)
-      {:ok, subscription} = Gnat.sub(connection_pid, self(), subject, queue_group: queue_group)
-
-      subscription
-    end)
-
-    %{state | svc_responder_pid: responder_pid, subscriptions: subscriptions }
   end
 
+  defp maybe_append_service(state, _), do: {:ok, state}
+
+  defp maybe_append_module(state, %{module: module}) do
+    {:ok, Map.put(state, :module, module)}
+  end
+
+  defp maybe_append_module(state, _), do: {:ok, state}
+
+  defp maybe_append_consuming_function(state, %{consuming_function: consuming_function}) do
+    {:ok, Map.put(state, :consuming_function, consuming_function)}
+  end
+
+  defp maybe_append_consuming_function(state, _), do: {:ok, state}
+
+  defp validate_state(state) do
+    partial = Map.take(state, [:module, :consuming_function])
+    case Enum.count(partial) do
+      0 ->
+        {:error, "You must provide a module or consuming function for the consumer supervisor"}
+
+      1 ->
+        :ok
+
+      _ ->
+        {:error, "You cannot provide both a module and consuming function. Please specify one or the other."}
+    end
+  end
 end

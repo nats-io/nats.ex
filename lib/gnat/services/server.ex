@@ -1,5 +1,6 @@
 defmodule Gnat.Services.Server do
   require Logger
+  alias Gnat.Services.{Service, ServiceResponder}
 
   @moduledoc """
   A behavior for acting as a NATS service
@@ -31,7 +32,6 @@ defmodule Gnat.Services.Server do
         end
       end
   """
-alias Gnat.Services.ServiceResponder
 
   @doc """
   Called when a message is received from the broker. The endpoint on which the message arrived
@@ -86,7 +86,6 @@ alias Gnat.Services.ServiceResponder
     required(:name) =>         binary(),
     required(:version) =>      binary(),
     required(:endpoints) =>    [endpoint_configuration()],
-    optional(:queue_group) => binary(),
     optional(:description) => binary(),
     optional(:metadata) =>     map(),
   }
@@ -111,20 +110,28 @@ alias Gnat.Services.ServiceResponder
 
 
   @doc false
-  def execute(module, message, responder_pid) do
-    try do
-      {endpoint, group} = ServiceResponder.lookup_endpoint(responder_pid, message.topic)
+  def execute(_module, %{topic: "$SRV" <> _} = message, service) do
+    ServiceResponder.maybe_respond(message, service)
+  end
 
-      case :timer.tc(fn -> apply(module, :request, [message, endpoint, group]) end) do
+  def execute(module, message, service) do
+    try do
+      endpoint = Map.get(service.subjects, message.topic)
+      %{group_name: group_name, name: endpoint_name} = endpoint
+      telemetry_tags = %{topic: message.topic, endpoint: endpoint_name, group: group_name}
+
+      case :timer.tc(fn -> apply(module, :request, [message, endpoint_name, group_name]) end) do
         {_elapsed, :ok} -> :done
         {elapsed_micros, {:reply, data}} ->
           send_reply(message, data)
-          :telemetry.execute([:gnat, :service_request], %{latency: elapsed_micros}, %{topic: message.topic, endpoint: endpoint, group: group})
-          ServiceResponder.record_request(responder_pid, message.topic, elapsed_micros * 1000 )
+          :telemetry.execute([:gnat, :service_request], %{latency: elapsed_micros}, telemetry_tags)
+          Service.record_request(endpoint, elapsed_micros)
+
         {elapsed_micros, {:error, error}} ->
           execute_error(module, message, error)
-          :telemetry.execute([:gnat, :service_error], %{latency: elapsed_micros}, %{topic: message.topic, endpoint: endpoint, group: group})
-          ServiceResponder.record_error(responder_pid, message.topic, elapsed_micros * 1000, inspect(error))
+          :telemetry.execute([:gnat, :service_error], %{latency: elapsed_micros}, telemetry_tags)
+          Service.record_error(endpoint, elapsed_micros)
+
         other -> execute_error(module, message, other)
       end
 
