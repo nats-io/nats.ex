@@ -1,6 +1,10 @@
 defmodule Gnat.ConsumerSupervisor do
+  # required default, see https://github.com/nats-io/nats-architecture-and-design/blob/main/adr/ADR-32.md#request-handling
+  @default_service_queue_group "q"
+
   use GenServer
   require Logger
+
 
   @moduledoc """
   A process that can supervise consumers for you
@@ -27,13 +31,43 @@ defmodule Gnat.ConsumerSupervisor do
 
   You can have a single consumer that subscribes to multiple topics or multiple consumers that subscribe to different topics and call different consuming functions. It is recommended that your `ConsumerSupervisor`s are present later in your supervision tree than your `ConnectionSupervisor`. That way during a shutdown the `ConsumerSupervisor` can attempt a graceful shutdown of the consumer before shutting down the connection.
 
+  If you want this consumer supervisor to host a NATS service, then you can specify a module that
+  implements the `Gnat.Services.Server` behavior. You'll need to specify the `service_definition` field in the consumer
+  supervisor settings and conforms to the `Gnat.Services.Server.service_configuration` type. Here is an example of configuring
+  the consumer supervisor to manage a service:
+
+  ```
+  consumer_supervisor_settings = %{
+    connection_name: :name_of_supervised_connection,
+    module: MyApp.Service, # a module that implements the Gnat.Services.Server behaviour
+    service_definition: %{
+      name: "exampleservice",
+      description: "This is an example service",
+      version: "0.1.0",
+      endpoints: [
+        %{
+          name: "add",
+          group_name: "calc",
+        },
+        %{
+          name: "sub",
+          group_name: "calc"
+        }
+      ]
+    }
+  }
+  worker(Gnat.ConsumerSupervisor, [consumer_supervisor_settings, [name: :myservice_consumer]], shutdown: 30_000)
+  ```
+
   It's also possible to pass a `%{consuming_function: {YourModule, :your_function}}` rather than a `:module` in your settings.
-  In that case no error handling or replying is taking care of for you, it will be up to your function to take whatever action you want with each message.
+  In that case no error handling or replying is taking care of for you, microservices cannot be used, and it will be up to your function to take whatever action you want with each message.
   """
+  alias Gnat.Services.ServiceResponder
   @spec start_link(map(), keyword()) :: GenServer.on_start
   def start_link(settings, options \\ []) do
     GenServer.start_link(__MODULE__, settings, options)
   end
+
 
   @impl GenServer
   def init(settings) do
@@ -41,14 +75,17 @@ defmodule Gnat.ConsumerSupervisor do
     {:ok, task_supervisor_pid} = Task.Supervisor.start_link()
     connection_name = Map.get(settings, :connection_name)
     subscription_topics = Map.get(settings, :subscription_topics)
+    microservice = Map.get(settings, :service_definition)
 
     state = %{
       connection_name: connection_name,
       connection_pid: nil,
+      svc_responder_pid: nil,
       status: :disconnected,
       subscription_topics: subscription_topics,
       subscriptions: [],
       task_supervisor_pid: task_supervisor_pid,
+      service_config: microservice,
     }
 
     cond do
@@ -75,15 +112,13 @@ defmodule Gnat.ConsumerSupervisor do
         {:noreply, state}
       connection_pid ->
         _ref = Process.monitor(connection_pid)
-        subscriptions = Enum.map(state.subscription_topics, fn(topic_and_queue_group) ->
-          topic = Map.fetch!(topic_and_queue_group, :topic)
-          {:ok, subscription} = case Map.get(topic_and_queue_group, :queue_group) do
-            nil -> Gnat.sub(connection_pid, self(), topic)
-            queue_group -> Gnat.sub(connection_pid, self(), topic, queue_group: queue_group)
-          end
-          subscription
-        end)
-        {:noreply, %{state | status: :connected, connection_pid: connection_pid, subscriptions: subscriptions}}
+        state = if Map.get(state, :service_config) do
+          initialize_as_microservice(state, connection_pid)
+        else
+          initialize_as_manual_consumer(state, connection_pid)
+        end
+
+        {:noreply, %{state | status: :connected, connection_pid: connection_pid}}
     end
   end
 
@@ -100,7 +135,12 @@ defmodule Gnat.ConsumerSupervisor do
   end
 
   def handle_info({:msg, gnat_message}, %{module: module} = state) do
-    Task.Supervisor.async_nolink(state.task_supervisor_pid, Gnat.Server, :execute, [module, gnat_message])
+    if Map.get(state, :service_config) do
+      Task.Supervisor.async_nolink(state.task_supervisor_pid, Gnat.Services.Server, :execute, [module, gnat_message, state.svc_responder_pid])
+    else
+      Task.Supervisor.async_nolink(state.task_supervisor_pid, Gnat.Server, :execute, [module, gnat_message])
+    end
+
     {:noreply, state}
   end
 
@@ -148,4 +188,36 @@ defmodule Gnat.ConsumerSupervisor do
         wait_for_empty_task_supervisor(state)
     end
   end
+
+  defp initialize_as_manual_consumer(state, connection_pid) do
+    subscriptions = Enum.map(state.subscription_topics, fn(topic_and_queue_group) ->
+      topic = Map.fetch!(topic_and_queue_group, :topic)
+      {:ok, subscription} = case Map.get(topic_and_queue_group, :queue_group) do
+        nil -> Gnat.sub(connection_pid, self(), topic)
+        queue_group -> Gnat.sub(connection_pid, self(), topic, queue_group: queue_group)
+      end
+      subscription
+    end)
+
+    %{ state | subscriptions: subscriptions }
+  end
+
+  defp initialize_as_microservice(state, connection_pid) do
+    if :ets.whereis(:endpoint_stats) == :undefined do
+      :ets.new(:endpoint_stats, [:public, :set, :named_table])
+    end
+    {:ok, responder_pid} = ServiceResponder.start_link(%{ state | connection_pid: connection_pid })
+    endpoints = get_in(state, [:service_config, :endpoints])
+
+    subscriptions = Enum.map(endpoints, fn(ep) ->
+      subject = ServiceResponder.derive_subscription_subject(ep)
+      queue_group = Map.get(ep, :queue_group, @default_service_queue_group)
+      {:ok, subscription} = Gnat.sub(connection_pid, self(), subject, queue_group: queue_group)
+
+      subscription
+    end)
+
+    %{state | svc_responder_pid: responder_pid, subscriptions: subscriptions }
+  end
+
 end

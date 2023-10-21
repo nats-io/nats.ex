@@ -36,19 +36,19 @@ end
 # with token
 {:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, token: "secret", auth_required: true})
 
-# with nkeys
+# with an nkey seed
 {:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, nkey_seed: "SUAM...", auth_required: true})
 
-# with user credentials
+# with decentralized user credentials (JWT)
 {:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, nkey_seed: "SUAM...", jwt: "eyJ0eX...", auth_required: true})
 
-# connect to NGS
+# connect to NGS with JWT
 {:ok, gnat} = Gnat.start_link(%{host: "connect.ngs.global", tls: true, jwt: "ey...", nkey_seed: "SUAM..."})
 ```
 
 ## TLS Connections
 
-[Nats Server](https://github.com/nats-io/nats-server) is often configured to accept or require TLS connections.
+[NATS Server](https://github.com/nats-io/nats-server) is often configured to accept or require TLS connections.
 In order to connect to these clusters you'll want to pass some extra TLS settings to your `Gnat` connection.
 
 ``` elixir
@@ -68,6 +68,11 @@ For long-lived subscriptions consider using `Gnat.ConsumerSupervisor` .
 This can also be added to your supervision tree and use a supervised connection to re-establish a subscription.
 It also handles details like handling each message in a supervised process so you isolate failures and get OTP logs when an unexpected error occurs.
 
+## Services
+If you supply a module that implements the `Gnat.Services.Server` behavior and the `service_definition` 
+configuration field to a `Gnat.ConsumerSupervisor`, then this client will automatically take care
+of exposing the service to discovery, responding to pings, and maintaining and exposing statistics like request and error counts, and processing times.
+
 ## Instrumentation
 
 Gnat uses [telemetry](https://hex.pm/packages/telemetry) to make instrumentation data available to clients.
@@ -85,7 +90,9 @@ iex(2)> names = [[:gnat, :pub], [:gnat, :sub], [:gnat, :message_received], [:gna
   [:gnat, :sub],
   [:gnat, :message_received],
   [:gnat, :request],
-  [:gnat, :unsub]
+  [:gnat, :unsub],
+  [:gnat, :service_request],
+  [:gnat, :service_error]
 ]
 iex(3)> :telemetry.attach_many("my listener", names, metrics_function, %{my_config: true})
 :ok
@@ -101,7 +108,8 @@ iex(6)> Gnat.pub(gnat, "topic", "ohai")
 ```
 
 The `pub` , `sub` , `request` , and `unsub` events all report the latency of those respective calls.
-The `message_received` event reports a number of messages like `%{count: 1}` because there isn't a good latency metric to report.
+The `message_received` event reports a number of messages like `%{count: 1}` because there isn't a good latency metric to report. Any microservices managed by a consumer supervisor will also report `service_request` and `service_error`. In addition to the `:topic` metadata, microservices will also include `:endpoint` and `:group` (which can be `nil`) in their telemetry reports.
+
 All of the events (except `unsub` ) include metadata with a `:topic` key so you can split your metrics by topic.
 
 ## Benchmarks
@@ -122,7 +130,8 @@ As of this commit my 2018 MacBook pro shows.
 
 ## Development
 
-Before running the tests make sure you have a locally running copy of `nats-server` ( `brew install nats-server` ).
+Before running the tests make sure you have a locally running copy of `nats-server` ([installation instructions](https://docs.nats.io/running-a-nats-service/introduction/installation)).
+
 We currently use version `2.6.6` in CI, but anything higher than `2.2.0` should be fine.
 Versions from `0.9.6` up to `2.2.0` should work fine for everything except header support.
 The typical `mix test` will run all the basic unit tests.

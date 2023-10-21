@@ -32,6 +32,30 @@ defmodule RpcEndpoint do
 end
 spawn(&RpcEndpoint.init/0)
 
+defmodule ExampleService do
+  use Gnat.Services.Server
+
+  def request(%{topic: "calc.add", body: body}, _endpoint, _group) when body == "foo" do
+    :timer.sleep(10)
+
+    {:reply, "6"}
+  end
+
+  def request(%{body: body}, "sub", "calc") when body == "foo" do
+    # want some processing time to show up
+    :timer.sleep(10)
+    {:reply, "4"}
+  end
+
+  def request(_, _, _) do
+    {:error, "oops"}
+  end
+
+  def error(_msg, "oops") do
+    {:reply, "500 error"}
+  end
+end
+
 defmodule ExampleServer do
   use Gnat.Server
 
@@ -67,6 +91,26 @@ end
   subscription_topics: [
     %{topic: "example.*"}
   ]
+})
+
+{:ok , _pid} = Gnat.ConsumerSupervisor.start_link(%{
+  connection_name: :test_connection,
+  module: ExampleService,
+  service_definition: %{
+    name: "exampleservice",
+    description: "This is an example service",
+    version: "0.1.0",
+    endpoints: [
+      %{
+        name: "add",
+        group_name: "calc",
+      },
+      %{
+        name: "sub",
+        group_name: "calc"
+      }
+    ]
+  }
 })
 
 defmodule CheckForExpectedNatsServers do

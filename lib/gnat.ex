@@ -3,6 +3,9 @@
 #  :waiting_for_message => receive MSG... -> :waiting_for_message
 
 defmodule Gnat do
+  @moduledoc """
+  The primary interface for interacting with NATS
+  """
   use GenServer
   require Logger
   alias Gnat.{Command, Parsec}
@@ -10,17 +13,26 @@ defmodule Gnat do
   @type t :: GenServer.server()
   @type headers :: [{binary(), iodata()}]
 
-  # A message received from NATS will be delivered to your process in this form.
-  # Please note that the `:reply_to` and `:headers` keys are optional.
-  # They will only be present if the message was received from the NATS server with
-  # headers or a reply_to topic
+  @typedoc """
+  A message received from NATS will be delivered to your process in this form.
+  Please note that the `:reply_to` and `:headers` keys are optional.
+  They will only be present if the message was received from the NATS server with
+  headers or a `reply_to` topic
+
+  * `gnat` - The Gnat connection
+  * `topic` - The topic on which the message arrived
+  * `body` - The raw payload of the message
+  * `sid` - The subscription ID corresponding to this message. You generally won't need to use this value directly.
+  * `reply_to` - A topic supplied for expected replies
+  * `headers` - A set of NATS message headers on the message
+  """
   @type message :: %{
-    gnat: t(),
-    topic: String.t(),
-    body: String.t(),
-    sid: non_neg_integer(),
-    reply_to: String.t(),
-    headers: headers()
+    required(:gnat) => t(),
+    required(:topic) => binary(),
+    required(:body) => iodata(),
+    required(:sid) => non_neg_integer(),
+    optional(:reply_to) => binary(),
+    optional(:headers) => headers()
   }
   @type sent_message :: {:msg, message()}
 
@@ -185,7 +197,7 @@ defmodule Gnat do
   ```
 
   If you want to provide a reply address to receive a response you can pass it as an option.
-  [See request-response pattern](http://nats.io/documentation/concepts/nats-req-rep/).
+  [See request-reply pattern](https://docs.nats.io/nats-concepts/core-nats/reqreply).
 
   ```
   {:ok, gnat} = Gnat.start_link()
@@ -217,12 +229,12 @@ defmodule Gnat do
   @doc """
   Send a request and listen for a response synchronously
 
-  Following the nats [request-response pattern](http://nats.io/documentation/concepts/nats-req-rep/) this
+  Following the nats [request-reply pattern](https://docs.nats.io/nats-concepts/core-nats/reqreply) this
   function generates a one-time topic to receive replies and then sends a message to the provided topic.
 
   Supported options:
-    * receive_timeout: an integer number of milliseconds to wait for a response. Defaults to 60_000
-    * headers: a set of headers you want to send with the request (see `Gnat.pub/4`)
+    * `receive_timeout` - An integer number of milliseconds to wait for a response. Defaults to 60_000
+    * `headers` - A set of headers you want to send with the request (see `Gnat.pub/4`)
 
   ```
   {:ok, gnat} = Gnat.start_link()
@@ -266,9 +278,9 @@ defmodule Gnat do
   and optionally a maximum number of replies.
 
   Supported options:
-    * receive_timeout: an integer number of milliseconds to wait for responses. Defaults to 60_000
-    * max_messages: an integer number of messages to listen for. Defaults to -1 meaning unlimited
-    * headers: a set of headers you want to send with the request (see `Gnat.pub/4`)
+    * `receive_timeout` - An integer number of milliseconds to wait for responses. Defaults to 60_000
+    * `max_messages` - An integer number of messages to listen for. Defaults to -1 meaning unlimited
+    * `headers` - A set of headers you want to send with the request (see `Gnat.pub/4`)
 
   ```
   {:ok, gnat} = Gnat.start_link()
@@ -307,12 +319,12 @@ defmodule Gnat do
   Unsubscribe from a topic
 
   Supported options:
-    * max_messages: number of messages to be received before automatically unsubscribed
+    * `max_messages` - Number of messages to be received before automatically unsubscribed
 
-  This correlates to the [UNSUB](http://nats.io/documentation/internals/nats-protocol/#UNSUB) command in the nats protocol.
+  This correlates to the [UNSUB](https://docs.nats.io/reference/reference-protocols/nats-protocol#unsub) command in the nats protocol.
   By default the unsubscribe is affected immediately, but an optional `max_messages` value can be provided which will allow
   `max_messages` to be received before affecting the unsubscribe.
-  This is especially useful for [request response](http://nats.io/documentation/concepts/nats-req-rep/) patterns.
+  This is especially useful for request/reply patterns.
 
   ```
   {:ok, gnat} = Gnat.start_link()
@@ -333,7 +345,7 @@ defmodule Gnat do
   @doc """
   Ping the NATS server
 
-  This correlates to the [PING](http://nats.io/documentation/internals/nats-protocol/#PINGPONG) command in the NATS protocol.
+  This correlates to the [PING](https://docs.nats.io/reference/reference-protocols/nats-protocol#ping-pong) command in the NATS protocol.
   If the NATS server responds with a PONG message this function will return `:ok`
   ```
   {:ok, gnat} = Gnat.start_link()
@@ -350,7 +362,7 @@ defmodule Gnat do
     end
   end
 
-  @doc "get the number of active subscriptions"
+  @doc "Get the number of active subscriptions"
   @spec active_subscriptions(t()) :: {:ok, non_neg_integer()}
   def active_subscriptions(pid) do
     GenServer.call(pid, :active_subscriptions)
@@ -367,6 +379,7 @@ defmodule Gnat do
   @impl GenServer
   def init(connection_settings) do
     connection_settings = Map.merge(@default_connection_settings, connection_settings)
+
     case Gnat.Handshake.connect(connection_settings) do
       {:ok, socket, server_info} ->
         parser = Parsec.new
