@@ -1,4 +1,8 @@
 defmodule Gnat.Services.Server do
+  @idx_requests 1
+  @idx_errors 2
+  @idx_processing_time 3
+
   require Logger
 
   @moduledoc """
@@ -72,12 +76,11 @@ alias Gnat.Services.ServiceResponder
 
   @typedoc """
   Service configuration is provided as part of the consumer supervisor settings in the `service_definition` field.
-  You can specify _either_ the `subscription_topics` field for a reguar server or the `service_definition` field for a
+  You can specify _either_ the `subscription_topics` field for a regular server or the `service_definition` field for a
   new NATS service.
 
   * `name` - The name of the service. Needs to conform to the rules for NATS service names
   * `version` - A required version number (w/out "v" prefix) conforming to semver rules
-  * `queue_group` - An optional queue group for service subscriptions. If left off, "q" will be used.
   * `description` - An optional description of the service
   * `metadata` - An optional string->string map of service metadata
   * `endpoints` - A required list of service endpoints. All services must have at least one endpoint
@@ -86,7 +89,6 @@ alias Gnat.Services.ServiceResponder
     required(:name) =>         binary(),
     required(:version) =>      binary(),
     required(:endpoints) =>    [endpoint_configuration()],
-    optional(:queue_group) => binary(),
     optional(:description) => binary(),
     optional(:metadata) =>     map(),
   }
@@ -98,7 +100,7 @@ alias Gnat.Services.ServiceResponder
   * `subject` - A specific subject for this endpoint to listen on. If this is not provided, then the endpoint name will be used.
   * `name` - The required name of the endpoint
   * `group_name` - An optional group to which this endpoint belongs
-  * `queue_group` - A queue group for this endpoint's subscription. If not supplied, "q" will be used.
+  * `queue_group` - A queue group for this endpoint's subscription. If not supplied, "q" will be used (indicated by protocol spec).
   * `metadata` - An optional string->string map containing metadata for this endpoint
   """
   @type endpoint_configuration :: %{
@@ -113,18 +115,30 @@ alias Gnat.Services.ServiceResponder
   @doc false
   def execute(module, message, responder_pid) do
     try do
-      {endpoint, group} = ServiceResponder.lookup_endpoint(responder_pid, message.topic)
+      %{
+        endpoint_name: endpoint,
+        group_name: group,
+        counters: counters
+      } = ServiceResponder.lookup_endpoint(responder_pid, message.topic)
 
       case :timer.tc(fn -> apply(module, :request, [message, endpoint, group]) end) do
         {_elapsed, :ok} -> :done
         {elapsed_micros, {:reply, data}} ->
           send_reply(message, data)
-          :telemetry.execute([:gnat, :service_request], %{latency: elapsed_micros}, %{topic: message.topic, endpoint: endpoint, group: group})
-          ServiceResponder.record_request(responder_pid, message.topic, elapsed_micros * 1000 )
+          :telemetry.execute([:gnat, :service_request],
+              %{latency: elapsed_micros},
+              %{topic: message.topic, endpoint: endpoint, group: group})
+          :counters.add(counters, @idx_requests, 1)
+          :counters.add(counters, @idx_processing_time, elapsed_micros * 1000 )
+
         {elapsed_micros, {:error, error}} ->
           execute_error(module, message, error)
-          :telemetry.execute([:gnat, :service_error], %{latency: elapsed_micros}, %{topic: message.topic, endpoint: endpoint, group: group})
-          ServiceResponder.record_error(responder_pid, message.topic, elapsed_micros * 1000, inspect(error))
+          :telemetry.execute([:gnat, :service_error],
+              %{latency: elapsed_micros},
+              %{topic: message.topic, endpoint: endpoint, group: group})
+          :counters.add(counters, @idx_errors, 1)
+          :counters.add(counters, @idx_processing_time, elapsed_micros * 1000 )
+
         other -> execute_error(module, message, other)
       end
 

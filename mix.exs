@@ -2,7 +2,7 @@ defmodule Gnat.Mixfile do
   use Mix.Project
 
   @source_url "https://github.com/nats-io/nats.ex"
-  @version "1.7.0"
+  @version "1.7.1"
 
   def project do
     [

@@ -12,19 +12,28 @@ defmodule Gnat.Services.ServiceResponder do
   @idx_errors 2
   @idx_processing_time 3
 
+
   @name_regex ~r/^[a-zA-Z0-9_-]+$/
+  # This regex comes from the official semver.org definition and is used by all other clients
+  # to validate a service version
   @version_regex ~r/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
 
   use GenServer
 
-
   @type state :: %{
     config: Gnat.Services.Server.service_configuration(),
-    subject_map: map(),
+    subject_map: %{ required(String.t()) => subject_map_value() },
     connection_pid: pid,
     instance_id: String.t,
     subscription: non_neg_integer | String.t,
     started: String.t
+  }
+
+  @type subject_map_value :: %{
+    counters: :counters.counters_ref(),
+    last_error: nil | String.t,
+    endpoint_name: String.t,
+    group_name: nil | String.t
   }
 
   @spec start_link(map(), keyword()) :: GenServer.on_start
@@ -97,10 +106,7 @@ defmodule Gnat.Services.ServiceResponder do
           started: DateTime.to_iso8601(DateTime.utc_now())
         }
 
-        {:ok, subscription} = case get_in(state, [:config, :queue_group]) do
-          nil -> Gnat.sub(state.connection_pid, self(), @subscription_subject)
-          queue_group -> Gnat.sub(state.connection_pid, self(), @subscription_subject, queue_group: queue_group)
-        end
+        {:ok, subscription} = Gnat.sub(state.connection_pid, self(), @subscription_subject)
 
         {:ok, %{ state | subscription: subscription }}
       end
@@ -135,47 +141,13 @@ defmodule Gnat.Services.ServiceResponder do
   end
 
   @impl true
-  def handle_cast({:record_request, subject, elapsed_ns}, state) do
-    counters = case :ets.lookup(:endpoint_stats, subject) do
-      [{^subject, counters, _last_error}] ->
-        counters
-      [] ->
-        c = :counters.new(3, [:atomics])
-        :ets.insert(:endpoint_stats, {subject, c, nil})
-        c
-    end
-    :counters.add(counters, @idx_requests, 1)
-    :counters.add(counters, @idx_processing_time, elapsed_ns)
-
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_cast({:record_error, subject, elapsed_ns, msg}, state) do
-    counters = case :ets.lookup(:endpoint_stats, subject) do
-      [{^subject, counters, _last_error}] ->
-        counters
-      [] ->
-        c = :counters.new(3, [:atomics])
-        :ets.insert(:endpoint_stats, {subject, c, nil})
-        c
-    end
-    :counters.add(counters, @idx_errors, 1)
-    :counters.add(counters, @idx_processing_time, elapsed_ns)
-    :ets.insert(:endpoint_stats, {subject, counters, msg})
-
-    {:noreply, state}
-  end
-
-  @impl true
   def handle_call({:lookup_endpoint, subject}, _from, state) do
-    res = case Map.get(state.subject_map, subject) do
-      nil ->
-        {nil, nil}
-      {epname, groupname} ->
-        {epname, groupname}
-    end
+    res = get_endpoint(subject, state)
     {:reply, res, state}
+  end
+
+  defp get_endpoint(subject, state) do
+    Map.get(state.subject_map, subject)
   end
 
   defp handle_ping(tail, state, rt, gnat) do
@@ -222,12 +194,10 @@ defmodule Gnat.Services.ServiceResponder do
         started: state.started,
         endpoints: Enum.map(state.config.endpoints, fn(ep) ->
           effective_subject = derive_subscription_subject(ep)
-          {counters, last_error} = case :ets.lookup(:endpoint_stats, effective_subject) do
-            [{^effective_subject, counters, last_error}] ->
-              {counters, last_error}
-            [] ->
-              {:counters.new(3, [:atomics]), nil}
-          end
+          %{
+            counters: counters,
+            last_error: last_error
+          } = get_endpoint(effective_subject, state)
           processing_time = :counters.get(counters, @idx_processing_time)
           num_errors = :counters.get(counters, @idx_errors)
           num_requests = :counters.get(counters, @idx_requests)
@@ -313,7 +283,14 @@ defmodule Gnat.Services.ServiceResponder do
 
   defp build_subject_map(endpoints) do
     endpoints |> Enum.map(fn ep ->
-      { derive_subscription_subject(ep), {ep.name, ep.group_name}}
+      { derive_subscription_subject(ep),
+        %{
+          endpoint_name: ep.name,
+          group_name: ep.group_name,
+          counters: :counters.new(3, [:atomics]),
+          last_error: nil
+        }
+    }
     end) |> Map.new()
   end
 end

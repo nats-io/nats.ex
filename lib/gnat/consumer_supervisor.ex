@@ -203,9 +203,6 @@ defmodule Gnat.ConsumerSupervisor do
   end
 
   defp initialize_as_microservice(state, connection_pid) do
-    if :ets.whereis(:endpoint_stats) == :undefined do
-      :ets.new(:endpoint_stats, [:public, :set, :named_table])
-    end
     {:ok, responder_pid} = ServiceResponder.start_link(%{ state | connection_pid: connection_pid })
     endpoints = get_in(state, [:service_config, :endpoints])
 
