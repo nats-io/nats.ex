@@ -204,7 +204,7 @@ defmodule Gnat.ConsumerSupervisor do
         {:ok, Map.put(state, :service, service)}
 
       {:error, errors} ->
-        {:error, "Invalid service configuration: #{Enum.join(errors, ",")}"}
+        {:stop, "Invalid service configuration: #{Enum.join(errors, ",")}"}
     end
   end
 
@@ -226,13 +226,13 @@ defmodule Gnat.ConsumerSupervisor do
     partial = Map.take(state, [:module, :consuming_function])
     case Enum.count(partial) do
       0 ->
-        {:error, "You must provide a module or consuming function for the consumer supervisor"}
+        {:stop, "You must provide a module or consuming function for the consumer supervisor"}
 
       1 ->
         :ok
 
       _ ->
-        {:error, "You cannot provide both a module and consuming function. Please specify one or the other."}
+        {:stop, "You cannot provide both a module and consuming function. Please specify one or the other."}
     end
   end
 end

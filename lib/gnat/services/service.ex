@@ -14,9 +14,6 @@ defmodule Gnat.Services.Service do
 
   alias Gnat.Services.WireProtocol
 
-  @spec init(any()) ::
-          {:error, list()}
-          | {:ok, %{description: any(), name: any(), subjects: any(), version: any()}}
   def init(configuration) do
     with :ok <- validate_configuration(configuration) do
       service = %{
