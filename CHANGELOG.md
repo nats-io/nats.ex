@@ -3,6 +3,7 @@
 ## 1.7
 
  * Added support for the NATS [services API](https://github.com/nats-io/nats.go/blob/main/micro/README.md), letting developers participate in service discovery and stats https://github.com/nats-io/nats.ex/pull/141
+ * A bugfix to remove the queue_group from a service config and some optimization for the services API https://github.com/nats-io/nats.ex/pull/145
 
 ## 1.6
 
