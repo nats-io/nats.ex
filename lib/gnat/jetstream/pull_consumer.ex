@@ -186,7 +186,7 @@ defmodule Gnat.Jetstream.PullConsumer do
       end
 
   """
-  @callback handle_message(message :: Jetstream.message(), state :: term()) ::
+  @callback handle_message(message :: Gnat.message(), state :: term()) ::
               {ack_action, new_state}
             when ack_action: :ack | :nack | :term | :noreply, new_state: term()
 
