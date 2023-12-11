@@ -32,7 +32,6 @@ defmodule Gnat.Mixfile do
       {:ex_doc, "~> 0.27.3", only: :dev},
       {:jason, "~> 1.1"},
       {:connection, "~> 1.1"},
-      {:broadway, "~> 1.0", optional: true},
       {:nimble_parsec, "~> 0.5 or ~> 1.0"},
       {:nkeys, "~> 0.2"},
       {:propcheck, "~> 1.0", only: :test},
