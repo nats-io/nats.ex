@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  schedule:
+    - cron: "0 0 1 */1 *"
+
+jobs:
+  test:
+    name: Elixir ${{ matrix.pair.elixir }} / OTP ${{ matrix.pair.otp }} / NATS ${{ matrix.pair.nats }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        pair:
+          - otp: "24.3.4"
+            elixir: "1.12"
+            nats: "2.3.0"
+
+          - otp: "24.3.4"
+            elixir: "main"
+            nats: "latest"
+
+    env:
+      MIX_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set up Elixir
+        uses: erlef/setup-elixir@v1
+        with:
+          elixir-version: ${{ matrix.pair.elixir }}
+          otp-version: ${{ matrix.pair.otp }}
+
+      - name: Start NATS Jetstream
+        run: docker run --rm -d --network host nats:${{ matrix.pair.nats }} -js
+
+      - name: Restore deps cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            deps
+            _build
+          key: deps-${{ runner.os }}-${{ matrix.pair.otp }}-${{ matrix.pair.elixir }}-${{ hashFiles('**/mix.lock') }}-${{ github.sha }}
+          restore-keys: |
+            deps-${{ runner.os }}-${{ matrix.pair.otp }}-${{ matrix.pair.elixir }}-${{ hashFiles('**/mix.lock') }}
+            deps-${{ runner.os }}-${{ matrix.pair.otp }}-${{ matrix.pair.elixir }}
+
+      - name: Install package dependencies
+        run: mix deps.get
+
+      - name: Check for valid formatting
+        run: mix format --check-formatted
+
+      - name: Run unit tests
+        run: mix test --color
