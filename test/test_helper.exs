@@ -2,6 +2,21 @@ ExUnit.configure(exclude: [:pending, :property, :multi_server])
 
 ExUnit.start()
 
+# set assert_receive default timeout
+Application.put_env(:ex_unit, :assert_receive_timeout, 1_000)
+
+# cleanup any streams left over by previous test runs
+{:ok, conn} = Gnat.start_link(%{}, [name: :jstest])
+{:ok, %{streams: streams}} = Gnat.Jetstream.API.Stream.list(conn)
+streams = streams || []
+
+Enum.each(streams, fn stream ->
+  :ok = Gnat.Jetstream.API.Stream.delete(conn, stream)
+end)
+
+:ok = Gnat.stop(conn)
+
+
 case :gen_tcp.connect('localhost', 4222, [:binary]) do
   {:ok, socket} ->
     :gen_tcp.close(socket)
