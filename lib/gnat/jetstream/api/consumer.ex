@@ -220,11 +220,11 @@ defmodule Gnat.Jetstream.API.Consumer do
 
   ## Examples
 
-      iex> {:ok, _response} = Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "stream", subjects: ["subject"]})
-      iex> {:ok, %{name: "consumer", stream_name: "stream"}} = Gnat.Jetstream.API.Consumer.create(:gnat, %Gnat.Jetstream.API.Consumer{durable_name: "consumer", stream_name: "stream"})
+      iex> {:ok, _response} = Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "astream", subjects: ["subject"]})
+      iex> {:ok, %{name: "consumer", stream_name: "astream"}} = Gnat.Jetstream.API.Consumer.create(:gnat, %Gnat.Jetstream.API.Consumer{durable_name: "consumer", stream_name: "astream"})
 
-      iex> {:ok, _response} = Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "stream", subjects: ["subject"]})
-      iex> {:error, %{"description" => "consumer delivery policy is deliver by start sequence, but optional start sequence is not set"}} = Gnat.Jetstream.API.Consumer.create(:gnat, %Gnat.Jetstream.API.Consumer{durable_name: "consumer", stream_name: "stream", deliver_policy: :by_start_sequence})
+      iex> {:ok, _response} = Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "astream", subjects: ["subject"]})
+      iex> {:error, %{"description" => "consumer delivery policy is deliver by start sequence, but optional start sequence is not set"}} = Gnat.Jetstream.API.Consumer.create(:gnat, %Gnat.Jetstream.API.Consumer{durable_name: "consumer", stream_name: "astream", deliver_policy: :by_start_sequence})
 
   """
   @spec create(conn :: Gnat.t(), consumer :: t()) :: {:ok, info()} | {:error, term()}
@@ -252,9 +252,9 @@ defmodule Gnat.Jetstream.API.Consumer do
 
   ## Examples
 
-      iex> {:ok, _response} = Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "stream", subjects: ["subject"]})
-      iex> {:ok, _response} = Gnat.Jetstream.API.Consumer.create(:gnat, %Gnat.Jetstream.API.Consumer{durable_name: "consumer", stream_name: "stream"})
-      iex> Gnat.Jetstream.API.Consumer.delete(:gnat, "stream", "consumer")
+      iex> {:ok, _response} = Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "astream", subjects: ["subject"]})
+      iex> {:ok, _response} = Gnat.Jetstream.API.Consumer.create(:gnat, %Gnat.Jetstream.API.Consumer{durable_name: "consumer", stream_name: "astream"})
+      iex> Gnat.Jetstream.API.Consumer.delete(:gnat, "astream", "consumer")
       :ok
 
       iex> {:error, %{"code" => 404, "description" => "stream not found"}} = Gnat.Jetstream.API.Consumer.delete(:gnat, "wrong_stream", "consumer")
@@ -280,9 +280,9 @@ defmodule Gnat.Jetstream.API.Consumer do
 
   ## Examples
 
-      iex> {:ok, _response} = Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "stream", subjects: ["subject"]})
-      iex> {:ok, _response} = Gnat.Jetstream.API.Consumer.create(:gnat, %Gnat.Jetstream.API.Consumer{durable_name: "consumer", stream_name: "stream"})
-      iex> {:ok, %{created: _}} = Gnat.Jetstream.API.Consumer.info(:gnat, "stream", "consumer")
+      iex> {:ok, _response} = Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "astream", subjects: ["subject"]})
+      iex> {:ok, _response} = Gnat.Jetstream.API.Consumer.create(:gnat, %Gnat.Jetstream.API.Consumer{durable_name: "consumer", stream_name: "astream"})
+      iex> {:ok, %{created: _}} = Gnat.Jetstream.API.Consumer.info(:gnat, "astream", "consumer")
 
       iex>  {:error, %{"code" => 404, "description" => "stream not found"}} = Gnat.Jetstream.API.Consumer.info(:gnat, "wrong_stream", "consumer")
 
@@ -307,8 +307,8 @@ defmodule Gnat.Jetstream.API.Consumer do
 
   ## Examples
 
-      iex> {:ok, _response} =  Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "stream", subjects: ["subject"]})
-      iex> {:ok, %{consumers: _, limit: 1024, offset: 0, total: _}} = Gnat.Jetstream.API.Consumer.list(:gnat, "stream")
+      iex> {:ok, _response} =  Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "astream", subjects: ["subject"]})
+      iex> {:ok, %{consumers: _, limit: 1024, offset: 0, total: _}} = Gnat.Jetstream.API.Consumer.list(:gnat, "astream")
 
       iex> {:error, %{"code" => 404, "description" => "stream not found"}} = Gnat.Jetstream.API.Consumer.list(:gnat, "wrong_stream")
 
@@ -359,10 +359,10 @@ defmodule Gnat.Jetstream.API.Consumer do
 
   ## Example
 
-      iex> {:ok, _response} = Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "stream", subjects: ["subject"]})
-      iex> {:ok, _response} = Gnat.Jetstream.API.Consumer.create(:gnat, %Gnat.Jetstream.API.Consumer{durable_name: "consumer", stream_name: "stream"})
+      iex> {:ok, _response} = Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "astream", subjects: ["subject"]})
+      iex> {:ok, _response} = Gnat.Jetstream.API.Consumer.create(:gnat, %Gnat.Jetstream.API.Consumer{durable_name: "consumer", stream_name: "astream"})
       iex> {:ok, _sid} = Gnat.sub(:gnat, self(), "reply_subject")
-      iex> :ok = Gnat.Jetstream.API.Consumer.request_next_message(:gnat, "stream", "consumer", "reply_subject")
+      iex> :ok = Gnat.Jetstream.API.Consumer.request_next_message(:gnat, "astream", "consumer", "reply_subject")
       iex> :ok = Gnat.pub(:gnat, "subject", "message1")
       iex> assert_receive {:msg, %{body: "message1", topic: "subject"}}
   """

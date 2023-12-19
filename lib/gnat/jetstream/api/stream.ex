@@ -259,7 +259,7 @@ defmodule Gnat.Jetstream.API.Stream do
 
   ## Examples
 
-      iex> {:ok, %{created: _}} = Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "stream", subjects: ["subject"]})
+      iex> {:ok, %{created: _}} = Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "anewstream", subjects: ["anewsubject"]})
 
   """
   @spec create(conn :: Gnat.t(), stream :: t()) :: {:ok, info()} | {:error, any()}
@@ -302,8 +302,8 @@ defmodule Gnat.Jetstream.API.Stream do
 
   ## Examples
 
-      iex> Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "stream", subjects: ["subject"]})
-      iex> Gnat.Jetstream.API.Stream.delete(:gnat, "stream")
+      iex> Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "delstream", subjects: ["delsubject"]})
+      iex> Gnat.Jetstream.API.Stream.delete(:gnat, "delstream")
       :ok
 
       iex> {:error, %{"code" => 404, "description" => "stream not found"}} = Gnat.Jetstream.API.Stream.delete(:gnat, "wrong_stream")
@@ -322,8 +322,8 @@ defmodule Gnat.Jetstream.API.Stream do
 
   ## Examples
 
-      iex> Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "stream", subjects: ["subject"]})
-      iex> Gnat.Jetstream.API.Stream.purge(:gnat, "stream")
+      iex> Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "purgestream", subjects: ["purgesubject"]})
+      iex> Gnat.Jetstream.API.Stream.purge(:gnat, "purgestream")
       :ok
 
       iex> {:error, %{"code" => 404, "description" => "stream not found"}} = Gnat.Jetstream.API.Stream.purge(:gnat, "wrong_stream")
@@ -338,12 +338,12 @@ defmodule Gnat.Jetstream.API.Stream do
   end
 
   @doc """
-  Purges some of the messages in a stream.
+  Purges some of the messages in a stream according to the supplied filter
 
   ## Examples
 
-      iex> Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "stream", subjects: ["sub1", "sub2"]})
-      iex> Gnat.Jetstream.API.Stream.purge(:gnat, "stream", nil, %{filter: "sub1"})
+      iex> Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "pstream", subjects: ["psub1", "psub2"]})
+      iex> Gnat.Jetstream.API.Stream.purge(:gnat, "pstream", nil, %{filter: "psub1"})
       :ok
 
   """
@@ -363,8 +363,8 @@ defmodule Gnat.Jetstream.API.Stream do
 
   ## Examples
 
-      iex> Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "stream", subjects: ["subject"]})
-      iex> {:ok, %{created: _}} = Gnat.Jetstream.API.Stream.info(:gnat, "stream")
+      iex> {:ok, _} = Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "infostream", subjects: ["infosubject"]})
+      iex> {:ok, %{created: _}} = Gnat.Jetstream.API.Stream.info(:gnat, "infostream")
 
       iex> {:error, %{"code" => 404, "description" => "stream not found"}} = Gnat.Jetstream.API.Stream.info(:gnat, "wrong_stream")
 
