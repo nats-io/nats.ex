@@ -67,6 +67,11 @@ defmodule Gnat.ConnectionSupervisor do
     end
   end
 
+  def handle_info({:EXIT, _pid, :normal}, state) do
+    # linked process exited normally, don't shutdown
+    {:noreply, state}
+  end
+
   # in OTP 25 and below, we will get back an EXIT message in addition to receiving the {:error, reason}
   # tuple on from the start_link call above. So if we get an exit message when there is no connection tracked
   # it means will have already scheduled a new attempt_connection
