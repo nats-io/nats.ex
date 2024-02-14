@@ -188,6 +188,33 @@ defmodule GnatTest do
     end
   end
 
+  test "subscription is cleaned up when the subscribing process dies" do
+    topic = "testcleanup"
+    test_pid = self()
+    {:ok, pid} = Gnat.start_link()
+
+    # one subscription created at boot
+    assert {:ok, 1} = Gnat.active_subscriptions(pid)
+
+    %Task{pid: task_pid}=  Task.async(fn ->
+      Gnat.sub(pid, self(), topic)
+      assert {:ok, 2} = Gnat.active_subscriptions(pid)
+      send(test_pid, "subscribed")
+
+      receive do
+        :done -> :ok
+      end
+    end)
+
+    assert_receive "subscribed", 1_000
+    Gnat.server_info(pid)
+    Process.monitor(task_pid)
+    send(task_pid, :done)
+    assert_receive {:DOWN, _ref, :process, ^task_pid, _reason}, 1_000
+
+    assert {:ok, 1} = Gnat.active_subscriptions(pid)
+  end
+
   test "request-reply convenience function" do
     topic = "req-resp"
     {:ok, pid} = Gnat.start_link()
