@@ -441,6 +441,17 @@ defmodule Gnat.Jetstream.API.Stream do
     end
   end
 
+  @doc """
+  Returns true if the provided stream is a KV bucket, false otherwise
+
+  ## Parameters
+  * `stream_name` - the stream name to test
+  """
+  @spec is_kv_bucket_stream(stream_name :: binary()) :: boolean()
+  def is_kv_bucket_stream(stream_name) do
+    String.starts_with?(stream_name, "KV_")
+  end
+
   # https://docs.nats.io/running-a-nats-service/configuration/leafnodes/jetstream_leafnodes
   defp js_api(nil), do: "$JS.API"
   defp js_api(""), do: "$JS.API"
