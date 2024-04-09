@@ -1,6 +1,7 @@
 defmodule Gnat.Jetstream.API.KVTest do
   use Gnat.Jetstream.ConnCase, min_server_version: "2.6.2"
   alias Gnat.Jetstream.API.KV
+  alias Gnat.Jetstream.API.Stream
 
   @moduletag with_gnat: :gnat
 
@@ -152,6 +153,27 @@ defmodule Gnat.Jetstream.API.KVTest do
     test "error tuple if problem", %{bucket: bucket} do
       assert {:error, _message} = KV.contents(:gnat, "NOT_REAL_BUCKET")
       :ok = KV.delete_bucket(:gnat, bucket)
+    end
+  end
+  describe "list_buckets/2" do
+    test "list buckets when none exists" do
+      assert {:ok, []} = KV.list_buckets(:gnat)
+    end
+
+    test "list buckets properly" do
+      assert {:ok, %{config: _config}} = KV.create_bucket(:gnat, "TEST_BUCKET_1")
+      assert {:ok, %{config: _config}} = KV.create_bucket(:gnat, "TEST_BUCKET_2")
+      assert {:ok, ["TEST_BUCKET_1", "TEST_BUCKET_2"]} = KV.list_buckets(:gnat)
+      :ok = KV.delete_bucket(:gnat, "TEST_BUCKET_1")
+      :ok = KV.delete_bucket(:gnat, "TEST_BUCKET_2")
+    end
+
+    test "ignore streams that are not buckets" do
+      assert {:ok, %{config: _config}} = KV.create_bucket(:gnat, "TEST_BUCKET_1")
+      stream = %Stream{name: "TEST_STREAM_1", subjects: ["TEST_STREAM_1.subject1", "TEST_STREAM_1.subject2"]}
+      assert {:ok, _response} = Stream.create(:gnat, stream)
+      assert {:ok, ["TEST_BUCKET_1"]} = KV.list_buckets(:gnat)
+      :ok = KV.delete_bucket(:gnat, "TEST_BUCKET_1")
     end
   end
 end

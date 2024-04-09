@@ -265,6 +265,28 @@ defmodule Gnat.Jetstream.API.KV do
     end
   end
 
+  @doc """
+  Returns a list of all the buckets in the KV
+  """
+  @spec list_buckets(conn :: Gnat.t()) :: {:error, term()} | {:ok, list(String.t())}
+  def list_buckets(conn) do
+    case Stream.list(conn) do
+      {:ok, %{streams: streams}} ->
+        {:ok,
+         streams
+         |> Enum.flat_map(fn bucket ->
+           case Stream.is_kv_bucket_stream(bucket) do
+             true -> [bucket |> String.trim_leading(@stream_prefix)]
+             _ -> []
+           end
+         end)}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+
   @doc false
   def stream_name(bucket_name) do
     "#{@stream_prefix}#{bucket_name}"
