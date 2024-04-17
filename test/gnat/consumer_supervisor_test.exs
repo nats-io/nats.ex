@@ -148,7 +148,14 @@ defmodule Gnat.ConsumerSupervisorTest do
     assert message =~ "At least one key or value found in metadata that was not a string"
   end
 
+  # In OTP 26 the GenServer.init behavior changed to do a process EXIT when returning a
+  # {:stop, error} in GenServer.init
+  # We inherit this behavior, so for the purpose of testing, we trap those process exits
+  # to make sure we can process the `{:error, error}` tuple before the process exit kills
+  # our ExUnit test
   defp start_service_supervisor(service_config) do
+    Process.flag(:trap_exit, true)
+
     config = %{
       connection_name: :something,
       module: ExampleService,
