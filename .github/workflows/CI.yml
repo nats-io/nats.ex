@@ -20,6 +20,10 @@ jobs:
             elixir: "1.12"
             nats: "2.10.0"
 
+          - otp: "26.2.4"
+            elixir: "1.16.2"
+            nats: "2.10.14"
+
           - otp: "24.3.4"
             elixir: "main"
             nats: "latest"
