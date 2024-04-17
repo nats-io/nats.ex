@@ -405,10 +405,18 @@ defmodule Gnat.Jetstream.API.Stream do
       })
 
     with {:ok, decoded} <- request(conn, "#{js_api(domain)}.STREAM.NAMES", payload) do
+      # Recent versions of NATS sometimes return `"streams": null` in their JSON payload to indicate
+      # that no streams are defined. But, that would mean callers have to handle both `nil` and a list, so
+      # we coerce that to an empty list to represent no streams being defined.
+      streams = case Map.get(decoded, "streams") do
+        nil -> []
+        names when is_list(names) -> names
+      end
+
       result = %{
         limit: Map.get(decoded, "limit"),
         offset: Map.get(decoded, "offset"),
-        streams: Map.get(decoded, "streams"),
+        streams: streams,
         total: Map.get(decoded, "total")
       }
 
