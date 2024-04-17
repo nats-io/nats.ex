@@ -266,6 +266,17 @@ defmodule Gnat.Jetstream.API.KV do
   end
 
   @doc """
+  Returns true if the provided stream is a KV bucket, false otherwise
+
+  ## Parameters
+  * `stream_name` - the stream name to test
+  """
+  @spec is_kv_bucket_stream?(stream_name :: binary()) :: boolean()
+  def is_kv_bucket_stream?(stream_name) do
+    String.starts_with?(stream_name, "KV_")
+  end
+
+  @doc """
   Returns a list of all the buckets in the KV
   """
   @spec list_buckets(conn :: Gnat.t()) :: {:error, term()} | {:ok, list(String.t())}
@@ -275,7 +286,7 @@ defmodule Gnat.Jetstream.API.KV do
         {:ok,
          streams
          |> Enum.flat_map(fn bucket ->
-           case Stream.is_kv_bucket_stream(bucket) do
+           case is_kv_bucket_stream?(bucket) do
              true -> [bucket |> String.trim_leading(@stream_prefix)]
              _ -> []
            end
