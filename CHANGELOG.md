@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8
+
+* Integrated the jetstream functionality into this client directly https://github.com/nats-io/nats.ex/pull/146
+* Add ability to list KV buckets https://github.com/nats-io/nats.ex/pull/152
+* Improve CI Reliability https://github.com/nats-io/nats.ex/pull/154
+
 ## 1.7
 
  * Added support for the NATS [services API](https://github.com/nats-io/nats.go/blob/main/micro/README.md), letting developers participate in service discovery and stats https://github.com/nats-io/nats.ex/pull/141
