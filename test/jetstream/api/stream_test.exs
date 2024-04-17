@@ -167,7 +167,7 @@ defmodule Gnat.Jetstream.API.StreamTest do
     test "decodes message data" do
       stream = %Stream{name: "GET_MESSAGE_TEST", subjects: ["GET_MESSAGE_TEST.foo"]}
       assert {:ok, _response} = Stream.create(:gnat, stream)
-      assert :ok = Gnat.pub(:gnat, "GET_MESSAGE_TEST.foo", "hi there")
+      assert {:ok, _} = Gnat.request(:gnat, "GET_MESSAGE_TEST.foo", "hi there")
 
       assert {:ok, response} =
                Stream.get_message(:gnat, "GET_MESSAGE_TEST", %{
@@ -194,8 +194,8 @@ defmodule Gnat.Jetstream.API.StreamTest do
 
       assert {:ok, _response} = Stream.create(:gnat, stream)
 
-      assert :ok =
-               Gnat.pub(:gnat, "GET_MESSAGE_TEST_WITH_HEADERS.bar", "hi there",
+      assert {:ok, %{body: _body}} =
+               Gnat.request(:gnat, "GET_MESSAGE_TEST_WITH_HEADERS.bar", "hi there",
                  headers: [{"foo", "bar"}]
                )
 
@@ -214,7 +214,7 @@ defmodule Gnat.Jetstream.API.StreamTest do
     test "clears the stream" do
       stream = %Stream{name: "PURGE_TEST", subjects: ["PURGE_TEST.foo"]}
       assert {:ok, _response} = Stream.create(:gnat, stream)
-      assert :ok = Gnat.pub(:gnat, "PURGE_TEST.foo", "hi there")
+      assert {:ok, _} = Gnat.request(:gnat, "PURGE_TEST.foo", "hi there")
 
       assert :ok = Stream.purge(:gnat, "PURGE_TEST")
 
