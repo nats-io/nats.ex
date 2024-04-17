@@ -5,6 +5,7 @@
 * Integrated the jetstream functionality into this client directly https://github.com/nats-io/nats.ex/pull/146
 * Add ability to list KV buckets https://github.com/nats-io/nats.ex/pull/152
 * Improve CI Reliability https://github.com/nats-io/nats.ex/pull/154
+* Bugfix to treat no streams as an empty list rather than a null https://github.com/nats-io/nats.ex/pull/155
 
 ## 1.7
 
