@@ -281,17 +281,18 @@ defmodule Gnat.Jetstream.API.KV do
   """
   @spec list_buckets(conn :: Gnat.t()) :: {:error, term()} | {:ok, list(String.t())}
   def list_buckets(conn) do
-    case Stream.list(conn) do
-      {:ok, %{streams: streams}} ->
-        {:ok,
-         streams
-         |> Enum.flat_map(fn bucket ->
-           case is_kv_bucket_stream?(bucket) do
-             true -> [bucket |> String.trim_leading(@stream_prefix)]
-             _ -> []
-           end
-         end)}
-
+    with {:ok, %{streams: streams}} <- Stream.list(conn) do
+      stream_names =
+        streams
+        |> Enum.flat_map(fn bucket ->
+          if is_kv_bucket_stream?(bucket) do
+             [bucket |> String.trim_leading(@stream_prefix)]
+          else
+             []
+          end
+        end)
+      {:ok, stream_names}
+    else
       {:error, reason} ->
         {:error, reason}
     end
