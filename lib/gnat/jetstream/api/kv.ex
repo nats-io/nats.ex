@@ -9,6 +9,9 @@ defmodule Gnat.Jetstream.API.KV do
   @stream_prefix "KV_"
   @subject_prefix "$KV."
   @two_minutes_in_nanoseconds 1_200_000_000
+  @operation_header "kv-operation"
+  @operation_del "DEL"
+  @operation_purge "PURGE"
 
   @type bucket_options ::
           {:history, non_neg_integer()}
@@ -248,10 +251,34 @@ defmodule Gnat.Jetstream.API.KV do
     Gnat.Jetstream.API.KV.Watcher.stop(pid)
   end
 
+  @doc ~S"""
+  Returns true if operation is `{"kv-operation", "DEL"}` or `{"kv-operation", "PURGE"}`
+
+  ## Parameters
+  - `headers` - a list of headers to test
+
+  ## Example
+
+      iex> is_delete_operation([{"kv-operation", "DEL"}])
+      true
+      iex> is_delete_operation([{"kv-operation", "PURGE"}])
+      true
+      iex> is_delete_operation([{"kv-operation", "ADD"}])
+      true
+  """
+  @spec is_delete_operation?(headers :: Gnat.headers()) :: boolean()
+  def is_delete_operation?(headers) do
+    headers
+    |> Enum.filter(fn {k, v} ->
+      k == @operation_header and (v == @operation_del or v == @operation_purge)
+    end)
+    |> length() > 0
+  end
+
   defp receive_keys(keys \\ %{}, bucket_name) do
     receive do
       {:msg, %{topic: key, body: body, headers: headers}} ->
-        if {"kv-operation", "DEL"} in headers do
+        if is_delete_operation?(headers) do
           receive_keys(keys, bucket_name)
         else
           Map.put(keys, subject_to_key(key, bucket_name), body) |> receive_keys(bucket_name)

@@ -10,9 +10,6 @@ defmodule Gnat.Jetstream.API.KV.Watcher do
 
   alias Gnat.Jetstream.API.{Consumer, KV, Util}
 
-  @operation_header "kv-operation"
-  @operation_del "DEL"
-
   @type keywatch_handler ::
           (action :: :key_deleted | :key_added, key :: String.t(), value :: any() -> nil)
 
@@ -54,7 +51,7 @@ defmodule Gnat.Jetstream.API.KV.Watcher do
   def handle_info({:msg, %{topic: key, body: body, headers: headers}}, state) do
     key = KV.subject_to_key(key, state.bucket_name)
 
-    if {@operation_header, @operation_del} in headers do
+    if KV.is_delete_operation?(headers) do
       state.handler.(:key_deleted, key, body)
     end
 
