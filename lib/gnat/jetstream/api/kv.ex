@@ -257,13 +257,13 @@ defmodule Gnat.Jetstream.API.KV do
   ## Parameters
   - `headers` - a list of headers to test
 
-  ## Example
+  ## Examples
 
-      iex> is_delete_operation([{"kv-operation", "DEL"}])
+      iex> is_delete_operation?([{"kv-operation", "DEL"}])
       true
-      iex> is_delete_operation([{"kv-operation", "PURGE"}])
+      iex> is_delete_operation?([{"kv-operation", "PURGE"}])
       true
-      iex> is_delete_operation([{"kv-operation", "ADD"}])
+      iex> is_delete_operation?([{"kv-operation", "ADD"}])
       true
   """
   @spec is_delete_operation?(headers :: Gnat.headers()) :: boolean()
