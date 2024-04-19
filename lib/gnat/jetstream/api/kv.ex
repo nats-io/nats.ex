@@ -264,7 +264,7 @@ defmodule Gnat.Jetstream.API.KV do
       iex> is_delete_operation?([{"kv-operation", "PURGE"}])
       true
       iex> is_delete_operation?([{"kv-operation", "ADD"}])
-      true
+      false
   """
   @spec is_delete_operation?(headers :: Gnat.headers()) :: boolean()
   def is_delete_operation?(headers) do
