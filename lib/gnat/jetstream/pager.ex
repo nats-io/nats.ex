@@ -57,13 +57,40 @@ defmodule Gnat.Jetstream.Pager do
     end
   end
 
+  def reduce(conn, stream_name, opts, initial_state, fun) do
+    with {:ok, pager} <- init(conn, stream_name, opts) do
+      page_through(pager, initial_state, fun)
+    end
+  end
+
+  defp page_through(pager, state, fun) do
+    case page(pager) do
+      {:page, messages} ->
+        new_state = Enum.reduce(messages, state, fun)
+        page_through(pager, new_state, fun)
+
+      {:done, messages} ->
+        new_state = Enum.reduce(messages, state, fun)
+        :ok = cleanup(pager)
+        {:ok, new_state}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
   defp receive_messages(%{batch: batch}, messages) when length(messages) == batch do
     {:page, Enum.reverse(messages)}
   end
 
+  @terminals ["404", "408"]
   defp receive_messages(%{sub: sid} = state, messages) do
     receive do
-      {:msg, %{sid: ^sid, status: "408"}} ->
+      {:msg, %{sid: ^sid, status: status}} when status in @terminals ->
+        {:done, Enum.reverse(messages)}
+
+      {:msg, %{sid: ^sid, reply_to: nil} = msg} ->
+        IO.inspect(msg)
         {:done, Enum.reverse(messages)}
 
       {:msg, %{sid: ^sid} = message} ->
