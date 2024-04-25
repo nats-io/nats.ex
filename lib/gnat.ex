@@ -25,6 +25,8 @@ defmodule Gnat do
   * `sid` - The subscription ID corresponding to this message. You generally won't need to use this value directly.
   * `reply_to` - A topic supplied for expected replies
   * `headers` - A set of NATS message headers on the message
+  * `status` - Similar to an HTTP status, this is present for messages with headers and can indicate the specific purpose of a message. Example `status: "408"`
+  * `description` - A string description of the `status`
   """
   @type message :: %{
     required(:gnat) => t(),
@@ -32,7 +34,9 @@ defmodule Gnat do
     required(:body) => iodata(),
     required(:sid) => non_neg_integer(),
     optional(:reply_to) => binary(),
-    optional(:headers) => headers()
+    optional(:headers) => headers(),
+    optional(:status) => String.t(),
+    optional(:description) => String.t()
   }
   @type sent_message :: {:msg, message()}
 
