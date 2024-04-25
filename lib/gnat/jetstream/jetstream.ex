@@ -25,7 +25,7 @@ Acknowledges the message was handled and requests delivery of the next message t
 subject. Only applies to Pull-mode.
 """
 @spec ack_next(message :: Gnat.message(), consumer_subject :: binary()) :: :ok
-def ack_next(%{reply_to: nil}, consumer_subject) do
+def ack_next(%{reply_to: nil}, _consumer_subject) do
   {:error, "Cannot ack message with no reply-to"}
 end
 
