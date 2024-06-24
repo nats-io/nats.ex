@@ -6,6 +6,8 @@
 * Add ability to list KV buckets https://github.com/nats-io/nats.ex/pull/152
 * Improve CI Reliability https://github.com/nats-io/nats.ex/pull/154
 * Bugfix to treat no streams as an empty list rather than a null https://github.com/nats-io/nats.ex/pull/155
+* Added supported for `allow_direct` and `mirror_direct` attributes of streams https://github.com/nats-io/nats.ex/pull/161
+* Added support for `discard_new_per_subject` attribute of streams https://github.com/nats-io/nats.ex/pull/163
 
 ## 1.7
 
