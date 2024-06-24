@@ -22,6 +22,8 @@ defmodule Gnat.Jetstream.API.Stream do
   * `:discard` - determines what happens when a Stream reaches its limits. It has the following options:
      - `:old` - the default option. Old messages are deleted.
      - `:new` - refuses new messages.
+  * `:discard_new_per_subject` - - allows to enable discarding new messages per subject when limits are reached.
+    Requires `discard: :new` and the `:max_msgs_per_subject` to be configured.
   * `:domain` - JetStream domain, mainly used for leaf nodes.
      See [JetStream on Leaf Nodes](https://docs.nats.io/running-a-nats-service/configuration/leafnodes/jetstream_leafnodes).
   * `:duplicate_window` - the window within which to track duplicate messages, expressed in nanoseconds.
@@ -91,7 +93,8 @@ defmodule Gnat.Jetstream.API.Stream do
     num_replicas: 1,
     retention: :limits,
     sealed: false,
-    storage: :file
+    storage: :file,
+    discard_new_per_subject: false
   ]
 
   @type nanoseconds :: non_neg_integer()
@@ -127,7 +130,8 @@ defmodule Gnat.Jetstream.API.Stream do
           sources: nil | list(source()),
           storage: :file | :memory,
           subjects: nil | list(binary()),
-          template_owner: nil | binary()
+          template_owner: nil | binary(),
+          discard_new_per_subject: boolean()
         }
 
   @typedoc """
@@ -505,6 +509,7 @@ defmodule Gnat.Jetstream.API.Stream do
     |> put_if_exist(:allow_rollup_hdrs, stream, "allow_rollup_hdrs")
     |> put_if_exist(:deny_delete, stream, "deny_delete")
     |> put_if_exist(:deny_purge, stream, "deny_purge")
+    |> put_if_exist(:discard_new_per_subject, stream, "discard_new_per_subject")
     |> put_if_exist(:mirror_direct, stream, "mirror_direct")
     |> put_if_exist(:sealed, stream, "sealed")
   end

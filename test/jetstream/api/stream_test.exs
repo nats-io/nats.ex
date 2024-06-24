@@ -79,6 +79,52 @@ defmodule Gnat.Jetstream.API.StreamTest do
     assert :ok = Stream.delete(:gnat, "LIST_OFFSET_TEST_TWO")
   end
 
+  test "create stream with discard_new_per_subject: true" do
+    stream = %Stream{name: "DISCARD_NEW_PER_SUBJECT_TEST",
+                     subjects: ["STREAM_TEST"],
+                     max_msgs_per_subject: 1,
+                     discard_new_per_subject: true,
+                     discard: :new}
+    assert {:ok, _response} = Stream.create(:gnat, stream)
+
+    assert {:ok, _} = Gnat.request(:gnat, "STREAM_TEST", "first message")
+    assert {:ok, response} =
+      Stream.get_message(:gnat, "DISCARD_NEW_PER_SUBJECT_TEST", %{
+            last_by_subj: "STREAM_TEST"})
+      %{
+        data: "first message",
+        hdrs: nil,
+        subject: "STREAM_TEST",
+        time: %DateTime{}
+      } = response
+
+    assert {:ok, _} = Gnat.request(:gnat, "STREAM_TEST", "second message")
+    assert {:ok, response} =
+      Stream.get_message(:gnat, "DISCARD_NEW_PER_SUBJECT_TEST", %{
+            last_by_subj: "STREAM_TEST"})
+      %{
+        data: "first message",
+        hdrs: nil,
+        subject: "STREAM_TEST",
+        time: %DateTime{}
+      } = response
+
+    Stream.purge(:gnat, "DISCARD_NEW_PER_SUBJECT_TEST")
+
+    assert {:ok, _} = Gnat.request(:gnat, "STREAM_TEST", "second message")
+    assert {:ok, response} =
+      Stream.get_message(:gnat, "DISCARD_NEW_PER_SUBJECT_TEST", %{
+            last_by_subj: "STREAM_TEST"})
+      %{
+        data: "second message",
+        hdrs: nil,
+        subject: "STREAM_TEST",
+        time: %DateTime{}
+      } = response
+
+      assert :ok = Stream.delete(:gnat, "DISCARD_NEW_PER_SUBJECT_TEST")
+  end
+
   test "updating a stream" do
     stream = %Stream{name: "UPDATE_TEST", subjects: ["STREAM_TEST"]}
     assert {:ok, _response} = Stream.create(:gnat, stream)
