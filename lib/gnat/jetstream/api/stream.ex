@@ -11,6 +11,7 @@ defmodule Gnat.Jetstream.API.Stream do
 
   Stream struct fields explanation:
 
+  * `:allow_direct` - Allow higher performance, direct access to get individual messages. E.g. KeyValue
   * `:allow_rollup_hdrs` - allows the use of the Nats-Rollup header to replace all contents of a stream,
     or subject in a stream, with a single new message.
   * `:deny_delete` - restricts the ability to delete messages from a stream via the API. Cannot be changed
@@ -37,6 +38,7 @@ defmodule Gnat.Jetstream.API.Stream do
     new messages if the Stream exceeds this number of messages
   * `:mirror` - maintains a 1:1 mirror of another stream with name matching this property.  When a mirror
     is configured subjects and sources must be empty.
+  * `:mirror_direct` - Allow higher performance and unified direct access for mirrors as well.
   * `:name` - a name for the Stream.
     See [naming](https://docs.nats.io/running-a-nats-service/nats_admin/jetstream_admin/naming).
   * `:no_ack` - disables acknowledging messages that are received by the Stream.
@@ -75,6 +77,7 @@ defmodule Gnat.Jetstream.API.Stream do
     :sources,
     :subjects,
     :template_owner,
+    allow_direct: false,
     allow_rollup_hdrs: false,
     deny_delete: false,
     deny_purge: false,
@@ -86,6 +89,7 @@ defmodule Gnat.Jetstream.API.Stream do
     max_msg_size: -1,
     max_msgs_per_subject: -1,
     max_msgs: -1,
+    mirror_direct: false,
     num_replicas: 1,
     retention: :limits,
     sealed: false,
@@ -101,6 +105,7 @@ defmodule Gnat.Jetstream.API.Stream do
         }
 
   @type t :: %__MODULE__{
+          allow_direct: boolean(),
           allow_rollup_hdrs: boolean(),
           deny_delete: boolean(),
           deny_purge: boolean(),
@@ -115,6 +120,7 @@ defmodule Gnat.Jetstream.API.Stream do
           max_msgs: integer(),
           max_msgs_per_subject: integer(),
           mirror: nil | source(),
+          mirror_direct: boolean(),
           name: binary(),
           no_ack: nil | boolean(),
           num_replicas: pos_integer(),
@@ -412,10 +418,11 @@ defmodule Gnat.Jetstream.API.Stream do
       # Recent versions of NATS sometimes return `"streams": null` in their JSON payload to indicate
       # that no streams are defined. But, that would mean callers have to handle both `nil` and a list, so
       # we coerce that to an empty list to represent no streams being defined.
-      streams = case Map.get(decoded, "streams") do
-        nil -> []
-        names when is_list(names) -> names
-      end
+      streams =
+        case Map.get(decoded, "streams") do
+          nil -> []
+          names when is_list(names) -> names
+        end
 
       result = %{
         limit: Map.get(decoded, "limit"),
@@ -498,10 +505,12 @@ defmodule Gnat.Jetstream.API.Stream do
       template_owner: Map.get(stream, "template_owner")
     }
     # Check for fields added in NATS versions higher than 2.2.0
+    |> put_if_exist(:allow_direct, stream, "allow_direct")
     |> put_if_exist(:allow_rollup_hdrs, stream, "allow_rollup_hdrs")
     |> put_if_exist(:deny_delete, stream, "deny_delete")
     |> put_if_exist(:deny_purge, stream, "deny_purge")
     |> put_if_exist(:discard_new_per_subject, stream, "discard_new_per_subject")
+    |> put_if_exist(:mirror_direct, stream, "mirror_direct")
     |> put_if_exist(:sealed, stream, "sealed")
   end
 
