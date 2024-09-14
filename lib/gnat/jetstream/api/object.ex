@@ -145,6 +145,38 @@ defmodule Gnat.Jetstream.API.Object do
     end
   end
 
+  @doc """
+  Returns true if the provided stream is an Object bucket, false otherwise
+  ## Parameters
+  * `stream_name` - the stream name to test
+  """
+  @spec is_object_bucket_stream?(stream_name :: binary()) :: boolean()
+  def is_object_bucket_stream?(stream_name) do
+    String.starts_with?(stream_name, "OBJ_")
+  end
+
+  @doc """
+  Returns a list of all Object buckets
+  """
+  @spec list_buckets(conn :: Gnat.t()) :: {:error, term()} | {:ok, list(String.t())}
+  def list_buckets(conn) do
+    with {:ok, %{streams: streams}} <- Stream.list(conn) do
+      stream_names =
+        streams
+        |> Enum.flat_map(fn bucket ->
+          if is_object_bucket_stream?(bucket) do
+             [bucket |> String.trim_leading(@stream_prefix)]
+          else
+             []
+          end
+        end)
+      {:ok, stream_names}
+    else
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   defp stream_name(bucket_name) do
     "#{@stream_prefix}#{bucket_name}"
   end
