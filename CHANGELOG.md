@@ -8,6 +8,7 @@
 * Bugfix to treat no streams as an empty list rather than a null https://github.com/nats-io/nats.ex/pull/155
 * Added supported for `allow_direct` and `mirror_direct` attributes of streams https://github.com/nats-io/nats.ex/pull/161
 * Added support for `discard_new_per_subject` attribute of streams https://github.com/nats-io/nats.ex/pull/163
+* Added support for `Object.list_buckets` https://github.com/nats-io/nats.ex/pull/169
 
 ## 1.7
 
