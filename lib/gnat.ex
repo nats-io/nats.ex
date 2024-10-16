@@ -114,7 +114,7 @@ defmodule Gnat do
   }
 
   @default_connection_settings %{
-    host: 'localhost',
+    host: ~c"localhost",
     port: 4222,
     tcp_opts: [:binary],
     connection_timeout: 3_000,

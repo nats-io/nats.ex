@@ -3,13 +3,13 @@ defmodule Gnat.Generators do
 
   # Character classes useful for generating text
   def alphanumeric_char do
-    elements('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
+    elements(~c"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
   end
   def alphanumeric_space_char do
-    elements(' 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
+    elements(~c" 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
   end
   def numeric_char do
-    elements('0123456789')
+    elements(~c"0123456789")
   end
 
   @doc "protocol delimiter. The protocol can use one ore more of space or tab characters as delimiters between fields"
