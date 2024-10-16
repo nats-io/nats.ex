@@ -18,19 +18,19 @@ defmodule Gnat.Jetstream.API.KVTest do
     end
 
     test "creates a bucket with duplicate window < 2min" do
-      assert {:ok, %{config: config}} = KV.create_bucket(:gnat, "TTL_TEST", ttl: 100_000_000)
-      assert config.max_age == 100_000_000
-      assert config.duplicate_window == 100_000_000
+      assert {:ok, %{config: config}} = KV.create_bucket(:gnat, "TTL_TEST", ttl: 1_000_000_000)
+      assert config.max_age == 1_000_000_000
+      assert config.duplicate_window == 1_000_000_000
 
       assert :ok = KV.delete_bucket(:gnat, "TTL_TEST")
     end
 
     test "creates a bucket with duplicate window > 2min" do
       assert {:ok, %{config: config}} =
-               KV.create_bucket(:gnat, "OTHER_TTL_TEST", ttl: 1_300_000_000)
+               KV.create_bucket(:gnat, "OTHER_TTL_TEST", ttl: 130_000_000_000)
 
-      assert config.max_age == 1_300_000_000
-      assert config.duplicate_window == 1_200_000_000
+      assert config.max_age == 130_000_000_000
+      assert config.duplicate_window == 120_000_000_000
 
       assert :ok = KV.delete_bucket(:gnat, "OTHER_TTL_TEST")
     end

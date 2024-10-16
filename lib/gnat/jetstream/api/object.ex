@@ -209,7 +209,7 @@ defmodule Gnat.Jetstream.API.Object do
     "#{@subject_prefix}#{bucket_name}.M.#{key}"
   end
 
-  @two_minutes_in_nanoseconds 1_200_000_000
+  @two_minutes_in_nanoseconds 120_000_000_000
   # The `duplicate_window` can't be greater than the `max_age`. The default `duplicate_window`
   # is 2 minutes. We'll keep the 2 minute window UNLESS the ttl is less than 2 minutes
   defp adjust_duplicate_window(ttl) when ttl > 0 and ttl < @two_minutes_in_nanoseconds, do: ttl
