@@ -17,7 +17,7 @@ end)
 :ok = Gnat.stop(conn)
 
 
-case :gen_tcp.connect('localhost', 4222, [:binary]) do
+case :gen_tcp.connect(~c"localhost", 4222, [:binary]) do
   {:ok, socket} ->
     :gen_tcp.close(socket)
   {:error, reason} ->
@@ -135,7 +135,7 @@ defmodule CheckForExpectedNatsServers do
   end
 
   def check_for_default do
-    case :gen_tcp.connect('localhost', 4222, [:binary]) do
+    case :gen_tcp.connect(~c"localhost", 4222, [:binary]) do
       {:ok, socket} ->
         :gen_tcp.close(socket)
       {:error, reason} ->
@@ -147,7 +147,7 @@ defmodule CheckForExpectedNatsServers do
   end
 
   def check_for_tag(:multi_server) do
-    case :gen_tcp.connect('localhost', 4223, [:binary]) do
+    case :gen_tcp.connect(~c"localhost", 4223, [:binary]) do
       {:ok, socket} ->
         :gen_tcp.close(socket)
       {:error, reason} ->
@@ -160,7 +160,7 @@ defmodule CheckForExpectedNatsServers do
                   "--user bob --pass alice`."
     end
 
-    case :gen_tcp.connect('localhost', 4224, [:binary]) do
+    case :gen_tcp.connect(~c"localhost", 4224, [:binary]) do
       {:ok, socket} ->
         :gen_tcp.close(socket)
       {:error, reason} ->
@@ -174,7 +174,7 @@ defmodule CheckForExpectedNatsServers do
                   "--tlskey test/fixtures/server-key.pem`."
     end
 
-    case :gen_tcp.connect('localhost', 4225, [:binary]) do
+    case :gen_tcp.connect(~c"localhost", 4225, [:binary]) do
       {:ok, socket} ->
         :gen_tcp.close(socket)
       {:error, reason} ->
@@ -189,7 +189,7 @@ defmodule CheckForExpectedNatsServers do
                   "--tlscacert test/fixtures/ca.pem --tlsverify"
     end
 
-    case :gen_tcp.connect('localhost', 4226, [:binary]) do
+    case :gen_tcp.connect(~c"localhost", 4226, [:binary]) do
       {:ok, socket} ->
         :gen_tcp.close(socket)
       {:error, reason} ->
@@ -202,7 +202,7 @@ defmodule CheckForExpectedNatsServers do
                   "--auth SpecialToken`."
     end
 
-    case :gen_tcp.connect('localhost', 4227, [:binary]) do
+    case :gen_tcp.connect(~c"localhost", 4227, [:binary]) do
       {:ok, socket} ->
         :gen_tcp.close(socket)
       {:error, reason} ->

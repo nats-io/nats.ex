@@ -8,7 +8,7 @@ defmodule Gnat.Jetstream.API.KV do
 
   @stream_prefix "KV_"
   @subject_prefix "$KV."
-  @two_minutes_in_nanoseconds 1_200_000_000
+  @two_minutes_in_nanoseconds 120_000_000_000
 
   @type bucket_options ::
           {:history, non_neg_integer()}
