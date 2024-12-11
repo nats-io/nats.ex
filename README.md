@@ -15,9 +15,9 @@ The goals of the project are resiliency, performance, and ease of use.
 ## Usage
 
 ``` elixir
-{:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222})
+{:ok, gnat} = Gnat.start_link(%{host: "127.0.0.1", port: 4222})
 # Or if the server requires TLS you can start a connection with:
-# {:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, tls: true})
+# {:ok, gnat} = Gnat.start_link(%{host: "127.0.0.1", port: 4222, tls: true})
 
 {:ok, subscription} = Gnat.sub(gnat, self(), "pawnee.*")
 :ok = Gnat.pub(gnat, "pawnee.news", "Leslie Knope recalled from city council (Jammed)")
@@ -31,16 +31,16 @@ end
 
 ``` elixir
 # with user and password
-{:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, username: "joe", password: "123", auth_required: true})
+{:ok, gnat} = Gnat.start_link(%{host: "127.0.0.1", port: 4222, username: "joe", password: "123", auth_required: true})
 
 # with token
-{:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, token: "secret", auth_required: true})
+{:ok, gnat} = Gnat.start_link(%{host: "127.0.0.1", port: 4222, token: "secret", auth_required: true})
 
 # with an nkey seed
-{:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, nkey_seed: "SUAM...", auth_required: true})
+{:ok, gnat} = Gnat.start_link(%{host: "127.0.0.1", port: 4222, nkey_seed: "SUAM...", auth_required: true})
 
 # with decentralized user credentials (JWT)
-{:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, nkey_seed: "SUAM...", jwt: "eyJ0eX...", auth_required: true})
+{:ok, gnat} = Gnat.start_link(%{host: "127.0.0.1", port: 4222, nkey_seed: "SUAM...", jwt: "eyJ0eX...", auth_required: true})
 
 # connect to NGS with JWT
 {:ok, gnat} = Gnat.start_link(%{host: "connect.ngs.global", tls: true, jwt: "ey...", nkey_seed: "SUAM..."})
@@ -49,11 +49,11 @@ end
 ## TLS Connections
 
 [NATS Server](https://github.com/nats-io/nats-server) is often configured to accept or require TLS connections.
-In order to connect to these clusters you'll want to pass some extra TLS settings to your `Gnat` connection.
+In order to connect to these clusters you"ll want to pass some extra TLS settings to your `Gnat` connection.
 
 ``` elixir
 # using a basic TLS connection
-{:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, tls: true})
+{:ok, gnat} = Gnat.start_link(%{host: "127.0.0.1", port: 4222, tls: true})
 
 # Passing a Client Certificate for verification
 {:ok, gnat} = Gnat.start_link(%{tls: true, ssl_opts: [certfile: "client-cert.pem", keyfile: "client-key.pem"]})
@@ -108,7 +108,7 @@ iex(6)> Gnat.pub(gnat, "topic", "ohai")
 ```
 
 The `pub` , `sub` , `request` , and `unsub` events all report the latency of those respective calls.
-The `message_received` event reports a number of messages like `%{count: 1}` because there isn't a good latency metric to report. Any microservices managed by a consumer supervisor will also report `service_request` and `service_error`. In addition to the `:topic` metadata, microservices will also include `:endpoint` and `:group` (which can be `nil`) in their telemetry reports.
+The `message_received` event reports a number of messages like `%{count: 1}` because there isn"t a good latency metric to report. Any microservices managed by a consumer supervisor will also report `service_request` and `service_error`. In addition to the `:topic` metadata, microservices will also include `:endpoint` and `:group` (which can be `nil`) in their telemetry reports.
 
 All of the events (except `unsub` ) include metadata with a `:topic` key so you can split your metrics by topic.
 
@@ -134,7 +134,7 @@ Before running the tests make sure you have a locally running copy of `nats-serv
 
 We currently use version `2.6.6` in CI, but anything higher than `2.2.0` should be fine.
 Versions from `0.9.6` up to `2.2.0` should work fine for everything except header support.
-Make sure to enable jetstream with the `nats-server -js` argument and you might also want to enable debug and verbose logging if you're trying to understand the messages being sent to/from nats (ie `nats-server -js -D -V`).
+Make sure to enable jetstream with the `nats-server -js` argument and you might also want to enable debug and verbose logging if you"re trying to understand the messages being sent to/from nats (ie `nats-server -js -D -V`).
 The typical `mix test` will run all the basic unit tests.
 
 You can also run the `multi_server` set of tests that test connectivity to different
