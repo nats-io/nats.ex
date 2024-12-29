@@ -85,9 +85,14 @@ defmodule Gnat.Jetstream.API.KV do
   @doc """
   Create a Key in a Key/Value Bucket
 
+  ## Options
+
+  * `:timeout` - receive timeout for the request
+
   ## Examples
 
       iex>:ok = Jetstream.API.KV.create_key(:gnat, "my_bucket", "my_key", "my_value")
+
   """
   @spec create_key(conn :: Gnat.t(), bucket_name :: binary(), key :: binary(), value :: binary()) ::
           :ok | {:error, any()}
@@ -233,7 +238,11 @@ defmodule Gnat.Jetstream.API.KV do
       end)
   """
   def watch(conn, bucket_name, handler) do
-    Gnat.Jetstream.API.KV.Watcher.start_link(conn: conn, bucket_name: bucket_name, handler: handler)
+    Gnat.Jetstream.API.KV.Watcher.start_link(
+      conn: conn,
+      bucket_name: bucket_name,
+      handler: handler
+    )
   end
 
   @doc ~S"""
@@ -286,18 +295,18 @@ defmodule Gnat.Jetstream.API.KV do
         streams
         |> Enum.flat_map(fn bucket ->
           if is_kv_bucket_stream?(bucket) do
-             [bucket |> String.trim_leading(@stream_prefix)]
+            [bucket |> String.trim_leading(@stream_prefix)]
           else
-             []
+            []
           end
         end)
+
       {:ok, stream_names}
     else
       {:error, reason} ->
         {:error, reason}
     end
   end
-
 
   @doc false
   def stream_name(bucket_name) do
