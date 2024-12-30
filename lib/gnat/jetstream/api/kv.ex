@@ -270,7 +270,7 @@ defmodule Gnat.Jetstream.API.KV do
   end
 
   @spec is_kv_bucket_stream?(stream_name :: binary()) :: boolean()
-  @deprecated "Use Gnat.Jetstream.API.KV.kv_bucket_stream?1 instead"
+  @deprecated "Use Gnat.Jetstream.API.KV.kv_bucket_stream?/1 instead"
   def is_kv_bucket_stream?(stream_name) do
     kv_bucket_stream?(stream_name)
   end
