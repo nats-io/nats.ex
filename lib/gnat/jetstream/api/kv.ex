@@ -34,7 +34,7 @@ defmodule Gnat.Jetstream.API.KV do
 
   ## Examples
 
-     iex>{:ok, info} = Jetstream.API.KV.create_bucket(:gnat, "my_bucket")
+     iex> {:ok, info} = Jetstream.API.KV.create_bucket(:gnat, "my_bucket")
   """
   @spec create_bucket(conn :: Gnat.t(), bucket_name :: binary(), params :: [bucket_options()]) ::
           {:ok, Stream.info()} | {:error, any()}
@@ -75,7 +75,7 @@ defmodule Gnat.Jetstream.API.KV do
 
   ## Examples
 
-     iex>:ok = Jetstream.API.KV.delete_bucket(:gnat, "my_bucket")
+     iex> :ok = Jetstream.API.KV.delete_bucket(:gnat, "my_bucket")
   """
   @spec delete_bucket(conn :: Gnat.t(), bucket_name :: binary()) :: :ok | {:error, any()}
   def delete_bucket(conn, bucket_name) do
@@ -87,7 +87,7 @@ defmodule Gnat.Jetstream.API.KV do
 
   ## Examples
 
-      iex>:ok = Jetstream.API.KV.create_key(:gnat, "my_bucket", "my_key", "my_value")
+      iex> :ok = Jetstream.API.KV.create_key(:gnat, "my_bucket", "my_key", "my_value")
   """
   @spec create_key(conn :: Gnat.t(), bucket_name :: binary(), key :: binary(), value :: binary()) ::
           :ok | {:error, any()}
@@ -107,7 +107,7 @@ defmodule Gnat.Jetstream.API.KV do
 
   ## Examples
 
-      iex>:ok = Jetstream.API.KV.delete_key(:gnat, "my_bucket", "my_key")
+      iex> :ok = Jetstream.API.KV.delete_key(:gnat, "my_bucket", "my_key")
   """
   @spec delete_key(conn :: Gnat.t(), bucket_name :: binary(), key :: binary()) ::
           :ok | {:error, any()}
@@ -131,7 +131,7 @@ defmodule Gnat.Jetstream.API.KV do
 
   ## Examples
 
-      iex>:ok = Jetstream.API.KV.purge_key(:gnat, "my_bucket", "my_key")
+      iex> :ok = Jetstream.API.KV.purge_key(:gnat, "my_bucket", "my_key")
   """
   @spec purge_key(conn :: Gnat.t(), bucket_name :: binary(), key :: binary()) ::
           :ok | {:error, any()}
@@ -155,7 +155,7 @@ defmodule Gnat.Jetstream.API.KV do
 
   ## Examples
 
-      iex>:ok = Jetstream.API.KV.put_value(:gnat, "my_bucket", "my_key", "my_value")
+      iex> :ok = Jetstream.API.KV.put_value(:gnat, "my_bucket", "my_key", "my_value")
   """
   @spec put_value(conn :: Gnat.t(), bucket_name :: binary(), key :: binary(), value :: binary()) ::
           :ok | {:error, any()}
@@ -175,7 +175,7 @@ defmodule Gnat.Jetstream.API.KV do
 
   ## Examples
 
-      iex>"my_value" = Jetstream.API.KV.get_value(:gnat, "my_bucket", "my_key")
+      iex> "my_value" = Jetstream.API.KV.get_value(:gnat, "my_bucket", "my_key")
   """
   @spec get_value(conn :: Gnat.t(), bucket_name :: binary(), key :: binary()) ::
           binary() | {:error, any()} | nil
@@ -193,7 +193,7 @@ defmodule Gnat.Jetstream.API.KV do
 
   ## Examples
 
-      iex>{:ok, %{"key1" => "value1"}} = Jetstream.API.KV.contents(:gnat, "my_bucket")
+      iex> {:ok, %{"key1" => "value1"}} = Jetstream.API.KV.contents(:gnat, "my_bucket")
   """
   @spec contents(conn :: Gnat.t(), bucket_name :: binary(), domain :: nil | binary()) ::
           {:ok, map()} | {:error, binary()}
@@ -228,12 +228,16 @@ defmodule Gnat.Jetstream.API.KV do
 
   ## Examples
 
-      iex>{:ok, _pid} = Jetstream.API.KV.watch(:gnat, "my_bucket", fn action, key, value ->
-        IO.puts("#{action} taken on #{key}")
-      end)
+      iex> {:ok, _pid} = Jetstream.API.KV.watch(:gnat, "my_bucket", fn action, key, value ->
+      ...>  IO.puts("#{action} taken on #{key}")
+      ...> end)
   """
   def watch(conn, bucket_name, handler) do
-    Gnat.Jetstream.API.KV.Watcher.start_link(conn: conn, bucket_name: bucket_name, handler: handler)
+    Gnat.Jetstream.API.KV.Watcher.start_link(
+      conn: conn,
+      bucket_name: bucket_name,
+      handler: handler
+    )
   end
 
   @doc ~S"""
@@ -242,7 +246,7 @@ defmodule Gnat.Jetstream.API.KV do
 
   ## Examples
 
-      iex>:ok = Jetstream.API.KV.unwatch(pid)
+      iex> :ok = Jetstream.API.KV.unwatch(pid)
   """
   def unwatch(pid) do
     Gnat.Jetstream.API.KV.Watcher.stop(pid)
@@ -286,18 +290,18 @@ defmodule Gnat.Jetstream.API.KV do
         streams
         |> Enum.flat_map(fn bucket ->
           if is_kv_bucket_stream?(bucket) do
-             [bucket |> String.trim_leading(@stream_prefix)]
+            [bucket |> String.trim_leading(@stream_prefix)]
           else
-             []
+            []
           end
         end)
+
       {:ok, stream_names}
     else
       {:error, reason} ->
         {:error, reason}
     end
   end
-
 
   @doc false
   def stream_name(bucket_name) do
