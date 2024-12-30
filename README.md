@@ -49,7 +49,7 @@ end
 ## TLS Connections
 
 [NATS Server](https://github.com/nats-io/nats-server) is often configured to accept or require TLS connections.
-In order to connect to these clusters you"ll want to pass some extra TLS settings to your `Gnat` connection.
+In order to connect to these clusters you'll want to pass some extra TLS settings to your `Gnat` connection.
 
 ``` elixir
 # using a basic TLS connection
@@ -134,7 +134,7 @@ Before running the tests make sure you have a locally running copy of `nats-serv
 
 We currently use version `2.6.6` in CI, but anything higher than `2.2.0` should be fine.
 Versions from `0.9.6` up to `2.2.0` should work fine for everything except header support.
-Make sure to enable jetstream with the `nats-server -js` argument and you might also want to enable debug and verbose logging if you"re trying to understand the messages being sent to/from nats (ie `nats-server -js -D -V`).
+Make sure to enable jetstream with the `nats-server -js` argument and you might also want to enable debug and verbose logging if you're trying to understand the messages being sent to/from nats (ie `nats-server -js -D -V`).
 The typical `mix test` will run all the basic unit tests.
 
 You can also run the `multi_server` set of tests that test connectivity to different
