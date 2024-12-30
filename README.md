@@ -108,7 +108,7 @@ iex(6)> Gnat.pub(gnat, "topic", "ohai")
 ```
 
 The `pub` , `sub` , `request` , and `unsub` events all report the latency of those respective calls.
-The `message_received` event reports a number of messages like `%{count: 1}` because there isn"t a good latency metric to report. Any microservices managed by a consumer supervisor will also report `service_request` and `service_error`. In addition to the `:topic` metadata, microservices will also include `:endpoint` and `:group` (which can be `nil`) in their telemetry reports.
+The `message_received` event reports a number of messages like `%{count: 1}` because there isn't a good latency metric to report. Any microservices managed by a consumer supervisor will also report `service_request` and `service_error`. In addition to the `:topic` metadata, microservices will also include `:endpoint` and `:group` (which can be `nil`) in their telemetry reports.
 
 All of the events (except `unsub` ) include metadata with a `:topic` key so you can split your metrics by topic.
 
