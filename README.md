@@ -15,9 +15,9 @@ The goals of the project are resiliency, performance, and ease of use.
 ## Usage
 
 ``` elixir
-{:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222})
+{:ok, gnat} = Gnat.start_link(%{host: "127.0.0.1", port: 4222})
 # Or if the server requires TLS you can start a connection with:
-# {:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, tls: true})
+# {:ok, gnat} = Gnat.start_link(%{host: "127.0.0.1", port: 4222, tls: true})
 
 {:ok, subscription} = Gnat.sub(gnat, self(), "pawnee.*")
 :ok = Gnat.pub(gnat, "pawnee.news", "Leslie Knope recalled from city council (Jammed)")
@@ -31,16 +31,16 @@ end
 
 ``` elixir
 # with user and password
-{:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, username: "joe", password: "123", auth_required: true})
+{:ok, gnat} = Gnat.start_link(%{host: "127.0.0.1", port: 4222, username: "joe", password: "123", auth_required: true})
 
 # with token
-{:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, token: "secret", auth_required: true})
+{:ok, gnat} = Gnat.start_link(%{host: "127.0.0.1", port: 4222, token: "secret", auth_required: true})
 
 # with an nkey seed
-{:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, nkey_seed: "SUAM...", auth_required: true})
+{:ok, gnat} = Gnat.start_link(%{host: "127.0.0.1", port: 4222, nkey_seed: "SUAM...", auth_required: true})
 
 # with decentralized user credentials (JWT)
-{:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, nkey_seed: "SUAM...", jwt: "eyJ0eX...", auth_required: true})
+{:ok, gnat} = Gnat.start_link(%{host: "127.0.0.1", port: 4222, nkey_seed: "SUAM...", jwt: "eyJ0eX...", auth_required: true})
 
 # connect to NGS with JWT
 {:ok, gnat} = Gnat.start_link(%{host: "connect.ngs.global", tls: true, jwt: "ey...", nkey_seed: "SUAM..."})
@@ -53,7 +53,7 @@ In order to connect to these clusters you'll want to pass some extra TLS setting
 
 ``` elixir
 # using a basic TLS connection
-{:ok, gnat} = Gnat.start_link(%{host: '127.0.0.1', port: 4222, tls: true})
+{:ok, gnat} = Gnat.start_link(%{host: "127.0.0.1", port: 4222, tls: true})
 
 # Passing a Client Certificate for verification
 {:ok, gnat} = Gnat.start_link(%{tls: true, ssl_opts: [certfile: "client-cert.pem", keyfile: "client-key.pem"]})
