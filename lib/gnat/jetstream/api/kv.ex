@@ -85,6 +85,10 @@ defmodule Gnat.Jetstream.API.KV do
   @doc """
   Create a Key in a Key/Value Bucket
 
+  ## Options
+
+  * `:timeout` - receive timeout for the request
+
   ## Examples
 
       iex> :ok = Jetstream.API.KV.create_key(:gnat, "my_bucket", "my_key", "my_value")
