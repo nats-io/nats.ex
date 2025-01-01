@@ -269,14 +269,20 @@ defmodule Gnat.Jetstream.API.KV do
     end
   end
 
+  @spec is_kv_bucket_stream?(stream_name :: binary()) :: boolean()
+  @deprecated "Use Gnat.Jetstream.API.KV.kv_bucket_stream?/1 instead"
+  def is_kv_bucket_stream?(stream_name) do
+    kv_bucket_stream?(stream_name)
+  end
+
   @doc """
   Returns true if the provided stream is a KV bucket, false otherwise
 
   ## Parameters
   * `stream_name` - the stream name to test
   """
-  @spec is_kv_bucket_stream?(stream_name :: binary()) :: boolean()
-  def is_kv_bucket_stream?(stream_name) do
+  @spec kv_bucket_stream?(stream_name :: binary()) :: boolean()
+  def kv_bucket_stream?(stream_name) do
     String.starts_with?(stream_name, "KV_")
   end
 
@@ -289,7 +295,7 @@ defmodule Gnat.Jetstream.API.KV do
       stream_names =
         streams
         |> Enum.flat_map(fn bucket ->
-          if is_kv_bucket_stream?(bucket) do
+          if kv_bucket_stream?(bucket) do
             [bucket |> String.trim_leading(@stream_prefix)]
           else
             []
