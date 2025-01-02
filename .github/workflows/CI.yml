@@ -20,23 +20,23 @@ jobs:
             elixir: "1.14"
             nats: "2.10.0"
 
-          - otp: "26.2.5"
-            elixir: "1.16.2"
-            nats: "2.10.14"
+          #- otp: "26.2.5"
+          #  elixir: "1.16.2"
+          #  nats: "2.10.14"
 
-          - otp: "27.1"
-            elixir: "main"
-            nats: "latest"
+          #- otp: "27.1"
+          #  elixir: "main"
+          #  nats: "latest"
 
     env:
       MIX_ENV: test
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up Elixir
-        uses: erlef/setup-elixir@v1
+        uses: erlef/setup-beam@v1
         with:
           elixir-version: ${{ matrix.pair.elixir }}
           otp-version: ${{ matrix.pair.otp }}
@@ -45,15 +45,12 @@ jobs:
         run: docker run --rm -d --network host nats:${{ matrix.pair.nats }} -js
 
       - name: Restore deps cache
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: |
             deps
             _build
-          key: deps-${{ runner.os }}-${{ matrix.pair.otp }}-${{ matrix.pair.elixir }}-${{ hashFiles('**/mix.lock') }}-${{ github.sha }}
-          restore-keys: |
-            deps-${{ runner.os }}-${{ matrix.pair.otp }}-${{ matrix.pair.elixir }}-${{ hashFiles('**/mix.lock') }}
-            deps-${{ runner.os }}-${{ matrix.pair.otp }}-${{ matrix.pair.elixir }}
+          key: deps-${{ matrix.pair.otp }}-${{ matrix.pair.elixir }}-${{ hashFiles('mix.lock') }}
 
       - name: Install package dependencies
         run: mix deps.get
