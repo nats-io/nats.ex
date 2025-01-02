@@ -16,17 +16,21 @@ jobs:
     strategy:
       matrix:
         pair:
-          - otp: "25.3.2"
+          - otp: "25"
             elixir: "1.14"
             nats: "2.10.0"
 
-          #- otp: "26.2.5"
-          #  elixir: "1.16.2"
-          #  nats: "2.10.14"
+          - otp: "26"
+            elixir: "1.16"
+            nats: "2.10.14"
 
-          #- otp: "27.1"
-          #  elixir: "main"
-          #  nats: "latest"
+          - otp: "27"
+            elixir: "1.17"
+            nats: "2.10.14"
+
+          - otp: "27"
+            elixir: "main"
+            nats: "latest"
 
     env:
       MIX_ENV: test
