@@ -29,7 +29,7 @@ defmodule Gnat.Mixfile do
       {:benchee, "~> 1.0", only: :dev},
       {:cowlib, "~> 2.0"},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
-      {:ex_doc, "~> 0.27.3", only: :dev},
+      {:ex_doc, "~> 0.36", only: :dev},
       {:jason, "~> 1.1"},
       {:connection, "~> 1.1"},
       {:nimble_parsec, "~> 0.5 or ~> 1.0"},
