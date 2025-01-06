@@ -130,7 +130,7 @@ As of this commit my 2018 MacBook pro shows.
 
 ## Development
 
-Before running the tests make sure you have a locally running copy of `nats-server` ([installation instructions](https://docs.nats.io/running-a-nats-service/introduction/installation)).
+Before running the tests make sure you have a locally running copy of `nats-server` ([installation instructions](https://docs.nats.io/running-a-nats-service/introduction/installation)). By default, tests are run with no authentication. Make sure your NATS configuration contains no users, or has an account with [no_auth_user](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/accounts#no-auth-user) explicitly enabled.
 
 We currently use version `2.6.6` in CI, but anything higher than `2.2.0` should be fine.
 Versions from `0.9.6` up to `2.2.0` should work fine for everything except header support.
@@ -144,4 +144,4 @@ The tests will tell you how to start the different configurations.
 There are also some property-based tests that generate a lot of test cases.
 You can tune how many test cases by setting the environment variable `N=200 mix test --only property` (default it 100).
 
-For more details you can look at how Travis runs these things in the CI flow.
+For more details you can look at how Github runs these things in the CI flow.
