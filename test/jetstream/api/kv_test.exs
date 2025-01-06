@@ -155,6 +155,7 @@ defmodule Gnat.Jetstream.API.KVTest do
       :ok = KV.delete_bucket(:gnat, bucket)
     end
   end
+
   describe "list_buckets/2" do
     test "list buckets when none exists" do
       assert {:ok, []} = KV.list_buckets(:gnat)
@@ -170,10 +171,23 @@ defmodule Gnat.Jetstream.API.KVTest do
 
     test "ignore streams that are not buckets" do
       assert {:ok, %{config: _config}} = KV.create_bucket(:gnat, "TEST_BUCKET_1")
-      stream = %Stream{name: "TEST_STREAM_1", subjects: ["TEST_STREAM_1.subject1", "TEST_STREAM_1.subject2"]}
+
+      stream = %Stream{
+        name: "TEST_STREAM_1",
+        subjects: ["TEST_STREAM_1.subject1", "TEST_STREAM_1.subject2"]
+      }
+
       assert {:ok, _response} = Stream.create(:gnat, stream)
       assert {:ok, ["TEST_BUCKET_1"]} = KV.list_buckets(:gnat)
       :ok = KV.delete_bucket(:gnat, "TEST_BUCKET_1")
+    end
+  end
+
+  describe "info/3" do
+    test "returns bucket info" do
+      assert {:ok, _} = KV.create_bucket(:gnat, "TEST_BUCKET_1")
+      assert {:ok, %{config: %{name: "KV_TEST_BUCKET_1"}}} = KV.info(:gnat, "TEST_BUCKET_1")
+      assert {:error, %{"code" => 404}} = KV.info(:gnat, "NOT_A_BUCKET")
     end
   end
 end
