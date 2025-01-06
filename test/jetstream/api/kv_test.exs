@@ -187,6 +187,7 @@ defmodule Gnat.Jetstream.API.KVTest do
     test "returns bucket info" do
       assert {:ok, _} = KV.create_bucket(:gnat, "TEST_BUCKET_1")
       assert {:ok, %{config: %{name: "KV_TEST_BUCKET_1"}}} = KV.info(:gnat, "TEST_BUCKET_1")
+      :ok = KV.delete_bucket(:gnat, "TEST_BUCKET_1")
       assert {:error, %{"code" => 404}} = KV.info(:gnat, "NOT_A_BUCKET")
     end
   end
