@@ -226,6 +226,18 @@ defmodule Gnat.Jetstream.API.KV do
     end
   end
 
+  @doc """
+  Information about the state of the bucket's Stream.
+
+  ## Opts
+  * `:domain` - (default `nil`) the domain of the bucket
+  """
+  @spec info(conn :: Gnat.t(), bucket_name :: binary(), keyword()) ::
+          {:ok, Stream.info()} | {:error, any()}
+  def info(conn, bucket_name, opts \\ []) do
+    Stream.info(conn, @stream_prefix <> bucket_name, Keyword.get(opts, :domain))
+  end
+
   @doc ~S"""
   Starts a monitor for key changes in a given bucket. Supply a handler that will receive
   key change notifications.
