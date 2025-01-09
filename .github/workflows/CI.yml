@@ -22,11 +22,15 @@ jobs:
 
           - otp: "26"
             elixir: "1.16"
-            nats: "2.10.14"
+            nats: "2.10.24"
 
           - otp: "27"
             elixir: "1.17"
-            nats: "2.10.14"
+            nats: "2.10.24"
+
+          - otp: "27"
+            elixir: "1.18"
+            nats: "2.10.24"
 
           - otp: "27"
             elixir: "main"

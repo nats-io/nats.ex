@@ -132,7 +132,7 @@ As of this commit my 2018 MacBook pro shows.
 
 Before running the tests make sure you have a locally running copy of `nats-server` ([installation instructions](https://docs.nats.io/running-a-nats-service/introduction/installation)). By default, tests are run with no authentication. Make sure your NATS configuration contains no users, or has an account with [no_auth_user](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/accounts#no-auth-user) explicitly enabled.
 
-We currently use version `2.6.6` in CI, but anything higher than `2.2.0` should be fine.
+We currently use version `2.10.24` in CI, but anything higher than `2.2.0` should be fine.
 Versions from `0.9.6` up to `2.2.0` should work fine for everything except header support.
 Make sure to enable jetstream with the `nats-server -js` argument and you might also want to enable debug and verbose logging if you're trying to understand the messages being sent to/from nats (ie `nats-server -js -D -V`).
 The typical `mix test` will run all the basic unit tests.
