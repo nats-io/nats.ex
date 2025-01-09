@@ -32,10 +32,6 @@ jobs:
             elixir: "1.18"
             nats: "2.10.24"
 
-          - otp: "27"
-            elixir: "main"
-            nats: "latest"
-
     env:
       MIX_ENV: test
 
