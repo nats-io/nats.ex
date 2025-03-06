@@ -56,6 +56,8 @@ defmodule Gnat.Jetstream.API.KV.Watcher do
 
     if {@operation_header, @operation_del} in headers do
       state.handler.(:key_deleted, key, body)
+    else
+      state.handler.(:key_added, key, body)
     end
 
     {:noreply, state}
