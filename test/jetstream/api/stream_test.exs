@@ -144,7 +144,7 @@ defmodule Gnat.Jetstream.API.StreamTest do
     assert {:ok, _response} = Stream.create(:gnat, stream)
 
     assert {:ok, response} = Stream.info(:gnat, "INFO_TEST")
-    assert response.config == stream
+    assert response.config == stream |> Map.put(:compression, "none")
 
     assert response.state == %{
              bytes: 0,
@@ -158,7 +158,7 @@ defmodule Gnat.Jetstream.API.StreamTest do
              lost: nil,
              num_deleted: nil,
              num_subjects: nil,
-             subjects: nil
+             subjects: nil,
            }
 
     assert :ok = Stream.delete(:gnat, "INFO_TEST")
@@ -170,7 +170,8 @@ defmodule Gnat.Jetstream.API.StreamTest do
       subjects: ["ARGS_TEST.*"],
       retention: :workqueue,
       duplicate_window: 100_000_000,
-      storage: :memory
+      storage: :memory,
+      compression: "s2"
     }
 
     assert {:ok, %{config: result}} = Stream.create(:gnat, stream)
@@ -178,6 +179,7 @@ defmodule Gnat.Jetstream.API.StreamTest do
     assert result.duplicate_window == 100_000_000
     assert result.retention == :workqueue
     assert result.storage == :memory
+    assert result.compression == "s2"
     assert :ok = Stream.delete(:gnat, "ARGS_TEST")
   end
 
