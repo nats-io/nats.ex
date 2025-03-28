@@ -144,7 +144,7 @@ defmodule Gnat.Jetstream.API.StreamTest do
     assert {:ok, _response} = Stream.create(:gnat, stream)
 
     assert {:ok, response} = Stream.info(:gnat, "INFO_TEST")
-    assert response.config == stream |> Map.put(:compression, "none")
+    assert response.config == stream
 
     assert response.state == %{
              bytes: 0,
