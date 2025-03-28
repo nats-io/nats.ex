@@ -108,6 +108,12 @@ defmodule Gnat.Jetstream.API.KVTest do
       # key deletions don't carry the data removed
       assert_receive({:key_deleted, "baz", ""})
 
+      KV.put_value(:gnat, bucket, "foo", "buzz")
+      assert_receive({:key_added, "foo", "buzz"})
+
+      KV.purge_key(:gnat, bucket, "foo")
+      assert_receive({:key_purged, "foo", ""})
+
       KV.unwatch(watcher_pid)
 
       :ok = KV.delete_bucket(:gnat, bucket)
