@@ -58,6 +58,8 @@ defmodule Gnat.Jetstream.API.Stream do
   * `:storage` - the type of storage backend. Available options:
      - `:file`
      - `:memory`
+  * `:compression` - If file-based and a compression algorithm is specified, the stream data will be compressed on disk.
+    Valid options are "none" for no compression or "s2" for Snappy compression.
   * `:subjects` - a list of subjects to consume, supports wildcards.
   * `:template_owner` - when the Stream is managed by a Stream Template this identifies the template that
     manages the Stream.
@@ -94,7 +96,8 @@ defmodule Gnat.Jetstream.API.Stream do
     retention: :limits,
     sealed: false,
     storage: :file,
-    discard_new_per_subject: false
+    discard_new_per_subject: false,
+    compression: "none",
   ]
 
   @type nanoseconds :: non_neg_integer()
@@ -131,7 +134,8 @@ defmodule Gnat.Jetstream.API.Stream do
           storage: :file | :memory,
           subjects: nil | list(binary()),
           template_owner: nil | binary(),
-          discard_new_per_subject: boolean()
+          discard_new_per_subject: boolean(),
+          compression: binary()
         }
 
   @typedoc """
@@ -512,6 +516,7 @@ defmodule Gnat.Jetstream.API.Stream do
     |> put_if_exist(:discard_new_per_subject, stream, "discard_new_per_subject")
     |> put_if_exist(:mirror_direct, stream, "mirror_direct")
     |> put_if_exist(:sealed, stream, "sealed")
+    |> put_if_exist(:compression, stream, "compression")
   end
 
   defp to_info(%{"config" => config, "state" => state, "created" => created} = response) do
