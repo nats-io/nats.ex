@@ -93,7 +93,13 @@ defmodule Gnat.Jetstream.API.KV do
 
       iex> :ok = Jetstream.API.KV.create_key(:gnat, "my_bucket", "my_key", "my_value")
   """
-  @spec create_key(conn :: Gnat.t(), bucket_name :: binary(), key :: binary(), value :: binary()) ::
+  @spec create_key(
+          conn :: Gnat.t(),
+          bucket_name :: binary(),
+          key :: binary(),
+          value :: binary(),
+          opts :: keyword()
+        ) ::
           :ok | {:error, any()}
   def create_key(conn, bucket_name, key, value, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, 5_000)
@@ -113,7 +119,12 @@ defmodule Gnat.Jetstream.API.KV do
 
       iex> :ok = Jetstream.API.KV.delete_key(:gnat, "my_bucket", "my_key")
   """
-  @spec delete_key(conn :: Gnat.t(), bucket_name :: binary(), key :: binary()) ::
+  @spec delete_key(
+          conn :: Gnat.t(),
+          bucket_name :: binary(),
+          key :: binary(),
+          opts :: keyword()
+        ) ::
           :ok | {:error, any()}
   def delete_key(conn, bucket_name, key, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, 5_000)
@@ -137,7 +148,12 @@ defmodule Gnat.Jetstream.API.KV do
 
       iex> :ok = Jetstream.API.KV.purge_key(:gnat, "my_bucket", "my_key")
   """
-  @spec purge_key(conn :: Gnat.t(), bucket_name :: binary(), key :: binary()) ::
+  @spec purge_key(
+          conn :: Gnat.t(),
+          bucket_name :: binary(),
+          key :: binary(),
+          opts :: keyword()
+        ) ::
           :ok | {:error, any()}
   def purge_key(conn, bucket_name, key, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, 5_000)
@@ -161,7 +177,13 @@ defmodule Gnat.Jetstream.API.KV do
 
       iex> :ok = Jetstream.API.KV.put_value(:gnat, "my_bucket", "my_key", "my_value")
   """
-  @spec put_value(conn :: Gnat.t(), bucket_name :: binary(), key :: binary(), value :: binary()) ::
+  @spec put_value(
+          conn :: Gnat.t(),
+          bucket_name :: binary(),
+          key :: binary(),
+          value :: binary(),
+          opts :: keyword()
+        ) ::
           :ok | {:error, any()}
   def put_value(conn, bucket_name, key, value, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, 5_000)
