@@ -68,7 +68,7 @@ defmodule Gnat.Jetstream.API.Stream do
   import Gnat.Jetstream.API.Util
 
   @enforce_keys [:name, :subjects]
-  @derive Jason.Encoder
+  @derive {Jason.Encoder, except: [:domain]}
   defstruct [
     :description,
     :mirror,
