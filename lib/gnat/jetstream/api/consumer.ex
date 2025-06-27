@@ -506,6 +506,19 @@ defmodule Gnat.Jetstream.API.Consumer do
       valid_name?(consumer.stream_name) == false ->
         {:error, "invalid stream_name: " <> invalid_name_message()}
 
+      consumer.deliver_policy not in [
+        :all,
+        :last,
+        :new,
+        :by_start_sequence,
+        :by_start_time,
+        :last_per_subject
+      ] ->
+        {:error, "invalid deliver policy: #{consumer.deliver_policy}"}
+
+      consumer.replay_policy not in [:instant, :original] ->
+        {:error, "invalid replay policy: #{consumer.replay_policy}"}
+
       true ->
         :ok
     end
