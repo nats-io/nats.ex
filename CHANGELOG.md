@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.10
+
+* Clarify authentication setup during test by @davydog187 in #187
+* Test on Elixir 1.18 and NATS 2.10.24 by @davydog187 in #188
+* Gnat.Jetstream.API.KV.info/3 by @davydog187 in #189
+* Remove function_exported? check for Keyword.validate!/2 by @davydog187 in #186
+* Tiny optimization to KV.list_buckets/1 by @davydog187 in #185
+* make KV-watcher emit :key_added events when the message has a header by @rixmann in #191
+* add :compression to stream attributes by @rixmann in #192
+* fix: unknown field domain in Stream.create (#194) by @c0deaddict
+* feat: add jetstream message metadata helper (#197) by @c0deaddict
+* fix: deliver policy (#196) by @c0deaddict
+
+## 1.9
+
+* Housecleaning by @mmmries in #176
+  * switch to charlist sigils
+  * update to newest nkeys
+  * require elixir 1.14 and erlang 25+
+* Fix incorrect useage of charlist by @davydog187 in #179
+* Soft deprecate is_kv_bucket_stream?/1 in favor of kv_bucket_stream?/1 by @davydog187 in #183
+* Clean up examples in KV by @davydog187 in #181
+* Document options for Gnat.Jetstream.API.KV by @davydog187 in #180
+
 ## 1.8
 
 * Integrated the jetstream functionality into this client directly https://github.com/nats-io/nats.ex/pull/146
