@@ -5,7 +5,7 @@ defmodule Gnat.Jetstream.PagerTest do
 
   @moduletag with_gnat: :gnat
 
-  test "paging over a simple stream" do
+  test "paging over an entire stream vs from a sequence" do
     {:ok, _stream} = create_stream("pager_a")
 
     Enum.each(1..100, fn i ->
@@ -13,7 +13,7 @@ defmodule Gnat.Jetstream.PagerTest do
     end)
 
     {:ok, res} =
-      Pager.reduce(:gnat, "pager_a", [from_seq: 1], 0, fn msg, total ->
+      Pager.reduce(:gnat, "pager_a", [], 0, fn msg, total ->
         total + String.to_integer(msg.body)
       end)
 
