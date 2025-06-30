@@ -14,7 +14,11 @@ defmodule Gnat.Mixfile do
       start_permanent: Mix.env() == :prod,
       package: package(),
       propcheck: [counter_examples: "test/counter_examples"],
-      dialyzer: [ignore_warnings: ".dialyzer_ignore.exs"],
+      dialyzer: [
+        ignore_warnings: ".dialyzer_ignore.exs",
+        plt_file: {:no_warn, "priv/plts/project.plt"},
+        plt_core_path: "priv/plts/core.plt"
+      ],
       deps: deps(),
       docs: docs()
     ]

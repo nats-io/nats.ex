@@ -83,9 +83,6 @@ defmodule Gnat.Jetstream.Pager do
         new_state = Enum.reduce(messages, state, fun)
         :ok = cleanup(pager)
         {:ok, new_state}
-
-      {:error, error} ->
-        {:error, error}
     end
   end
 
