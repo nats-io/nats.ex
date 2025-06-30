@@ -1,3 +1,2 @@
 [
-  {"test/support/generators.ex"},
 ]

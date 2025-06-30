@@ -28,7 +28,9 @@ jobs:
             elixir: "1.17"
             nats: "2.10.24"
 
-          - otp: "27"
+          # the main pair handles things like format checking and running dialyzer
+          - main: true
+            otp: "27"
             elixir: "1.18"
             nats: "2.10.24"
 
@@ -60,13 +62,14 @@ jobs:
         run: mix deps.get
 
       - name: Check for valid formatting
-        if: matrix.pair.otp == '27' && matrix.pair.elixir == '1.18'
+        if: matrix.pair.main
         run: mix format --check-formatted
 
       - name: Run unit tests
         run: mix test --color
 
       - name: Cache Dialyzer PLTs
+        if: matrix.pair.main
         uses: actions/cache@v4
         with:
           path: |
@@ -77,5 +80,8 @@ jobs:
             dialyzer-${{ matrix.pair.otp }}-${{ matrix.pair.elixir }}-
 
       - name: Run Dialyzer
+        if: matrix.pair.main
+        env:
+          MIX_ENV: dev
         run: |
-          mix dialyzer --plt priv/plts/project.plt --plt priv/plts/core.plt --no-check
+          mix dialyzer
