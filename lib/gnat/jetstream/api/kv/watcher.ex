@@ -55,15 +55,17 @@ defmodule Gnat.Jetstream.API.KV.Watcher do
   def handle_info({:msg, %{topic: key, body: body, headers: headers}}, state) do
     key = KV.subject_to_key(key, state.bucket_name)
 
+    notification =
+      Enum.find_value(headers, fn
+        {@operation_header, @operation_del} ->
+          :key_deleted
 
-    notification = Enum.find_value(headers, fn
-      {@operation_header, @operation_del} ->
-        :key_deleted
-      {@operation_header, @operation_purge} ->
-        :key_purged
-      _ ->
-        false
-    end)
+        {@operation_header, @operation_purge} ->
+          :key_purged
+
+        _ ->
+          false
+      end)
 
     if notification do
       state.handler.(notification, key, body)

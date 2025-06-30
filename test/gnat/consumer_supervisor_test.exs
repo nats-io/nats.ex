@@ -50,18 +50,20 @@ defmodule Gnat.ConsumerSupervisorTest do
     assert payload.metadata == %{}
 
     [add, sub] = Enum.sort_by(payload.endpoints, & &1.name)
+
     assert add == %{
-      name: "add",
-      subject: "calc.add",
-      queue_group: "q",
-      metadata: %{}
-    }
+             name: "add",
+             subject: "calc.add",
+             queue_group: "q",
+             metadata: %{}
+           }
+
     assert sub == %{
-      name: "sub",
-      subject: "calc.sub",
-      queue_group: "q",
-      metadata: %{}
-    }
+             name: "sub",
+             subject: "calc.sub",
+             queue_group: "q",
+             metadata: %{}
+           }
   end
 
   test "service endpoint stats response" do
@@ -104,7 +106,7 @@ defmodule Gnat.ConsumerSupervisorTest do
       endpoints: [
         %{
           name: "add",
-          group_name: "calc",
+          group_name: "calc"
         }
       ]
     }
@@ -121,7 +123,7 @@ defmodule Gnat.ConsumerSupervisorTest do
       endpoints: [
         %{
           name: "add some stuff",
-          group_name: "calc",
+          group_name: "calc"
         }
       ]
     }
@@ -139,7 +141,7 @@ defmodule Gnat.ConsumerSupervisorTest do
         %{
           name: "add",
           group_name: "calc",
-          metadata: %{ :blarg => :thisisbad }
+          metadata: %{:blarg => :thisisbad}
         }
       ]
     }
@@ -161,6 +163,7 @@ defmodule Gnat.ConsumerSupervisorTest do
       module: ExampleService,
       service_definition: service_config
     }
+
     ConsumerSupervisor.start_link(config)
   end
 end

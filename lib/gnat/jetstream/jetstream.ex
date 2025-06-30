@@ -4,77 +4,77 @@ defmodule Gnat.Jetstream do
   server.
   """
 
-@doc """
-Sends `AckAck` acknowledgement to the server.
+  @doc """
+  Sends `AckAck` acknowledgement to the server.
 
-Acknowledges a message was completely handled.
-"""
-@spec ack(message :: Gnat.message()) :: :ok
-def ack(%{reply_to: nil}) do
-  {:error, "Cannot ack message with no reply-to"}
-end
+  Acknowledges a message was completely handled.
+  """
+  @spec ack(message :: Gnat.message()) :: :ok
+  def ack(%{reply_to: nil}) do
+    {:error, "Cannot ack message with no reply-to"}
+  end
 
-def ack(%{gnat: gnat, reply_to: reply_to}) do
-  Gnat.pub(gnat, reply_to, "")
-end
+  def ack(%{gnat: gnat, reply_to: reply_to}) do
+    Gnat.pub(gnat, reply_to, "")
+  end
 
-@doc """
-Sends `AckNext` acknowledgement to the server.
+  @doc """
+  Sends `AckNext` acknowledgement to the server.
 
-Acknowledges the message was handled and requests delivery of the next message to the reply
-subject. Only applies to Pull-mode.
-"""
-@spec ack_next(message :: Gnat.message(), consumer_subject :: binary()) :: :ok
-def ack_next(%{reply_to: nil}, _consumer_subject) do
-  {:error, "Cannot ack message with no reply-to"}
-end
+  Acknowledges the message was handled and requests delivery of the next message to the reply
+  subject. Only applies to Pull-mode.
+  """
+  @spec ack_next(message :: Gnat.message(), consumer_subject :: binary()) :: :ok
+  def ack_next(%{reply_to: nil}, _consumer_subject) do
+    {:error, "Cannot ack message with no reply-to"}
+  end
 
-def ack_next(%{gnat: gnat, reply_to: reply_to}, consumer_subject) do
-  Gnat.pub(gnat, reply_to, "+NXT", reply_to: consumer_subject)
-end
+  def ack_next(%{gnat: gnat, reply_to: reply_to}, consumer_subject) do
+    Gnat.pub(gnat, reply_to, "+NXT", reply_to: consumer_subject)
+  end
 
-@doc """
-Sends `AckNak` acknowledgement to the server.
+  @doc """
+  Sends `AckNak` acknowledgement to the server.
 
-Signals that the message will not be processed now and processing can move onto the next message.
-NAK'd message will be retried.
-"""
-@spec nack(message :: Gnat.message()) :: :ok
-def nack(%{reply_to: nil}) do
-  {:error, "Cannot ack message with no reply-to"}
-end
+  Signals that the message will not be processed now and processing can move onto the next message.
+  NAK'd message will be retried.
+  """
+  @spec nack(message :: Gnat.message()) :: :ok
+  def nack(%{reply_to: nil}) do
+    {:error, "Cannot ack message with no reply-to"}
+  end
 
-def nack(%{gnat: gnat, reply_to: reply_to}) do
-  Gnat.pub(gnat, reply_to, "-NAK")
-end
+  def nack(%{gnat: gnat, reply_to: reply_to}) do
+    Gnat.pub(gnat, reply_to, "-NAK")
+  end
 
-@doc """
-Sends `AckProgress` acknowledgement to the server.
+  @doc """
+  Sends `AckProgress` acknowledgement to the server.
 
-When sent before the `AckWait` period indicates that work is ongoing and the period should be
-extended by another equal to `AckWait`.
-"""
-@spec ack_progress(message :: Gnat.message()) :: :ok
-def ack_progress(%{reply_to: nil}) do
-  {:error, "Cannot ack message with no reply-to"}
-end
+  When sent before the `AckWait` period indicates that work is ongoing and the period should be
+  extended by another equal to `AckWait`.
+  """
+  @spec ack_progress(message :: Gnat.message()) :: :ok
+  def ack_progress(%{reply_to: nil}) do
+    {:error, "Cannot ack message with no reply-to"}
+  end
 
-def ack_progress(%{gnat: gnat, reply_to: reply_to}) do
-  Gnat.pub(gnat, reply_to, "+WPI")
-end
+  def ack_progress(%{gnat: gnat, reply_to: reply_to}) do
+    Gnat.pub(gnat, reply_to, "+WPI")
+  end
 
-@doc """
-Sends `AckTerm` acknowledgement to the server.
+  @doc """
+  Sends `AckTerm` acknowledgement to the server.
 
-Instructs the server to stop redelivery of a message without acknowledging it as successfully
-processed.
-"""
-@spec ack_term(message :: Gnat.message()) :: :ok
-def ack_term(%{reply_to: nil}) do
-  {:error, "Cannot ack message with no reply-to"}
-end
+  Instructs the server to stop redelivery of a message without acknowledging it as successfully
+  processed.
+  """
+  @spec ack_term(message :: Gnat.message()) :: :ok
+  def ack_term(%{reply_to: nil}) do
+    {:error, "Cannot ack message with no reply-to"}
+  end
 
-def ack_term(%{gnat: gnat, reply_to: reply_to}) do
-  Gnat.pub(gnat, reply_to, "+TERM")
-end
+  def ack_term(%{gnat: gnat, reply_to: reply_to}) do
+    Gnat.pub(gnat, reply_to, "+TERM")
+  end
 end

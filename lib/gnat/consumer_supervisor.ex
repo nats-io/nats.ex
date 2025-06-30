@@ -59,11 +59,10 @@ defmodule Gnat.ConsumerSupervisor do
   It's also possible to pass a `%{consuming_function: {YourModule, :your_function}}` rather than a `:module` in your settings.
   In that case no error handling or replying is taking care of for you, microservices cannot be used, and it will be up to your function to take whatever action you want with each message.
   """
-  @spec start_link(map(), keyword()) :: GenServer.on_start
+  @spec start_link(map(), keyword()) :: GenServer.on_start()
   def start_link(settings, options \\ []) do
     GenServer.start_link(__MODULE__, settings, options)
   end
-
 
   @impl GenServer
   def init(settings) do
@@ -86,72 +85,98 @@ defmodule Gnat.ConsumerSupervisor do
          {:ok, state} <- maybe_append_module(state, settings),
          {:ok, state} <- maybe_append_consuming_function(state, settings),
          :ok <- validate_state(state) do
-      send self(), :connect
+      send(self(), :connect)
       {:ok, state}
     end
   end
 
   @impl GenServer
-  def handle_info(:connect, %{connection_name: name}=state) do
+  def handle_info(:connect, %{connection_name: name} = state) do
     case Process.whereis(name) do
       nil ->
         Process.send_after(self(), :connect, 2_000)
         {:noreply, state}
+
       connection_pid ->
         _ref = Process.monitor(connection_pid)
         subscriptions = subscribe_to_topics(state, connection_pid)
 
-        {:noreply, %{state | status: :connected, connection_pid: connection_pid, subscriptions: subscriptions}}
+        {:noreply,
+         %{
+           state
+           | status: :connected,
+             connection_pid: connection_pid,
+             subscriptions: subscriptions
+         }}
     end
   end
 
-  def handle_info({:DOWN, _ref, :process, connection_pid, _reason}, %{connection_pid: connection_pid}=state) do
+  def handle_info(
+        {:DOWN, _ref, :process, connection_pid, _reason},
+        %{connection_pid: connection_pid} = state
+      ) do
     Process.send_after(self(), :connect, 2_000)
     {:noreply, %{state | status: :disconnected, connection_pid: nil, subscriptions: []}}
   end
+
   # Ignore DOWN and task result messages from the spawned tasks
   def handle_info({:DOWN, _ref, :process, _task_pid, _reason}, state), do: {:noreply, state}
   def handle_info({ref, _result}, state) when is_reference(ref), do: {:noreply, state}
-  def handle_info({:EXIT, supervisor_pid, _reason}, %{task_supervisor_pid: supervisor_pid}=state) do
+
+  def handle_info(
+        {:EXIT, supervisor_pid, _reason},
+        %{task_supervisor_pid: supervisor_pid} = state
+      ) do
     {:ok, task_supervisor_pid} = Task.Supervisor.start_link()
     {:noreply, Map.put(state, :task_supervisor_pid, task_supervisor_pid)}
   end
 
   def handle_info({:msg, gnat_message}, %{service: service, module: module} = state) do
-    Task.Supervisor.async_nolink(state.task_supervisor_pid, Gnat.Services.Server, :execute, [module, gnat_message, service])
+    Task.Supervisor.async_nolink(state.task_supervisor_pid, Gnat.Services.Server, :execute, [
+      module,
+      gnat_message,
+      service
+    ])
 
     {:noreply, state}
   end
 
   def handle_info({:msg, gnat_message}, %{module: module} = state) do
-    Task.Supervisor.async_nolink(state.task_supervisor_pid, Gnat.Server, :execute, [module, gnat_message])
+    Task.Supervisor.async_nolink(state.task_supervisor_pid, Gnat.Server, :execute, [
+      module,
+      gnat_message
+    ])
 
     {:noreply, state}
   end
 
-  def handle_info({:msg, gnat_message}, %{consuming_function: {mod, fun}}=state) do
+  def handle_info({:msg, gnat_message}, %{consuming_function: {mod, fun}} = state) do
     Task.Supervisor.async_nolink(state.task_supervisor_pid, mod, fun, [gnat_message])
     {:noreply, state}
   end
 
   def handle_info(other, state) do
-    Logger.error "#{__MODULE__} received unexpected message #{inspect other}"
+    Logger.error("#{__MODULE__} received unexpected message #{inspect(other)}")
     {:noreply, state}
   end
 
   @impl GenServer
   def terminate(:shutdown, state) do
-    Logger.info "#{__MODULE__} starting graceful shutdown"
-    Enum.each(state.subscriptions, fn(subscription) ->
+    Logger.info("#{__MODULE__} starting graceful shutdown")
+
+    Enum.each(state.subscriptions, fn subscription ->
       :ok = Gnat.unsub(state.connection_pid, subscription)
     end)
-    Process.sleep(500) # wait for final messages from broker
+
+    # wait for final messages from broker
+    Process.sleep(500)
     receive_final_broker_messages(state)
     wait_for_empty_task_supervisor(state)
-    Logger.info "#{__MODULE__} finished graceful shutdown"
+    Logger.info("#{__MODULE__} finished graceful shutdown")
   end
+
   def terminate(reason, _state) do
-    Logger.error "#{__MODULE__} unexpected shutdown #{inspect reason}"
+    Logger.error("#{__MODULE__} unexpected shutdown #{inspect(reason)}")
   end
 
   defp receive_final_broker_messages(state) do
@@ -159,16 +184,19 @@ defmodule Gnat.ConsumerSupervisor do
       info ->
         handle_info(info, state)
         receive_final_broker_messages(state)
-      after 0 ->
+    after
+      0 ->
         :done
     end
   end
 
-  defp wait_for_empty_task_supervisor(%{task_supervisor_pid: pid}=state) do
+  defp wait_for_empty_task_supervisor(%{task_supervisor_pid: pid} = state) do
     case Task.Supervisor.children(pid) do
-      [] -> :ok
+      [] ->
+        :ok
+
       children ->
-        Logger.info "#{__MODULE__}\t\t#{Enum.count(children)} tasks remaining"
+        Logger.info("#{__MODULE__}\t\t#{Enum.count(children)} tasks remaining")
         Process.sleep(1_000)
         wait_for_empty_task_supervisor(state)
     end
@@ -177,23 +205,26 @@ defmodule Gnat.ConsumerSupervisor do
   defp subscribe_to_topics(%{service: service}, connection_pid) do
     Service.subscription_topics_with_queue_group(service)
     |> Enum.map(fn
-      ({topic, nil}) ->
+      {topic, nil} ->
         {:ok, subscription} = Gnat.sub(connection_pid, self(), topic)
         subscription
 
-      ({topic, queue_group}) ->
+      {topic, queue_group} ->
         {:ok, subscription} = Gnat.sub(connection_pid, self(), topic, queue_group: queue_group)
         subscription
     end)
   end
 
   defp subscribe_to_topics(state, connection_pid) do
-    Enum.map(state.subscription_topics, fn(topic_and_queue_group) ->
+    Enum.map(state.subscription_topics, fn topic_and_queue_group ->
       topic = Map.fetch!(topic_and_queue_group, :topic)
-      {:ok, subscription} = case Map.get(topic_and_queue_group, :queue_group) do
-        nil -> Gnat.sub(connection_pid, self(), topic)
-        queue_group -> Gnat.sub(connection_pid, self(), topic, queue_group: queue_group)
-      end
+
+      {:ok, subscription} =
+        case Map.get(topic_and_queue_group, :queue_group) do
+          nil -> Gnat.sub(connection_pid, self(), topic)
+          queue_group -> Gnat.sub(connection_pid, self(), topic, queue_group: queue_group)
+        end
+
       subscription
     end)
   end
@@ -224,6 +255,7 @@ defmodule Gnat.ConsumerSupervisor do
 
   defp validate_state(state) do
     partial = Map.take(state, [:module, :consuming_function])
+
     case Enum.count(partial) do
       0 ->
         {:stop, "You must provide a module or consuming function for the consumer supervisor"}
@@ -232,7 +264,8 @@ defmodule Gnat.ConsumerSupervisor do
         :ok
 
       _ ->
-        {:stop, "You cannot provide both a module and consuming function. Please specify one or the other."}
+        {:stop,
+         "You cannot provide both a module and consuming function. Please specify one or the other."}
     end
   end
 end

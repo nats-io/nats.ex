@@ -25,6 +25,7 @@ defmodule Gnat.Services.Service do
         started: DateTime.to_iso8601(DateTime.utc_now()),
         metadata: Map.get(configuration, :metadata, %{})
       }
+
       {:ok, service}
     end
   end
@@ -93,6 +94,7 @@ defmodule Gnat.Services.Service do
   defp build_subject_map(endpoints) do
     Enum.reduce(endpoints, %{}, fn ep, map ->
       subject = derive_subscription_subject(ep)
+
       endpoint = %{
         name: ep.name,
         queue_group: Map.get(ep, :queue_group, @default_service_queue_group),
@@ -106,16 +108,20 @@ defmodule Gnat.Services.Service do
     end)
   end
 
-  @spec derive_subscription_subject(Gnat.Services.Server.endpoint_configuration()) :: String.t
+  @spec derive_subscription_subject(Gnat.Services.Server.endpoint_configuration()) :: String.t()
   defp derive_subscription_subject(endpoint) do
-    group_prefix = case Map.get(endpoint, :group_name) do
-      nil -> ""
-      prefix -> "#{prefix}."
-    end
-    subject = case Map.get(endpoint, :subject) do
-      nil -> endpoint.name
-      sub -> sub
-    end
+    group_prefix =
+      case Map.get(endpoint, :group_name) do
+        nil -> ""
+        prefix -> "#{prefix}."
+      end
+
+    subject =
+      case Map.get(endpoint, :subject) do
+        nil -> endpoint.name
+        sub -> sub
+      end
+
     "#{group_prefix}#{subject}"
   end
 
@@ -134,11 +140,13 @@ defmodule Gnat.Services.Service do
     num_errors = :counters.get(counters, @idx_errors)
     num_requests = :counters.get(counters, @idx_requests)
     total_calls = num_errors + num_requests
-    avg = if total_calls > 0 do
-      trunc(ceil(nanos / total_calls))
-    else
-      0
-    end
+
+    avg =
+      if total_calls > 0 do
+        trunc(ceil(nanos / total_calls))
+      else
+        0
+      end
 
     %{
       name: endpoint.name,
@@ -151,22 +159,31 @@ defmodule Gnat.Services.Service do
     }
   end
 
-  defp validate_configuration(configuration) when is_nil(configuration), do: {:error, ["Service definition cannot be null"]}
-  defp validate_configuration(configuration) when not is_map(configuration), do: {:error, ["Service definition must be a map"]}
+  defp validate_configuration(configuration) when is_nil(configuration),
+    do: {:error, ["Service definition cannot be null"]}
+
+  defp validate_configuration(configuration) when not is_map(configuration),
+    do: {:error, ["Service definition must be a map"]}
+
   defp validate_configuration(configuration) do
     rules = [
       {&valid_version?/1, configuration},
       {&valid_name?/1, configuration},
       {&valid_metadata?/1, Map.get(configuration, :metadata)}
     ]
-    eprules = configuration.endpoints
-    |> Enum.map(fn ep ->
-      {&valid_endpoint?/1, ep}
-    end)
 
-    results = (rules ++ eprules) |> Enum.map(fn {pred, input} ->
-      apply(pred, [input])
-    end)
+    eprules =
+      configuration.endpoints
+      |> Enum.map(fn ep ->
+        {&valid_endpoint?/1, ep}
+      end)
+
+    results =
+      (rules ++ eprules)
+      |> Enum.map(fn {pred, input} ->
+        apply(pred, [input])
+      end)
+
     {_good, bad} = Enum.split_with(results, fn e -> e == :ok end)
 
     if length(bad) == 0 do
@@ -178,6 +195,7 @@ defmodule Gnat.Services.Service do
 
   defp valid_version?(service_definition) do
     version = Map.get(service_definition, :version)
+
     if String.match?(version, @version_regex) do
       :ok
     else
@@ -187,6 +205,7 @@ defmodule Gnat.Services.Service do
 
   defp valid_name?(service_definition) do
     name = Map.get(service_definition, :name)
+
     if String.match?(name, @name_regex) do
       :ok
     else
@@ -195,28 +214,33 @@ defmodule Gnat.Services.Service do
   end
 
   defp valid_metadata?(nil), do: :ok
+
   defp valid_metadata?(md) do
-    bads = Enum.filter(md, fn {k, v} ->
-      !is_binary(k) or !is_binary(v)
-    end) |> length()
+    bads =
+      Enum.filter(md, fn {k, v} ->
+        !is_binary(k) or !is_binary(v)
+      end)
+      |> length()
 
     if bads == 0 do
       :ok
     else
       {:error, "At least one key or value found in metadata that was not a string"}
     end
-
   end
 
   defp valid_endpoint?(endpoint_definition) do
     name = Map.get(endpoint_definition, :name)
+
     with true <- String.match?(name, @name_regex),
-      :ok <- valid_metadata?(Map.get(endpoint_definition, :metadata)) do
-        :ok
-      else
-        false ->
-          {:error, "Endpoint name '#{name}' is not valid"}
-        e -> e
-      end
+         :ok <- valid_metadata?(Map.get(endpoint_definition, :metadata)) do
+      :ok
+    else
+      false ->
+        {:error, "Endpoint name '#{name}' is not valid"}
+
+      e ->
+        e
+    end
   end
 end

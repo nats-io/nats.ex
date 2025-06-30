@@ -202,7 +202,12 @@ defmodule Gnat.Jetstream.API.ObjectTest do
 
     test "ignore streams that are not buckets" do
       assert {:ok, %{config: _config}} = Object.create_bucket(:gnat, "TEST_BUCKET_1")
-      stream = %Stream{name: "TEST_STREAM_1", subjects: ["TEST_STREAM_1.subject1", "TEST_STREAM_1.subject2"]}
+
+      stream = %Stream{
+        name: "TEST_STREAM_1",
+        subjects: ["TEST_STREAM_1.subject1", "TEST_STREAM_1.subject2"]
+      }
+
       assert {:ok, _response} = Stream.create(:gnat, stream)
       assert {:ok, ["TEST_BUCKET_1"]} = Object.list_buckets(:gnat)
       :ok = Object.delete_bucket(:gnat, "TEST_BUCKET_1")

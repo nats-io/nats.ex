@@ -25,7 +25,7 @@ defmodule Gnat.Server do
   @doc """
   Called when a message is received from the broker
   """
-  @callback request(message::Gnat.message()) :: :ok | {:reply, iodata()} | {:error, term()}
+  @callback request(message :: Gnat.message()) :: :ok | {:reply, iodata()} | {:error, term()}
 
   @doc """
   Called when an error occured during the `request/1`
@@ -34,7 +34,7 @@ defmodule Gnat.Server do
   If an exception was raised during your `request/1` function, then the exception will be passed as the second argument.
   If your `request/1` function returned something other than the supported return types, then its return value will be passed as the second argument.
   """
-  @callback error(message::Gnat.message(), error::term()) :: :ok | {:reply, iodata()}
+  @callback error(message :: Gnat.message(), error :: term()) :: :ok | {:reply, iodata()}
 
   defmacro __using__(_opts) do
     quote do
@@ -42,6 +42,7 @@ defmodule Gnat.Server do
 
       def error(_message, error) do
         require Logger
+
         Logger.error(
           "Gnat.Server encountered an error while handling a request: #{inspect(error)}",
           type: :gnat_server_error,
@@ -65,9 +66,9 @@ defmodule Gnat.Server do
         {:error, error} -> execute_error(module, message, error)
         other -> execute_error(module, message, other)
       end
-
-    rescue e ->
-      execute_error(module, message, e)
+    rescue
+      e ->
+        execute_error(module, message, e)
     end
   end
 
@@ -75,27 +76,33 @@ defmodule Gnat.Server do
   defp execute_error(module, message, error) do
     try do
       case apply(module, :error, [message, error]) do
-        :ok -> :done
-        {:reply, data} -> send_reply(message, data)
+        :ok ->
+          :done
+
+        {:reply, data} ->
+          send_reply(message, data)
+
         other ->
           Logger.error(
             "error handler for #{module} returned something unexpected: #{inspect(other)}",
             type: :gnat_server_error
           )
       end
-
-    rescue e ->
-      Logger.error(
-        "error handler for #{module} encountered an error: #{inspect(e)}",
-        type: :gnat_server_error
-      )
+    rescue
+      e ->
+        Logger.error(
+          "error handler for #{module} encountered an error: #{inspect(e)}",
+          type: :gnat_server_error
+        )
     end
   end
 
   @doc false
-  def send_reply(%{gnat: gnat, reply_to: return_address}, iodata) when is_binary(return_address) do
+  def send_reply(%{gnat: gnat, reply_to: return_address}, iodata)
+      when is_binary(return_address) do
     Gnat.pub(gnat, return_address, iodata)
   end
+
   def send_reply(_other, _iodata) do
     Logger.error(
       "Could not send reply because no reply_to was provided with the original message",

@@ -97,7 +97,7 @@ defmodule Gnat.Jetstream.API.Stream do
     sealed: false,
     storage: :file,
     discard_new_per_subject: false,
-    compression: "none",
+    compression: "none"
   ]
 
   @type nanoseconds :: non_neg_integer()

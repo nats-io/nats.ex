@@ -165,11 +165,12 @@ defmodule Gnat.Jetstream.API.Object do
         streams
         |> Enum.flat_map(fn bucket ->
           if is_object_bucket_stream?(bucket) do
-             [bucket |> String.trim_leading(@stream_prefix)]
+            [bucket |> String.trim_leading(@stream_prefix)]
           else
-             []
+            []
           end
         end)
+
       {:ok, stream_names}
     else
       {:error, reason} ->

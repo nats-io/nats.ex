@@ -23,6 +23,7 @@ defmodule Gnat.Jetstream.Pager do
       replay_policy: :instant,
       inactive_threshold: 30_000_000_000
     }
+
     inbox = Util.reply_inbox()
 
     with {:ok, _config} <- Consumer.create(conn, consumer),
@@ -45,7 +46,16 @@ defmodule Gnat.Jetstream.Pager do
   @spec page(pager()) :: {:page, list(message())} | {:done, list(message())} | {:error, term()}
   def page(%{conn: conn, batch: batch} = state) do
     opts = [batch: batch, no_wait: true]
-    with :ok <- Consumer.request_next_message(conn, state.stream_name, state.consumer_name, state.inbox, state.domain, opts) do
+
+    with :ok <-
+           Consumer.request_next_message(
+             conn,
+             state.stream_name,
+             state.consumer_name,
+             state.inbox,
+             state.domain,
+             opts
+           ) do
       receive_messages(state, [])
     end
   end
@@ -95,7 +105,7 @@ defmodule Gnat.Jetstream.Pager do
 
       {:msg, %{sid: ^sid} = message} ->
         with :ok <- Jetstream.ack(message) do
-          receive_messages(state, [message | messages ])
+          receive_messages(state, [message | messages])
         end
     end
   end

@@ -10,9 +10,15 @@ defmodule Gnat.Services.ServiceResponder do
 
   def maybe_respond(%{topic: topic} = message, service) do
     case String.split(topic, ".") do
-      ["$SRV", @op_ping | rest] -> handle_ping(rest, service, message)
-      ["$SRV", @op_info | rest] -> handle_info(rest, service, message)
-      ["$SRV", @op_stats | rest] -> handle_stats(rest, service, message)
+      ["$SRV", @op_ping | rest] ->
+        handle_ping(rest, service, message)
+
+      ["$SRV", @op_info | rest] ->
+        handle_info(rest, service, message)
+
+      ["$SRV", @op_stats | rest] ->
+        handle_stats(rest, service, message)
+
       _other ->
         Logger.error("ServiceResponder received unexpected message #{topic}")
     end
@@ -39,7 +45,7 @@ defmodule Gnat.Services.ServiceResponder do
     end
   end
 
-  @spec should_respond?(list, String.t, String.t) :: boolean()
+  @spec should_respond?(list, String.t(), String.t()) :: boolean()
   defp should_respond?(tail, service_name, instance_id) do
     case tail do
       [] -> true

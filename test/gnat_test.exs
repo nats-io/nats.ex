@@ -31,6 +31,7 @@ defmodule GnatTest do
       username: "bob",
       password: "alice"
     }
+
     {:ok, pid} = Gnat.start_link(connection_settings)
     assert Process.alive?(pid)
     :ok = Gnat.stop(pid)
@@ -45,6 +46,7 @@ defmodule GnatTest do
       token: "SpecialToken",
       auth_required: true
     }
+
     {:ok, pid} = Gnat.start_link(connection_settings)
     assert Process.alive?(pid)
     :ok = Gnat.stop(pid)
@@ -64,9 +66,10 @@ defmodule GnatTest do
       tls: true,
       ssl_opts: [
         certfile: "test/fixtures/client-cert.pem",
-        keyfile: "test/fixtures/client-key.pem",
-      ],
+        keyfile: "test/fixtures/client-key.pem"
+      ]
     }
+
     {:ok, gnat} = Gnat.start_link(connection_settings)
     assert Gnat.stop(gnat) == :ok
   end
@@ -77,6 +80,7 @@ defmodule GnatTest do
       port: 4227,
       nkey_seed: File.read!("test/fixtures/nkey_seed")
     }
+
     {:ok, gnat} = Gnat.start_link(connection_settings)
     assert Gnat.stop(gnat) == :ok
   end
@@ -96,7 +100,15 @@ defmodule GnatTest do
     headers = [{"X", "foo"}]
     :ok = Gnat.pub(pid, "sub_with_headers", "yo dawg", headers: headers)
 
-    assert_receive {:msg, %{topic: "sub_with_headers", body: "yo dawg", reply_to: nil, headers: [{"x", "foo"}]}}, 1000
+    assert_receive {:msg,
+                    %{
+                      topic: "sub_with_headers",
+                      body: "yo dawg",
+                      reply_to: nil,
+                      headers: [{"x", "foo"}]
+                    }},
+                   1000
+
     :ok = Gnat.stop(pid)
   end
 
@@ -115,7 +127,10 @@ defmodule GnatTest do
     headers = [{"x", "y"}]
     :ok = Gnat.pub(pid, "with_reply", "yo dawg", reply_to: "me", headers: headers)
 
-    assert_receive {:msg, %{topic: "with_reply", reply_to: "me", body: "yo dawg", headers: ^headers}}, 1000
+    assert_receive {:msg,
+                    %{topic: "with_reply", reply_to: "me", body: "yo dawg", headers: ^headers}},
+                   1000
+
     :ok = Gnat.stop(pid)
   end
 
@@ -152,9 +167,11 @@ defmodule GnatTest do
     :ok = Gnat.pub(pid, "dup", "ma")
     assert_receive {:msg, %{topic: "dup", body: "yo"}}, 500
     assert_receive {:msg, %{topic: "dup", body: "ma"}}, 500
+
     receive do
-      {:msg, %{topic: _topic}}=msg -> flunk("Received duplicate message: #{inspect msg}")
-      after 200 -> :ok
+      {:msg, %{topic: _topic}} = msg -> flunk("Received duplicate message: #{inspect(msg)}")
+    after
+      200 -> :ok
     end
   end
 
@@ -166,9 +183,12 @@ defmodule GnatTest do
     assert_receive {:msg, %{topic: ^topic, body: "msg1"}}, 500
     :ok = Gnat.unsub(pid, sub_ref)
     :ok = Gnat.pub(pid, topic, "msg2")
+
     receive do
-      {:msg, %{topic: _topic, body: _body}}=msg -> flunk("Received message after unsubscribe: #{inspect msg}")
-      after 200 -> :ok
+      {:msg, %{topic: _topic, body: _body}} = msg ->
+        flunk("Received message after unsubscribe: #{inspect(msg)}")
+    after
+      200 -> :ok
     end
   end
 
@@ -182,9 +202,11 @@ defmodule GnatTest do
     :ok = Gnat.pub(pid, topic, "msg3")
     assert_receive {:msg, %{topic: ^topic, body: "msg1"}}, 500
     assert_receive {:msg, %{topic: ^topic, body: "msg2"}}, 500
+
     receive do
-      {:msg, _topic, _msg}=msg -> flunk("Received message after unsubscribe: #{inspect msg}")
-      after 200 -> :ok
+      {:msg, _topic, _msg} = msg -> flunk("Received message after unsubscribe: #{inspect(msg)}")
+    after
+      200 -> :ok
     end
   end
 
@@ -196,15 +218,16 @@ defmodule GnatTest do
     # one subscription created at boot
     assert {:ok, 1} = Gnat.active_subscriptions(pid)
 
-    %Task{pid: task_pid}=  Task.async(fn ->
-      Gnat.sub(pid, self(), topic)
-      assert {:ok, 2} = Gnat.active_subscriptions(pid)
-      send(test_pid, "subscribed")
+    %Task{pid: task_pid} =
+      Task.async(fn ->
+        Gnat.sub(pid, self(), topic)
+        assert {:ok, 2} = Gnat.active_subscriptions(pid)
+        send(test_pid, "subscribed")
 
-      receive do
-        :done -> :ok
-      end
-    end)
+        receive do
+          :done -> :ok
+        end
+      end)
 
     assert_receive "subscribed", 1_000
     Gnat.server_info(pid)
@@ -274,7 +297,9 @@ defmodule GnatTest do
       assert_receive(true, 100)
     end)
 
-    {:ok, messages} = Gnat.request_multi(pid, topic, "ohai", max_messages: 4, receive_timeout: 500)
+    {:ok, messages} =
+      Gnat.request_multi(pid, topic, "ohai", max_messages: 4, receive_timeout: 500)
+
     assert Enum.count(messages) == 4
     assert Enum.all?(messages, fn msg -> msg.body == "ohai" end)
   end
@@ -288,7 +313,9 @@ defmodule GnatTest do
       assert_receive(true, 100)
     end)
 
-    {:ok, messages} = Gnat.request_multi(pid, topic, "ohai", max_messages: 8, receive_timeout: 500)
+    {:ok, messages} =
+      Gnat.request_multi(pid, topic, "ohai", max_messages: 8, receive_timeout: 500)
+
     assert Enum.count(messages) == 4
     assert Enum.all?(messages, fn msg -> msg.body == "ohai" end)
   end
@@ -303,7 +330,8 @@ defmodule GnatTest do
     spawn(fn ->
       {:ok, subscription} = Gnat.sub(gnat, self(), topic)
       :ok = Gnat.unsub(gnat, subscription, max_messages: 1)
-      send ready, true
+      send(ready, true)
+
       receive do
         {:msg, %{topic: ^topic, body: body, reply_to: reply_to, headers: headers}} ->
           Gnat.pub(gnat, reply_to, body, headers: headers)
@@ -317,16 +345,18 @@ defmodule GnatTest do
   test "recording errors from the broker" do
     import ExUnit.CaptureLog
     {:ok, gnat} = Gnat.start_link()
+
     assert capture_log(fn ->
-      Process.flag(:trap_exit, true)
-      Gnat.sub(gnat, self(), "invalid. subject")
-      Process.sleep(20) # errors are reported asynchronously so we need to wait a moment
-    end) =~ "Invalid Subject"
+             Process.flag(:trap_exit, true)
+             Gnat.sub(gnat, self(), "invalid. subject")
+             # errors are reported asynchronously so we need to wait a moment
+             Process.sleep(20)
+           end) =~ "Invalid Subject"
   end
 
   test "connection timeout" do
     start = System.monotonic_time(:millisecond)
-    connection_settings = %{ host: '169.33.33.33', connection_timeout: 200 }
+    connection_settings = %{host: '169.33.33.33', connection_timeout: 200}
     {:stop, :timeout} = Gnat.init(connection_settings)
     assert_in_delta System.monotonic_time(:millisecond) - start, 200, 10
   end

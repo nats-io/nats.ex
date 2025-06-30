@@ -36,7 +36,7 @@ defmodule Gnat.ConnectionSupervisor do
 
   And it will use your supervised connection. If the connection is down when you call that function (or dies during that function) it will raise an error.
   """
-  @spec start_link(map(), keyword()) :: GenServer.on_start
+  @spec start_link(map(), keyword()) :: GenServer.on_start()
   def start_link(settings, options \\ []) do
     GenServer.start_link(__MODULE__, settings, options)
   end
@@ -47,21 +47,25 @@ defmodule Gnat.ConnectionSupervisor do
       backoff_period: Map.get(options, :backoff_period, 2000),
       connection_settings: Map.fetch!(options, :connection_settings),
       name: Map.fetch!(options, :name),
-      gnat: nil,
+      gnat: nil
     }
+
     Process.flag(:trap_exit, true)
-    send self(), :attempt_connection
+    send(self(), :attempt_connection)
     {:ok, state}
   end
 
   @impl GenServer
   def handle_info(:attempt_connection, state) do
     connection_config = random_connection_config(state)
-    Logger.debug "connecting to #{inspect connection_config}"
+    Logger.debug("connecting to #{inspect(connection_config)}")
+
     case Gnat.start_link(connection_config, name: state.name) do
-      {:ok, gnat} -> {:noreply, %{state | gnat: gnat}}
+      {:ok, gnat} ->
+        {:noreply, %{state | gnat: gnat}}
+
       {:error, err} ->
-        Logger.error "failed to connect #{inspect err}"
+        Logger.error("failed to connect #{inspect(err)}")
         Process.send_after(self(), :attempt_connection, state.backoff_period)
         {:noreply, %{state | gnat: nil}}
     end
@@ -70,16 +74,18 @@ defmodule Gnat.ConnectionSupervisor do
   # in OTP 25 and below, we will get back an EXIT message in addition to receiving the {:error, reason}
   # tuple on from the start_link call above. So if we get an exit message when there is no connection tracked
   # it means will have already scheduled a new attempt_connection
-  def handle_info({:EXIT, _pid, _reason}, %{gnat: nil}=state) do
+  def handle_info({:EXIT, _pid, _reason}, %{gnat: nil} = state) do
     {:noreply, state}
   end
+
   def handle_info({:EXIT, _pid, reason}, state) do
-    Logger.error "connection failed #{inspect reason}"
-    send self(), :attempt_connection
+    Logger.error("connection failed #{inspect(reason)}")
+    send(self(), :attempt_connection)
     {:noreply, state}
   end
+
   def handle_info(msg, state) do
-    Logger.error "#{__MODULE__} received unexpected message #{inspect msg}"
+    Logger.error("#{__MODULE__} received unexpected message #{inspect(msg)}")
     {:noreply, state}
   end
 
