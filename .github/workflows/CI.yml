@@ -60,6 +60,7 @@ jobs:
         run: mix deps.get
 
       - name: Check for valid formatting
+        if: matrix.pair.otp == '27' && matrix.pair.elixir == '1.18'
         run: mix format --check-formatted
 
       - name: Run unit tests
