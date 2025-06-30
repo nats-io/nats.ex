@@ -8,62 +8,49 @@ defmodule Gnat.Jetstream.Pager do
   @type message :: Gnat.message()
 
   def init(conn, stream_name, opts) do
-    name = "gnat_stream_pager_#{Util.nuid()}"
-
-    first_seq = Keyword.fetch!(opts, :from_seq)
+    domain = Keyword.get(opts, :domainl)
 
     consumer = %Consumer{
       stream_name: stream_name,
-      durable_name: name,
-      ack_policy: :explicit,
+      domain: domain,
+      ack_policy: :all,
       ack_wait: 30_000_000_000,
-      deliver_policy: :by_start_sequence,
-      description: "Gnat Stream Pager",
-      opt_start_seq: first_seq,
+      deliver_policy: :all,
+      description: "ephemeral consumer",
       replay_policy: :instant,
       inactive_threshold: 30_000_000_000
     }
 
+    consumer = apply_opts_to_consumer(consumer, opts)
+
     inbox = Util.reply_inbox()
 
-    with {:ok, _config} <- Consumer.create(conn, consumer),
+    with {:ok, consumer_info} <- Consumer.create(conn, consumer),
          {:ok, sub} <- Gnat.sub(conn, self(), inbox) do
-      state =
-        %{
-          conn: conn,
-          stream_name: stream_name,
-          consumer_name: name,
-          domain: nil,
-          inbox: inbox,
-          batch: 10,
-          sub: sub
-        }
+      state = %{
+        conn: conn,
+        stream_name: stream_name,
+        consumer_name: consumer_info.name,
+        domain: domain,
+        inbox: inbox,
+        batch: Keyword.get(opts, :batch, 10),
+        sub: sub
+      }
 
       {:ok, state}
     end
   end
 
   @spec page(pager()) :: {:page, list(message())} | {:done, list(message())} | {:error, term()}
-  def page(%{conn: conn, batch: batch} = state) do
-    opts = [batch: batch, no_wait: true]
-
-    with :ok <-
-           Consumer.request_next_message(
-             conn,
-             state.stream_name,
-             state.consumer_name,
-             state.inbox,
-             state.domain,
-             opts
-           ) do
+  def page(state) do
+    with :ok <- request_next_message(state) do
       receive_messages(state, [])
     end
   end
 
   def cleanup(%{conn: conn} = state) do
-    with :ok <- Gnat.unsub(conn, state.sub),
-         :ok <- Consumer.delete(conn, state.stream_name, state.consumer_name, state.domain) do
-      :ok
+    with :ok <- Gnat.unsub(conn, state.sub) do
+      :ok = Consumer.delete(conn, state.stream_name, state.consumer_name, state.domain)
     end
   end
 
@@ -86,7 +73,22 @@ defmodule Gnat.Jetstream.Pager do
     end
   end
 
+  defp request_next_message(state) do
+    opts = [batch: state.batch, no_wait: true]
+
+    Consumer.request_next_message(
+      state.conn,
+      state.stream_name,
+      state.consumer_name,
+      state.inbox,
+      state.domain,
+      opts
+    )
+  end
+
   defp receive_messages(%{batch: batch}, messages) when length(messages) == batch do
+    last = hd(messages)
+    :ok = Jetstream.ack(last)
     {:page, Enum.reverse(messages)}
   end
 
@@ -96,14 +98,22 @@ defmodule Gnat.Jetstream.Pager do
       {:msg, %{sid: ^sid, status: status}} when status in @terminals ->
         {:done, Enum.reverse(messages)}
 
-      {:msg, %{sid: ^sid, reply_to: nil} = msg} ->
-        IO.inspect(msg)
+      {:msg, %{sid: ^sid, reply_to: nil}} ->
         {:done, Enum.reverse(messages)}
 
       {:msg, %{sid: ^sid} = message} ->
-        with :ok <- Jetstream.ack(message) do
-          receive_messages(state, [message | messages])
-        end
+        receive_messages(state, [message | messages])
+    end
+  end
+
+  ## Helpers for accepting user options
+  defp apply_opts_to_consumer(consumer, opts) do
+    case Keyword.get(opts, :from_seq) do
+      nil ->
+        consumer
+
+      seq when is_integer(seq) ->
+        %Consumer{consumer | deliver_policy: :by_start_sequence, opt_start_seq: seq}
     end
   end
 end
