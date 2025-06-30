@@ -28,7 +28,7 @@ defmodule Gnat.Jetstream.API.Message do
     ]
   end
 
-  @spec metadata(message :: Gnat.age()) :: {:ok, Metadata.t()} | {:error, term()}
+  @spec metadata(message :: Gnat.message()) :: {:ok, Metadata.t()} | {:error, term()}
   def metadata(%{reply_to: "$JS.ACK." <> ack_topic}),
     do: decode_reply_to(String.split(ack_topic, "."))
 
