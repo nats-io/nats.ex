@@ -4,7 +4,7 @@ defmodule Gnat.Jetstream.API.KV do
 
   Learn about the Key/Value store: https://docs.nats.io/nats-concepts/jetstream/key-value-store
   """
-  alias Gnat.Jetstream.API.{Consumer, Stream, Util}
+  alias Gnat.Jetstream.API.{Stream}
 
   @stream_prefix "KV_"
   @subject_prefix "$KV."
@@ -224,28 +224,22 @@ defmodule Gnat.Jetstream.API.KV do
   @spec contents(conn :: Gnat.t(), bucket_name :: binary(), domain :: nil | binary()) ::
           {:ok, map()} | {:error, binary()}
   def contents(conn, bucket_name, domain \\ nil) do
+    alias Gnat.Jetstream.Pager
     stream = stream_name(bucket_name)
-    inbox = Util.reply_inbox()
-    consumer_name = "all_key_values_consumer_#{Util.nuid()}"
 
-    with {:ok, sub} <- Gnat.sub(conn, self(), inbox),
-         {:ok, _consumer} <-
-           Consumer.create(conn, %Consumer{
-             durable_name: consumer_name,
-             deliver_subject: inbox,
-             stream_name: stream,
-             domain: domain,
-             ack_policy: :none,
-             max_ack_pending: -1,
-             max_deliver: 1
-           }) do
-      keys = receive_keys(bucket_name)
+    Pager.reduce(conn, stream, [domain: domain], %{}, fn msg, acc ->
+      case msg do
+        %{topic: key, body: body, headers: headers} ->
+          if {"kv-operation", "DEL"} in headers do
+            acc
+          else
+            Map.put(acc, subject_to_key(key, bucket_name), body)
+          end
 
-      :ok = Gnat.unsub(conn, sub)
-      :ok = Consumer.delete(conn, stream, consumer_name, domain)
-
-      {:ok, keys}
-    end
+        %{topic: key, body: body} ->
+          Map.put(acc, subject_to_key(key, bucket_name), body)
+      end
+    end)
   end
 
   @doc """
@@ -288,23 +282,6 @@ defmodule Gnat.Jetstream.API.KV do
   """
   def unwatch(pid) do
     Gnat.Jetstream.API.KV.Watcher.stop(pid)
-  end
-
-  defp receive_keys(keys \\ %{}, bucket_name) do
-    receive do
-      {:msg, %{topic: key, body: body, headers: headers}} ->
-        if {"kv-operation", "DEL"} in headers do
-          receive_keys(keys, bucket_name)
-        else
-          Map.put(keys, subject_to_key(key, bucket_name), body) |> receive_keys(bucket_name)
-        end
-
-      {:msg, %{topic: key, body: body}} ->
-        Map.put(keys, subject_to_key(key, bucket_name), body) |> receive_keys(bucket_name)
-    after
-      100 ->
-        keys
-    end
   end
 
   @spec is_kv_bucket_stream?(stream_name :: binary()) :: boolean()
