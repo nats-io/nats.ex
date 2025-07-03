@@ -606,6 +606,10 @@ defmodule Gnat do
     %{state | receivers: receivers}
   end
 
+  defp process_message({:info, server_info}, state) do
+    %{state | server_info: server_info}
+  end
+
   defp process_message({:msg, topic, @request_sid, reply_to, body}, state) do
     if Map.has_key?(state.request_receivers, topic) do
       send(
