@@ -43,6 +43,7 @@ defmodule Gnat do
   @typedoc """
   * `connection_timeout` - limits how long it can take to establish a connection to a server
   * `host` - The location of the NATS server
+  * `ping_interval` - The number of milliseconds between sending PING messages to the server to check the health of our connection
   * `port` - The port the NATS server is listening on
   * `ssl_opts` - Options for connecting over SSL
   * `tcp_opts` - Options for connecting over TCP
@@ -54,6 +55,7 @@ defmodule Gnat do
           optional(:connection_timeout) => non_neg_integer(),
           optional(:host) => binary(),
           optional(:inbox_prefix) => binary(),
+          optional(:ping_interval) => non_neg_integer(),
           optional(:port) => non_neg_integer(),
           optional(:ssl_opts) => list(),
           optional(:tcp_opts) => list(),
@@ -115,6 +117,7 @@ defmodule Gnat do
 
   @default_connection_settings %{
     host: ~c"localhost",
+    ping_interval: 10_000,
     port: 4222,
     tcp_opts: [:binary],
     connection_timeout: 3_000,
@@ -354,24 +357,11 @@ defmodule Gnat do
   end
 
   @doc """
-  Ping the NATS server
-
-  This correlates to the [PING](https://docs.nats.io/reference/reference-protocols/nats-protocol#ping-pong) command in the NATS protocol.
-  If the NATS server responds with a PONG message this function will return `:ok`
-  ```
-  {:ok, gnat} = Gnat.start_link()
-  :ok = Gnat.ping(gnat)
-  ```
+  Kept just for backward compatibility for now
   """
-  @deprecated "Pinging is handled internally by the connection, this functionality will be removed"
-  def ping(pid) do
-    GenServer.call(pid, {:ping, self()})
-
-    receive do
-      :pong -> :ok
-    after
-      3_000 -> {:error, "No PONG response after 3 sec"}
-    end
+  @deprecated "Pinging is handled internally by the connection, this function is now a no-op until we remove the function in the 2.x series"
+  def ping(_pid) do
+    :ok
   end
 
   @doc "Get the number of active subscriptions"
@@ -394,6 +384,8 @@ defmodule Gnat do
 
     case Gnat.Handshake.connect(connection_settings) do
       {:ok, socket, server_info} ->
+        schedule_ping_check(connection_settings)
+
         parser = Parsec.new()
 
         request_inbox_prefix = Map.fetch!(connection_settings, :inbox_prefix) <> "#{nuid()}."
@@ -406,7 +398,8 @@ defmodule Gnat do
           receivers: %{},
           parser: parser,
           request_receivers: %{},
-          request_inbox_prefix: request_inbox_prefix
+          request_inbox_prefix: request_inbox_prefix,
+          waiting_on_pong: false
         }
 
         state = create_request_subscription(state)
@@ -418,6 +411,20 @@ defmodule Gnat do
   end
 
   @impl GenServer
+  def handle_info(:ping_check, %{waiting_on_pong: true} = state) do
+    error_message =
+      "Closing connection because we did not receive a PONG back within #{state.connection_settings.ping_interval}ms"
+
+    Logger.error(error_message)
+    {:stop, error_message}
+  end
+
+  def handle_info(:ping_check, %{waiting_on_pong: false} = state) do
+    :ok = socket_write(state, "PING\r\n")
+    schedule_ping_check(state.connection_settings)
+    {:noreply, %{state | waiting_on_pong: true}}
+  end
+
   def handle_info({:tcp, socket, data}, %{socket: socket} = state) do
     data_packets = receive_additional_tcp_data(socket, [data], 10)
 
@@ -599,6 +606,10 @@ defmodule Gnat do
     %{state | receivers: receivers}
   end
 
+  defp process_message({:info, server_info}, state) do
+    %{state | server_info: server_info}
+  end
+
   defp process_message({:msg, topic, @request_sid, reply_to, body}, state) do
     if Map.has_key?(state.request_receivers, topic) do
       send(
@@ -681,8 +692,7 @@ defmodule Gnat do
   end
 
   defp process_message(:pong, state) do
-    send(state.pinger, :pong)
-    state
+    %{state | waiting_on_pong: false}
   end
 
   defp process_message({:error, message}, state) do
@@ -763,5 +773,9 @@ defmodule Gnat do
       timeout ->
         {:error, :timeout}
     end
+  end
+
+  defp schedule_ping_check(connection_settings) do
+    Process.send_after(self(), :ping_check, connection_settings.ping_interval)
   end
 end
