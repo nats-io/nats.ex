@@ -17,7 +17,7 @@ defmodule GnatTest do
   # configuration. See https://circleci.com/docs/faq#can-i-use-ipv6-in-my-tests
   @tag :ci_skip
   test "connect to a server over IPv6" do
-    {:ok, pid} = Gnat.start_link(%{host: '::1', tcp_opts: [:binary, :inet6]})
+    {:ok, pid} = Gnat.start_link(%{host: ~c"::1", tcp_opts: [:binary, :inet6]})
     assert Process.alive?(pid)
     :ok = Gnat.stop(pid)
   end
@@ -356,7 +356,7 @@ defmodule GnatTest do
 
   test "connection timeout" do
     start = System.monotonic_time(:millisecond)
-    connection_settings = %{host: '169.33.33.33', connection_timeout: 200}
+    connection_settings = %{host: ~c"169.33.33.33", connection_timeout: 200}
     {:stop, :timeout} = Gnat.init(connection_settings)
     assert_in_delta System.monotonic_time(:millisecond) - start, 200, 10
   end

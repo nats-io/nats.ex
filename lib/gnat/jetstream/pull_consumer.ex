@@ -60,11 +60,17 @@ defmodule Gnat.Jetstream.PullConsumer do
   errors upon initialization:
 
   * `:connection_name` - Gnat connection or `Gnat.ConnectionSupervisor` name/PID.
-  * `:stream_name` - name of an existing string the consumer will consume messages from.
+
+  For **durable consumers**, provide:
+  * `:stream_name` - name of an existing stream the consumer will consume messages from.
   * `:consumer_name` - name of an existing consumer pointing at the stream.
 
-  You can also pass the optional ones:
+  For **ephemeral consumers**, provide:
+  * `:consumer` - a `Gnat.Jetstream.API.Consumer` struct for creating an ephemeral consumer.
+    The consumer struct must have `durable_name: nil` OR `inactive_threshold` set to ensure
+    that the server will clean it up. The `stream_name` field must also be set.
 
+  You can also pass the optional ones:
   * `:connection_retry_timeout` - a duration in milliseconds after which the PullConsumer which
     failed to establish NATS connection retries, defaults to `1000`
   * `:connection_retries` - a number of attempts the PullConsumer will make to establish the NATS
@@ -95,6 +101,71 @@ defmodule Gnat.Jetstream.PullConsumer do
         end
 
         ...
+      end
+
+  ## Ephemeral Consumer Example
+
+  You can create ephemeral consumers by providing a `:consumer` struct with `durable_name: nil`.
+  These are automatically created and cleaned up with the connection lifecycle:
+
+      defmodule MyApp.EphemeralPullConsumer do
+        use Gnat.Jetstream.PullConsumer
+
+        def start_link(arg) do
+          Jetstream.PullConsumer.start_link(__MODULE__, arg)
+        end
+
+        @impl true
+        def init(_arg) do
+          consumer = %Gnat.Jetstream.API.Consumer{
+            stream_name: "TEST_STREAM",
+            durable_name: nil,  # Must be nil for ephemeral consumers
+            filter_subject: "orders.*"
+          }
+
+          {:ok, nil,
+            connection_name: :gnat,
+            consumer: consumer}
+        end
+
+        @impl true
+        def handle_message(message, state) do
+          # Do some processing with the message.
+          {:ack, state}
+        end
+      end
+
+  ## Auto-Cleanup Durable Consumer Example
+
+  For scenarios where you want persistence across reconnections but automatic cleanup
+  (e.g., Kubernetes pods), you can create durable consumers with `inactive_threshold`:
+
+      defmodule MyApp.AutoCleanupPullConsumer do
+        use Gnat.Jetstream.PullConsumer
+
+        def start_link(pod_name) do
+          Jetstream.PullConsumer.start_link(__MODULE__, pod_name)
+        end
+
+        @impl true
+        def init(pod_name) do
+          consumer = %Gnat.Jetstream.API.Consumer{
+            stream_name: "ORDERS_STREAM",
+            durable_name: "orders-consumer-#{System.get_env("POD_NAME")}",  # Named after pod
+            inactive_threshold: 300_000_000_000,  # 5 minutes in nanoseconds
+            filter_subject: "orders.*"
+          }
+
+          {:ok, nil,
+            connection_name: :gnat,
+            consumer: consumer}
+        end
+
+        @impl true
+        def handle_message(message, state) do
+          # Process order message with state persistence
+          {:ack, state}
+        end
       end
 
   ## How to supervise
@@ -202,6 +273,7 @@ defmodule Gnat.Jetstream.PullConsumer do
           {:connection_name, GenServer.server()}
           | {:stream_name, String.t()}
           | {:consumer_name, String.t()}
+          | {:consumer, Gnat.Jetstream.API.Consumer.t()}
           | {:connection_retry_timeout, non_neg_integer()}
           | {:connection_retries, non_neg_integer()}
           | {:domain, String.t()}
