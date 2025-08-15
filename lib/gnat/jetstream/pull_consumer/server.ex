@@ -148,17 +148,27 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
 
   defp ensure_consumer_exists(gnat, stream_name, consumer_name, nil, domain) do
     # Durable consumer case - just check it exists
-    case check_consumer_exists(gnat, stream_name, consumer_name, domain) do
-      :ok -> {:ok, consumer_name}
-      {:error, reason} -> {:error, reason}
+    try do
+      case check_consumer_exists(gnat, stream_name, consumer_name, domain) do
+        :ok -> {:ok, consumer_name}
+        {:error, reason} -> {:error, reason}
+      end
+    catch
+      :exit, reason -> {:error, {:process_exit, reason}}
+      kind, reason -> {:error, {kind, reason}}
     end
   end
 
   defp ensure_consumer_exists(gnat, _stream_name, nil, consumer_definition_fn, _domain) do
     # Ephemeral consumer case - create it
-    with {:ok, consumer_definition} <- build_and_validate_consumer_definition(consumer_definition_fn),
-         {:ok, consumer_info} <- Gnat.Jetstream.API.Consumer.create(gnat, consumer_definition) do
-      {:ok, consumer_info.name}
+    try do
+      with {:ok, consumer_definition} <- build_and_validate_consumer_definition(consumer_definition_fn),
+           {:ok, consumer_info} <- Gnat.Jetstream.API.Consumer.create(gnat, consumer_definition) do
+        {:ok, consumer_info.name}
+      end
+    catch
+      :exit, reason -> {:error, {:process_exit, reason}}
+      kind, reason -> {:error, {kind, reason}}
     end
   end
 
@@ -304,7 +314,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     )
 
     # Clear ephemeral consumer name on reconnect so it gets recreated
-    gen_state = if consumer_definition, do: %{gen_state | consumer_name: nil}, else: gen_state
+    gen_state = %{gen_state | consumer_name: nil, subscription_id: nil, connection_monitor_ref: nil}
 
     {:connect, :reconnect, gen_state}
   end
