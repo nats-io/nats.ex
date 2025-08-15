@@ -60,15 +60,17 @@ defmodule Gnat.Jetstream.PullConsumer do
   errors upon initialization:
 
   * `:connection_name` - Gnat connection or `Gnat.ConnectionSupervisor` name/PID.
-  * `:stream_name` - name of an existing string the consumer will consume messages from.
-  * `:consumer_name` - name of an existing consumer pointing at the stream. Either this or
-    `:consumer_definition` must be provided, but not both.
+
+  For **durable consumers**, provide:
+  * `:stream_name` - name of an existing stream the consumer will consume messages from.
+  * `:consumer_name` - name of an existing consumer pointing at the stream.
+
+  For **ephemeral consumers**, provide:
+  * `:consumer` - a `Gnat.Jetstream.API.Consumer` struct for creating an ephemeral consumer.
+    The consumer struct must have `durable_name: nil` to be ephemeral and must include the 
+    `stream_name` field.
 
   You can also pass the optional ones:
-
-  * `:consumer_definition` - a 0-arity function that returns a `Gnat.Jetstream.API.Consumer` struct
-    for creating an ephemeral consumer. The consumer struct must have `durable_name: nil` to be 
-    ephemeral. Either this or `:consumer_name` must be provided, but not both.
   * `:connection_retry_timeout` - a duration in milliseconds after which the PullConsumer which
     failed to establish NATS connection retries, defaults to `1000`
   * `:connection_retries` - a number of attempts the PullConsumer will make to establish the NATS
@@ -116,18 +118,15 @@ defmodule Gnat.Jetstream.PullConsumer do
 
         @impl true
         def init(_arg) do
-          consumer_definition = fn ->
-            %Gnat.Jetstream.API.Consumer{
-              stream_name: "TEST_STREAM",
-              durable_name: nil,  # Must be nil for ephemeral consumers
-              filter_subject: "orders.*"
-            }
-          end
+          consumer = %Gnat.Jetstream.API.Consumer{
+            stream_name: "TEST_STREAM",
+            durable_name: nil,  # Must be nil for ephemeral consumers
+            filter_subject: "orders.*"
+          }
 
           {:ok, nil,
             connection_name: :gnat,
-            stream_name: "TEST_STREAM",
-            consumer_definition: consumer_definition}
+            consumer: consumer}
         end
 
         @impl true
@@ -242,7 +241,7 @@ defmodule Gnat.Jetstream.PullConsumer do
           {:connection_name, GenServer.server()}
           | {:stream_name, String.t()}
           | {:consumer_name, String.t()}
-          | {:consumer_definition, (() -> Gnat.Jetstream.API.Consumer.t())}
+          | {:consumer, Gnat.Jetstream.API.Consumer.t()}
           | {:connection_retry_timeout, non_neg_integer()}
           | {:connection_retries, non_neg_integer()}
           | {:domain, String.t()}

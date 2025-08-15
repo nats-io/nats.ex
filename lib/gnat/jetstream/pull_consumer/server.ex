@@ -52,7 +52,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
           connection_options: %ConnectionOptions{
             stream_name: stream_name,
             consumer_name: consumer_name,
-            consumer_definition: consumer_definition,
+            consumer: consumer,
             connection_name: connection_name,
             connection_retry_timeout: connection_retry_timeout,
             connection_retries: connection_retries,
@@ -71,9 +71,21 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
 
     with {:ok, conn} <- connection_pid(connection_name),
          monitor_ref = Process.monitor(conn),
-         {:ok, final_consumer_name} <- ensure_consumer_exists(conn, stream_name, consumer_name, consumer_definition, domain),
+         {:ok, final_consumer_name} <-
+           ensure_consumer_exists(
+             conn,
+             stream_name,
+             consumer_name,
+             consumer,
+             domain
+           ),
          {:ok, sid} <- Gnat.sub(conn, self(), listening_topic),
-         gen_state = %{gen_state | subscription_id: sid, connection_monitor_ref: monitor_ref, consumer_name: final_consumer_name},
+         gen_state = %{
+           gen_state
+           | subscription_id: sid,
+             connection_monitor_ref: monitor_ref,
+             consumer_name: final_consumer_name
+         },
          :ok <- next_message(conn, stream_name, final_consumer_name, domain, listening_topic),
          gen_state = %{gen_state | current_retry: 0} do
       {:ok, gen_state}
@@ -121,7 +133,6 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
           consumer_name: consumer_name
         } = gen_state
       ) do
-
     Logger.debug(
       "#{__MODULE__} for #{stream_name}.#{consumer_name} is disconnecting from Gnat.",
       module: module,
@@ -159,10 +170,10 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     end
   end
 
-  defp ensure_consumer_exists(gnat, _stream_name, nil, consumer_definition_fn, _domain) do
+  defp ensure_consumer_exists(gnat, _stream_name, nil, consumer_struct, _domain) do
     # Ephemeral consumer case - create it
     try do
-      with {:ok, consumer_definition} <- build_and_validate_consumer_definition(consumer_definition_fn),
+      with {:ok, consumer_definition} <- validate_ephemeral_consumer(consumer_struct),
            {:ok, consumer_info} <- Gnat.Jetstream.API.Consumer.create(gnat, consumer_definition) do
         {:ok, consumer_info.name}
       end
@@ -172,9 +183,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     end
   end
 
-  defp build_and_validate_consumer_definition(consumer_definition_fn) do
-    consumer_definition = consumer_definition_fn.()
-
+  defp validate_ephemeral_consumer(consumer_definition) do
     cond do
       consumer_definition.durable_name != nil ->
         {:error, "consumer definition must be ephemeral (cannot set durable_name)"}
@@ -292,8 +301,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
         %__MODULE__{
           connection_options: %ConnectionOptions{
             connection_name: connection_name,
-            stream_name: stream_name,
-            consumer_definition: consumer_definition
+            stream_name: stream_name
           },
           subscription_id: subscription_id,
           listening_topic: listening_topic,
@@ -301,7 +309,8 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
           connection_monitor_ref: monitor_ref,
           consumer_name: consumer_name
         } = gen_state
-      ) when ref == monitor_ref do
+      )
+      when ref == monitor_ref do
     Logger.debug(
       """
       #{__MODULE__} for #{stream_name}.#{consumer_name}:
@@ -314,7 +323,12 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     )
 
     # Clear ephemeral consumer name on reconnect so it gets recreated
-    gen_state = %{gen_state | consumer_name: nil, subscription_id: nil, connection_monitor_ref: nil}
+    gen_state = %{
+      gen_state
+      | consumer_name: nil,
+        subscription_id: nil,
+        connection_monitor_ref: nil
+    }
 
     {:connect, :reconnect, gen_state}
   end
@@ -324,7 +338,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
         %__MODULE__{
           connection_options: %ConnectionOptions{
             connection_name: connection_name,
-            stream_name: stream_name,
+            stream_name: stream_name
           },
           subscription_id: subscription_id,
           listening_topic: listening_topic,

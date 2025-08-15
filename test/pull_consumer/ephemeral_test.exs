@@ -12,18 +12,20 @@ defmodule Gnat.Jetstream.PullConsumer.EphemeralTest do
 
     @impl true
     def init(opts) do
+      consumer = Keyword.fetch!(opts, :consumer)
+
       connection_opts = [
         connection_name: :gnat,
-        stream_name: Keyword.fetch!(opts, :stream_name),
-        consumer_definition: Keyword.fetch!(opts, :consumer_definition)
+        consumer: consumer
       ]
+
       state = %{test_pid: Keyword.fetch!(opts, :test_pid)}
       {:ok, state, connection_opts}
     end
 
     @impl true
     def handle_message(message, state) do
-      send state.test_pid, {:pulled, message}
+      send(state.test_pid, {:pulled, message})
       {:ack, state}
     end
   end
@@ -50,15 +52,11 @@ defmodule Gnat.Jetstream.PullConsumer.EphemeralTest do
     test "ephemeral consumer receives messages", %{
       stream_name: stream_name
     } do
-      consumer_fn = fn ->
-        %Consumer{stream_name: stream_name}
-      end
+      consumer = %Consumer{stream_name: stream_name}
 
       {:ok, _resp} = Gnat.request(:gnat, "stream_2.ohai", "whatsup")
 
-      start_supervised!(
-        {ExamplePullConsumer, stream_name: stream_name, consumer_definition: consumer_fn, test_pid: self()}
-      )
+      start_supervised!({ExamplePullConsumer, consumer: consumer, test_pid: self()})
 
       assert_receive {:pulled, message}
       assert %{topic: "stream_2.ohai", body: "whatsup"} = message
