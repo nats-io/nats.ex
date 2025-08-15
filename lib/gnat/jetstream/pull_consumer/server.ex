@@ -189,7 +189,8 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
         {:error, "ephemeral consumers (durable_name: nil) cannot have inactive_threshold set"}
 
       consumer_definition.durable_name != nil && consumer_definition.inactive_threshold == nil ->
-        {:error, "durable consumers specified via :consumer must have inactive_threshold set for auto-cleanup"}
+        {:error,
+         "durable consumers specified via :consumer must have inactive_threshold set for auto-cleanup"}
 
       true ->
         {:ok, consumer_definition}
