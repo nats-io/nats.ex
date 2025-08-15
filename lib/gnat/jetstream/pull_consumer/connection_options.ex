@@ -39,18 +39,22 @@ defmodule Gnat.Jetstream.PullConsumer.ConnectionOptions do
       consumer && !is_struct(consumer, Gnat.Jetstream.API.Consumer) ->
         raise ArgumentError, ":consumer must be a Consumer struct"
 
+      consumer && consumer.durable_name != nil && consumer.inactive_threshold == nil ->
+        raise ArgumentError,
+              "durable consumers specified via :consumer must have inactive_threshold set for auto-cleanup"
+
       consumer ->
-        # For ephemeral consumer case, extract stream_name from consumer struct
+        # For ephemeral/auto-cleanup consumer case, extract stream_name from consumer struct
         validated_opts = Keyword.put(validated_opts, :stream_name, consumer.stream_name)
         struct!(__MODULE__, validated_opts)
 
       stream_name && consumer_name ->
-        # For durable consumer case
+        # For traditional durable consumer case
         struct!(__MODULE__, validated_opts)
 
       true ->
         raise ArgumentError,
-              "must specify either :consumer (ephemeral) or both :stream_name and :consumer_name (durable)"
+              "must specify either :consumer (ephemeral/auto-cleanup) or both :stream_name and :consumer_name (durable)"
     end
   end
 end

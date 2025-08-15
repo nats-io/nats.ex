@@ -67,8 +67,8 @@ defmodule Gnat.Jetstream.PullConsumer do
 
   For **ephemeral consumers**, provide:
   * `:consumer` - a `Gnat.Jetstream.API.Consumer` struct for creating an ephemeral consumer.
-    The consumer struct must have `durable_name: nil` to be ephemeral and must include the 
-    `stream_name` field.
+    The consumer struct must have `durable_name: nil` OR `inactive_threshold` set to ensure
+    that the server will clean it up. The `stream_name` field must also be set.
 
   You can also pass the optional ones:
   * `:connection_retry_timeout` - a duration in milliseconds after which the PullConsumer which
@@ -105,9 +105,8 @@ defmodule Gnat.Jetstream.PullConsumer do
 
   ## Ephemeral Consumer Example
 
-  You can also create ephemeral consumers by providing a `:consumer_definition` function instead
-  of a `:consumer_name`. This is useful when you want the consumer to be automatically created
-  and cleaned up with the connection lifecycle:
+  You can create ephemeral consumers by providing a `:consumer` struct with `durable_name: nil`.
+  These are automatically created and cleaned up with the connection lifecycle:
 
       defmodule MyApp.EphemeralPullConsumer do
         use Gnat.Jetstream.PullConsumer
@@ -132,6 +131,39 @@ defmodule Gnat.Jetstream.PullConsumer do
         @impl true
         def handle_message(message, state) do
           # Do some processing with the message.
+          {:ack, state}
+        end
+      end
+
+  ## Auto-Cleanup Durable Consumer Example
+
+  For scenarios where you want persistence across reconnections but automatic cleanup
+  (e.g., Kubernetes pods), you can create durable consumers with `inactive_threshold`:
+
+      defmodule MyApp.AutoCleanupPullConsumer do
+        use Gnat.Jetstream.PullConsumer
+
+        def start_link(pod_name) do
+          Jetstream.PullConsumer.start_link(__MODULE__, pod_name)
+        end
+
+        @impl true
+        def init(pod_name) do
+          consumer = %Gnat.Jetstream.API.Consumer{
+            stream_name: "ORDERS_STREAM",
+            durable_name: "orders-consumer-#{System.get_env("POD_NAME")}",  # Named after pod
+            inactive_threshold: 300_000_000_000,  # 5 minutes in nanoseconds
+            filter_subject: "orders.*"
+          }
+
+          {:ok, nil,
+            connection_name: :gnat,
+            consumer: consumer}
+        end
+
+        @impl true
+        def handle_message(message, state) do
+          # Process order message with state persistence
           {:ack, state}
         end
       end

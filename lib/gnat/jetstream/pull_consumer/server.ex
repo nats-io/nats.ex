@@ -171,9 +171,9 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
   end
 
   defp ensure_consumer_exists(gnat, _stream_name, nil, consumer_struct, _domain) do
-    # Ephemeral consumer case - create it
+    # Ephemeral or auto-cleanup durable consumer case - create it
     try do
-      with {:ok, consumer_definition} <- validate_ephemeral_consumer(consumer_struct),
+      with {:ok, consumer_definition} <- validate_consumer_for_creation(consumer_struct),
            {:ok, consumer_info} <- Gnat.Jetstream.API.Consumer.create(gnat, consumer_definition) do
         {:ok, consumer_info.name}
       end
@@ -183,13 +183,13 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     end
   end
 
-  defp validate_ephemeral_consumer(consumer_definition) do
+  defp validate_consumer_for_creation(consumer_definition) do
     cond do
-      consumer_definition.durable_name != nil ->
-        {:error, "consumer definition must be ephemeral (cannot set durable_name)"}
+      consumer_definition.durable_name == nil && consumer_definition.inactive_threshold != nil ->
+        {:error, "ephemeral consumers (durable_name: nil) cannot have inactive_threshold set"}
 
-      consumer_definition.inactive_threshold != nil ->
-        {:error, "consumer definition must be ephemeral (cannot set inactive_threshold)"}
+      consumer_definition.durable_name != nil && consumer_definition.inactive_threshold == nil ->
+        {:error, "durable consumers specified via :consumer must have inactive_threshold set for auto-cleanup"}
 
       true ->
         {:ok, consumer_definition}
@@ -322,7 +322,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
       connection_name: connection_name
     )
 
-    # Clear ephemeral consumer name on reconnect so it gets recreated
+    # Clear consumer name on reconnect so it gets recreated (for ephemeral and auto-cleanup consumers)
     gen_state = %{
       gen_state
       | consumer_name: nil,
