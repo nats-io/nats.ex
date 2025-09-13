@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.11
+
+* Allow clients to force authentication without server auth_required by @mmmries in #205
+* Support ephemeral consumers and auto-cleanup consumers in the PullConsumer module by @mmmries in #202
+* Implement regularly scheduled PING/PONG health check by @mmmries in #200
+* Add Erlang 28 with Elixir 1.18 to the build matrix by @davydog187 in #201
+* Use Pager module for KV.contents by @mmmries in #198
+* Hint `:timeout` option in KV's typespec by @rixmann in #193
+
 ## 1.10
 
 * Clarify authentication setup during test by @davydog187 in #187
