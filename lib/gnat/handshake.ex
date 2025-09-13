@@ -16,8 +16,10 @@ defmodule Gnat.Handshake do
   end
 
   def negotiate_settings(server_settings, user_settings) do
+    auth_required = server_settings[:auth_required] || user_settings[:auth_required] || false
+
     %{verbose: false}
-    |> negotiate_auth(server_settings, user_settings)
+    |> negotiate_auth(server_settings, user_settings, auth_required)
     |> negotiate_headers(server_settings, user_settings)
     |> negotiate_no_responders(server_settings, user_settings)
   end
@@ -46,20 +48,22 @@ defmodule Gnat.Handshake do
 
   defp negotiate_auth(
          settings,
-         %{auth_required: true} = _server,
-         %{username: username, password: password} = _user
+         _server,
+         %{username: username, password: password} = _user,
+         true = _auth_required
        ) do
     Map.merge(settings, %{user: username, pass: password})
   end
 
-  defp negotiate_auth(settings, %{auth_required: true} = _server, %{token: token} = _user) do
+  defp negotiate_auth(settings, _server, %{token: token} = _user, true = _auth_required) do
     Map.merge(settings, %{auth_token: token})
   end
 
   defp negotiate_auth(
          settings,
-         %{auth_required: true, nonce: nonce} = _server,
-         %{nkey_seed: seed, jwt: jwt} = _user
+         %{nonce: nonce} = _server,
+         %{nkey_seed: seed, jwt: jwt} = _user,
+         true = _auth_required
        ) do
     {:ok, nkey} = NKEYS.from_seed(seed)
     signature = NKEYS.sign(nkey, nonce) |> Base.url_encode64() |> String.replace("=", "")
@@ -69,8 +73,9 @@ defmodule Gnat.Handshake do
 
   defp negotiate_auth(
          settings,
-         %{auth_required: true, nonce: nonce} = _server,
-         %{nkey_seed: seed} = _user
+         %{nonce: nonce} = _server,
+         %{nkey_seed: seed} = _user,
+         true = _auth_required
        ) do
     {:ok, nkey} = NKEYS.from_seed(seed)
     signature = NKEYS.sign(nkey, nonce) |> Base.url_encode64() |> String.replace("=", "")
@@ -79,7 +84,7 @@ defmodule Gnat.Handshake do
     Map.merge(settings, %{sig: signature, protocol: 1, nkey: public})
   end
 
-  defp negotiate_auth(settings, _server, _user) do
+  defp negotiate_auth(settings, _server, _user, _auth_required) do
     settings
   end
 

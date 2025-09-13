@@ -1,5 +1,8 @@
 defmodule Gnat.Jetstream.API.Message do
-  @moduledoc false
+  @moduledoc """
+  This module provides a way to parse the `reply_to` received by a PullConsumer
+  and get some useful information about the state of the consumer.
+  """
 
   # Based on:
   # https://github.com/nats-io/nats.py/blob/d9f24b4beae541b7723873ba0a786ea7c0ecb3d5/nats/aio/msg.py#L182
