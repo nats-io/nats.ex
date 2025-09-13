@@ -8,6 +8,9 @@ on:
   schedule:
     - cron: "0 0 1 */1 *"
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Elixir ${{ matrix.pair.elixir }} / OTP ${{ matrix.pair.otp }} / NATS ${{ matrix.pair.nats }}
