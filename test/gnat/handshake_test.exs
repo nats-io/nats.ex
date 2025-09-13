@@ -56,6 +56,7 @@ defmodule Gnat.HandshakeTest do
     test "works with nkey authentication when client forces auth" do
       nonce = "test-nonce-value"
       server_settings = %{nonce: nonce}
+
       user_settings = %{
         nkey_seed: "SUAIBDPBAUTWCWBKIO6XHQNINK5FWJW4OHLXC3HQ2KFE4PEJUA44CNHTC4",
         auth_required: true
@@ -71,9 +72,11 @@ defmodule Gnat.HandshakeTest do
     test "works with JWT+nkey authentication when client forces auth" do
       nonce = "test-nonce-value"
       server_settings = %{nonce: nonce}
+
       user_settings = %{
         nkey_seed: "SUAIBDPBAUTWCWBKIO6XHQNINK5FWJW4OHLXC3HQ2KFE4PEJUA44CNHTC4",
-        jwt: "eyJ0eXAiOiJKV1QiLCJhbGciOiJlZDI1NTE5LW5rZXkifQ.eyJqdGkiOiJPUkhQUERHQ1FHRVdPSkZOUVIzM0tFSzVYT0lHSElNNlFOTVFOUUVIVlJLWVpGUkQ3NFNBIiwiaWF0IjoxNjM4MzMzMjI4LCJpc3MiOiJBQlpMM1pSRkdYNTQzRkU1SkdDMkVFQkJRVVhSREQ1TFdWN1dYSEdCSEdOUko2Nks0VUNJUEFHMyIsIm5hbWUiOiJ0ZXN0LXVzZXIiLCJzdWIiOiJVQzJGRllPUTVQWUEyQU5aREFCV1daSEhNRE5JVVdLQ0VITldNSUNCNlo2U1hLNEdOVUFZUUdCUCIsIm5hdHMiOnsicHViIjp7fSwic3ViIjp7fSwic3VicyI6LTEsImRhdGEiOi0xLCJwYXlsb2FkIjotMSwidHlwZSI6InVzZXIiLCJ2ZXJzaW9uIjoyfX0.test-signature",
+        jwt:
+          "eyJ0eXAiOiJKV1QiLCJhbGciOiJlZDI1NTE5LW5rZXkifQ.eyJqdGkiOiJPUkhQUERHQ1FHRVdPSkZOUVIzM0tFSzVYT0lHSElNNlFOTVFOUUVIVlJLWVpGUkQ3NFNBIiwiaWF0IjoxNjM4MzMzMjI4LCJpc3MiOiJBQlpMM1pSRkdYNTQzRkU1SkdDMkVFQkJRVVhSREQ1TFdWN1dYSEdCSEdOUko2Nks0VUNJUEFHMyIsIm5hbWUiOiJ0ZXN0LXVzZXIiLCJzdWIiOiJVQzJGRllPUTVQWUEyQU5aREFCV1daSEhNRE5JVVdLQ0VITldNSUNCNlo2U1hLNEdOVUFZUUdCUCIsIm5hdHMiOnsicHViIjp7fSwic3ViIjp7fSwic3VicyI6LTEsImRhdGEiOi0xLCJwYXlsb2FkIjotMSwidHlwZSI6InVzZXIiLCJ2ZXJzaW9uIjoyfX0.test-signature",
         auth_required: true
       }
 
