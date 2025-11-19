@@ -35,6 +35,10 @@ jobs:
             elixir: "1.18"
             nats: "2.10.24"
 
+          - otp: "28"
+            elixir: "1.18"
+            nats: "2.11.11"
+
           # the main pair handles things like format checking and running dialyzer
           - main: true
             otp: "28"
@@ -74,6 +78,10 @@ jobs:
 
       - name: Run unit tests
         run: mix test --color
+
+      - name: Run NATS 2.11 specific tests
+        if: ${{ matrix.pair.nats == '2.11.11' }}
+        run: mix test --only message_ttl
 
       - name: Cache Dialyzer PLTs
         if: matrix.pair.main

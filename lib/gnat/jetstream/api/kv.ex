@@ -13,6 +13,7 @@ defmodule Gnat.Jetstream.API.KV do
   @type bucket_options ::
           {:history, non_neg_integer()}
           | {:ttl, non_neg_integer()}
+          | {:limit_marker_ttl, non_neg_integer()}
           | {:max_bucket_size, non_neg_integer()}
           | {:max_value_size, non_neg_integer()}
           | {:description, binary()}
@@ -25,6 +26,7 @@ defmodule Gnat.Jetstream.API.KV do
 
   * `:history` - How many historic values to keep per key (defaults to 1, max of 64)
   * `:ttl` - How long to keep values for (in nanoseconds)
+  * `:limit_marker_ttl` - How long the bucket keeps markers when keys are removed by the TTL setting.
   * `:max_bucket_size` - The max number of bytes the bucket can hold
   * `:max_value_size` - The max number of bytes a value may be
   * `:description` - A description for the bucket
@@ -59,7 +61,8 @@ defmodule Gnat.Jetstream.API.KV do
       num_replicas: Keyword.get(params, :replicas, 1),
       storage: Keyword.get(params, :storage, :file),
       placement: Keyword.get(params, :placement),
-      duplicate_window: adjust_duplicate_window(Keyword.get(params, :ttl, 0))
+      duplicate_window: adjust_duplicate_window(Keyword.get(params, :ttl, 0)),
+      subject_delete_marker_ttl: Keyword.get(params, :limit_marker_ttl, 0)
     }
 
     Stream.create(conn, stream)
