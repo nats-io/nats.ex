@@ -217,17 +217,27 @@ defmodule Gnat.Jetstream.API.KV do
   @doc """
   Get all the non-deleted key-value pairs for a Bucket
 
+  ## Options
+
+  * `:batch` - Number of messages to fetch per request (default: 250)
+  * `:domain` - JetStream domain (default: nil)
+
   ## Examples
 
       iex> {:ok, %{"key1" => "value1"}} = Jetstream.API.KV.contents(:gnat, "my_bucket")
+      iex> {:ok, contents} = Jetstream.API.KV.contents(:gnat, "my_bucket", batch: 500)
   """
-  @spec contents(conn :: Gnat.t(), bucket_name :: binary(), domain :: nil | binary()) ::
+  @spec contents(conn :: Gnat.t(), bucket_name :: binary(), opts :: keyword()) ::
           {:ok, map()} | {:error, binary()}
-  def contents(conn, bucket_name, domain \\ nil) do
+  def contents(conn, bucket_name, opts \\ []) do
     alias Gnat.Jetstream.Pager
     stream = stream_name(bucket_name)
+    domain = Keyword.get(opts, :domain)
+    batch_size = Keyword.get(opts, :batch, 250)
 
-    Pager.reduce(conn, stream, [domain: domain], %{}, fn msg, acc ->
+    pager_opts = [domain: domain, batch: batch_size]
+
+    Pager.reduce(conn, stream, pager_opts, %{}, fn msg, acc ->
       case msg do
         %{topic: key, body: body, headers: headers} ->
           if {"kv-operation", "DEL"} in headers do
@@ -240,6 +250,55 @@ defmodule Gnat.Jetstream.API.KV do
           Map.put(acc, subject_to_key(key, bucket_name), body)
       end
     end)
+  end
+
+  @doc """
+  Get all the non-deleted keys for a Bucket
+
+  ## Options
+
+  * `:batch` - Number of messages to fetch per request (default: 250)
+  * `:domain` - JetStream domain (default: nil)
+
+  ## Examples
+
+      iex> {:ok, ["key1", "key2"]} = Jetstream.API.KV.keys(:gnat, "my_bucket")
+      iex> {:ok, keys} = Jetstream.API.KV.keys(:gnat, "my_bucket", batch: 500)
+  """
+  @spec keys(conn :: Gnat.t(), bucket_name :: binary(), opts :: keyword()) ::
+          {:ok, list(binary())} | {:error, binary()}
+  def keys(conn, bucket_name, opts \\ []) do
+    alias Gnat.Jetstream.Pager
+    stream = stream_name(bucket_name)
+    domain = Keyword.get(opts, :domain)
+    batch_size = Keyword.get(opts, :batch, 250)
+
+    pager_opts = [domain: domain, headers_only: true, batch: batch_size]
+
+    result =
+      Pager.reduce(conn, stream, pager_opts, MapSet.new(), fn msg, acc ->
+        case msg do
+          %{topic: key, headers: headers} ->
+            cond do
+              {"kv-operation", "DEL"} in headers ->
+                MapSet.delete(acc, subject_to_key(key, bucket_name))
+
+              {"kv-operation", "PURGE"} in headers ->
+                MapSet.delete(acc, subject_to_key(key, bucket_name))
+
+              true ->
+                MapSet.put(acc, subject_to_key(key, bucket_name))
+            end
+
+          %{topic: key} ->
+            MapSet.put(acc, subject_to_key(key, bucket_name))
+        end
+      end)
+
+    case result do
+      {:ok, key_set} -> {:ok, Enum.sort(MapSet.to_list(key_set))}
+      error -> error
+    end
   end
 
   @doc """
