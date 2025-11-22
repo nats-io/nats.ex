@@ -12,6 +12,7 @@ defmodule Gnat.Jetstream.API.Stream do
   Stream struct fields explanation:
 
   * `:allow_direct` - Allow higher performance, direct access to get individual messages. E.g. KeyValue
+  * `:allow_msg_ttl` - Allow header initiated per-message TTLs.
   * `:allow_rollup_hdrs` - allows the use of the Nats-Rollup header to replace all contents of a stream,
     or subject in a stream, with a single new message.
   * `:deny_delete` - restricts the ability to delete messages from a stream via the API. Cannot be changed
@@ -61,6 +62,8 @@ defmodule Gnat.Jetstream.API.Stream do
   * `:compression` - If file-based and a compression algorithm is specified, the stream data will be compressed on disk.
     Valid options are "none" for no compression or "s2" for Snappy compression.
   * `:subjects` - a list of subjects to consume, supports wildcards.
+  * `:subject_delete_marker_ttl` - Enables and sets a duration expressed in nanoseconds. for adding server markers for
+    delete, purge and max age limits.
   * `:template_owner` - when the Stream is managed by a Stream Template this identifies the template that
     manages the Stream.
   """
@@ -80,6 +83,7 @@ defmodule Gnat.Jetstream.API.Stream do
     :subjects,
     :template_owner,
     allow_direct: false,
+    allow_msg_ttl: false,
     allow_rollup_hdrs: false,
     deny_delete: false,
     deny_purge: false,
@@ -96,6 +100,7 @@ defmodule Gnat.Jetstream.API.Stream do
     retention: :limits,
     sealed: false,
     storage: :file,
+    subject_delete_marker_ttl: 0,
     discard_new_per_subject: false,
     compression: "none"
   ]
@@ -109,6 +114,7 @@ defmodule Gnat.Jetstream.API.Stream do
 
   @type t :: %__MODULE__{
           allow_direct: boolean(),
+          allow_msg_ttl: boolean(),
           allow_rollup_hdrs: boolean(),
           deny_delete: boolean(),
           deny_purge: boolean(),
@@ -133,6 +139,7 @@ defmodule Gnat.Jetstream.API.Stream do
           sources: nil | list(source()),
           storage: :file | :memory,
           subjects: nil | list(binary()),
+          subject_delete_marker_ttl: nanoseconds(),
           template_owner: nil | binary(),
           discard_new_per_subject: boolean(),
           compression: binary()
@@ -510,12 +517,14 @@ defmodule Gnat.Jetstream.API.Stream do
     }
     # Check for fields added in NATS versions higher than 2.2.0
     |> put_if_exist(:allow_direct, stream, "allow_direct")
+    |> put_if_exist(:allow_msg_ttl, stream, "allow_msg_ttl")
     |> put_if_exist(:allow_rollup_hdrs, stream, "allow_rollup_hdrs")
     |> put_if_exist(:deny_delete, stream, "deny_delete")
     |> put_if_exist(:deny_purge, stream, "deny_purge")
     |> put_if_exist(:discard_new_per_subject, stream, "discard_new_per_subject")
     |> put_if_exist(:mirror_direct, stream, "mirror_direct")
     |> put_if_exist(:sealed, stream, "sealed")
+    |> put_if_exist(:subject_delete_marker_ttl, stream, "subject_delete_marker_ttl")
     |> put_if_exist(:compression, stream, "compression")
   end
 

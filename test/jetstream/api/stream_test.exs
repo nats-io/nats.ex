@@ -137,6 +137,63 @@ defmodule Gnat.Jetstream.API.StreamTest do
     assert :ok = Stream.delete(:gnat, "DISCARD_NEW_PER_SUBJECT_TEST")
   end
 
+  @tag :message_ttl
+  test "create a stream with messages TTL" do
+    stream = %Stream{
+      name: "STREAM-ALLOW_MSG-TTL",
+      subjects: ["STREAM_TTL_TEST"],
+      allow_msg_ttl: true
+    }
+
+    assert {:ok, _response} = Stream.create(:gnat, stream)
+
+    :ok =
+      Gnat.pub(:gnat, "STREAM_TTL_TEST", "message-should-be-dropped-by-ttl",
+        headers: [{"Nats-TTL", "1"}]
+      )
+
+    {:ok, %{data: "message-should-be-dropped-by-ttl"}} =
+      Stream.get_message(:gnat, "STREAM-ALLOW_MSG-TTL", %{last_by_subj: "STREAM_TTL_TEST"})
+
+    :timer.sleep(1500)
+
+    {:error, %{"code" => 404}} =
+      Stream.get_message(:gnat, "STREAM-ALLOW_MSG-TTL", %{last_by_subj: "STREAM_TTL_TEST"})
+
+    assert :ok = Stream.delete(:gnat, "STREAM-ALLOW_MSG-TTL")
+  end
+
+  @tag :message_ttl
+  test "create a stream with subject delete marker TTL" do
+    stream = %Stream{
+      name: "STREAM-SUBJECT-DELETE-MARKER-TTL",
+      subjects: ["STREAM_TTL_TEST"],
+      max_age: 1_000_000_000,
+      duplicate_window: 1_000_000_000,
+      subject_delete_marker_ttl: 1_000_000_000
+    }
+
+    assert {:ok, _response} = Stream.create(:gnat, stream)
+
+    :ok = Gnat.pub(:gnat, "STREAM_TTL_TEST", "message-should-be-dropped-by-ttl")
+
+    {:ok, %{data: "message-should-be-dropped-by-ttl"}} =
+      Stream.get_message(:gnat, "STREAM-SUBJECT-DELETE-MARKER-TTL", %{
+        last_by_subj: "STREAM_TTL_TEST"
+      })
+
+    :timer.sleep(1500)
+
+    {:ok, %{data: nil, hdrs: headers}} =
+      Stream.get_message(:gnat, "STREAM-SUBJECT-DELETE-MARKER-TTL", %{
+        last_by_subj: "STREAM_TTL_TEST"
+      })
+
+    assert true === String.contains?(headers, "Nats-Marker-Reason: MaxAge")
+
+    assert :ok = Stream.delete(:gnat, "STREAM-SUBJECT-DELETE-MARKER-TTL")
+  end
+
   test "updating a stream" do
     stream = %Stream{name: "UPDATE_TEST", subjects: ["STREAM_TEST"]}
     assert {:ok, _response} = Stream.create(:gnat, stream)

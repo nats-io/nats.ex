@@ -34,6 +34,16 @@ defmodule Gnat.Jetstream.API.KVTest do
 
       assert :ok = KV.delete_bucket(:gnat, "OTHER_TTL_TEST")
     end
+
+    @tag :message_ttl
+    test "creates a bucket with limit_marker_ttl" do
+      assert {:ok, %{config: config}} =
+               KV.create_bucket(:gnat, "LIMIT_MARKER_TTL_TEST", limit_marker_ttl: 1_000_000_000)
+
+      assert config.subject_delete_marker_ttl == 1_000_000_000
+
+      assert :ok = KV.delete_bucket(:gnat, "LIMIT_MARKER_TTL_TEST")
+    end
   end
 
   test "create_key/4 creates a key" do
