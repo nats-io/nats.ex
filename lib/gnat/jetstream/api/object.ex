@@ -48,7 +48,7 @@ defmodule Gnat.Jetstream.API.Object do
 
   @spec delete(Gnat.t(), String.t(), String.t()) :: :ok | {:error, any}
   def delete(conn, bucket_name, object_name) do
-    with {:ok, meta} <- info(conn, bucket_name, object_name),
+    with {:ok, meta = %Meta{}} <- info(conn, bucket_name, object_name),
          meta <- %Meta{meta | deleted: true},
          topic <- meta_stream_topic(bucket_name, object_name),
          {:ok, body} <- Jason.encode(meta),
