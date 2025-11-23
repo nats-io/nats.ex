@@ -108,7 +108,7 @@ defmodule Gnat.Jetstream.Pager do
   end
 
   ## Helpers for accepting user options
-  defp apply_opts_to_consumer(consumer, opts) do
+  defp apply_opts_to_consumer(consumer = %Consumer{}, opts) do
     case Keyword.get(opts, :from_seq) do
       nil ->
         consumer
