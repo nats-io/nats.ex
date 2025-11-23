@@ -39,10 +39,14 @@ jobs:
             elixir: "1.18"
             nats: "2.11.11"
 
+          - otp: "28"
+            elixir: "1.18"
+            nats: "2.10.24"
+
           # the main pair handles things like format checking and running dialyzer
           - main: true
             otp: "28"
-            elixir: "1.18"
+            elixir: "1.19"
             nats: "2.10.24"
 
     env:
