@@ -13,6 +13,7 @@ defmodule Gnat.Jetstream.API.KV.Watcher do
   @operation_header "kv-operation"
   @operation_del "DEL"
   @operation_purge "PURGE"
+  @nats_marker_reason_header "nats-marker-reason"
 
   @type keywatch_handler ::
           (action :: :key_deleted | :key_added, key :: String.t(), value :: any() -> nil)
@@ -62,6 +63,9 @@ defmodule Gnat.Jetstream.API.KV.Watcher do
 
         {@operation_header, @operation_purge} ->
           :key_purged
+
+        {@nats_marker_reason_header, _} ->
+          :key_deleted
 
         _ ->
           false

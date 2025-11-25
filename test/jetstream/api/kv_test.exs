@@ -93,6 +93,30 @@ defmodule Gnat.Jetstream.API.KVTest do
     assert {:error, :timeout} = KV.put_value(:gnat, "KEY_PUT_TEST", "foo", "baz", timeout: 1)
   end
 
+  @tag :message_ttl
+  test "detects key removed based on limit_marker_ttl" do
+    assert {:ok, _} =
+             KV.create_bucket(:gnat, "LIMIT_MARKER_TTL_TEST",
+               limit_marker_ttl: 1_000_000_000,
+               ttl: 1_000_000_000
+             )
+
+    test_pid = self()
+
+    {:ok, watcher_pid} =
+      KV.watch(:gnat, "LIMIT_MARKER_TTL_TEST", fn action, key, value ->
+        send(test_pid, {action, key, value})
+      end)
+
+    KV.put_value(:gnat, "LIMIT_MARKER_TTL_TEST", "foo", "bar")
+    assert_receive({:key_added, "foo", "bar"})
+
+    assert_receive({:key_deleted, "foo", ""}, 1500)
+
+    KV.unwatch(watcher_pid)
+    assert :ok = KV.delete_bucket(:gnat, "LIMIT_MARKER_TTL_TEST")
+  end
+
   describe "watch/3" do
     setup do
       bucket = "KEY_WATCH_TEST"
