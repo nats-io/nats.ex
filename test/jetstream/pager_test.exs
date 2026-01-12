@@ -29,6 +29,31 @@ defmodule Gnat.Jetstream.PagerTest do
     Stream.delete(:gnat, "pager_a")
   end
 
+  test "paging from a datetime" do
+    {:ok, _stream} = create_stream("pager_b")
+
+    Enum.each(1..50, fn i ->
+      :ok = Gnat.pub(:gnat, "input.pager_b", "#{i}")
+    end)
+
+    timestamp = DateTime.utc_now()
+
+    Enum.each(51..100, fn i ->
+      :ok = Gnat.pub(:gnat, "input.pager_b", "#{i}")
+    end)
+
+    {:ok, res} =
+      Pager.reduce(:gnat, "pager_b", [from_datetime: timestamp], 0, fn msg, total ->
+        total + String.to_integer(msg.body)
+      end)
+
+    # The datetime isn't exactly synced between nats and the client
+    # so we use a pretty fuzzy check here. This test is mostly to
+    # provide coverage for accepting the option
+    assert res <= 5050
+    assert res >= 3775
+  end
+
   defp create_stream(name) do
     stream = %Stream{
       name: name,
