@@ -24,7 +24,12 @@ defmodule Gnat.Jetstream.Pager do
   * `headers_only` You can pass `true` to this if you only want to see the headers from each message. Can be useful to get metadata without having to receieve large body payloads.
 
   """
-  @type opt :: {:batch, non_neg_integer()} | {:domain, String.t()} | {:from_datetime, DateTime.t()} | {:from_seq, non_neg_integer} | {:headers_only, boolean()}
+  @type opt ::
+          {:batch, non_neg_integer()}
+          | {:domain, String.t()}
+          | {:from_datetime, DateTime.t()}
+          | {:from_seq, non_neg_integer}
+          | {:headers_only, boolean()}
 
   @spec init(Gnat.t(), String.t(), opts()) :: {:ok, pager()} | {:error, term()}
   def init(conn, stream_name, opts) do
@@ -88,7 +93,13 @@ defmodule Gnat.Jetstream.Pager do
   # => {:ok, 55}
   ```
   """
-  @spec reduce(Gnat.t(), String.t(), opts(), Enum.acc(), (Gnat.message(), Enum.acc() -> Enum.acc())) :: {:ok, Enum.acc()} | {:error, term()}
+  @spec reduce(
+          Gnat.t(),
+          String.t(),
+          opts(),
+          Enum.acc(),
+          (Gnat.message(), Enum.acc() -> Enum.acc())
+        ) :: {:ok, Enum.acc()} | {:error, term()}
   def reduce(conn, stream_name, opts, initial_state, fun) do
     with {:ok, pager} <- init(conn, stream_name, opts) do
       page_through(pager, initial_state, fun)
