@@ -284,24 +284,37 @@ defmodule Gnat.Jetstream.API.Object do
         ack_policy: :none,
         max_ack_pending: nil,
         replay_policy: :instant,
-        max_deliver: 1
+        max_deliver: 1,
+        flow_control: true,
+        idle_heartbeat: 5_000_000_000
       })
 
-    :ok = receive_chunks(sub, meta.chunks, chunk_fun)
+    :ok = receive_chunks(conn, sub, meta.chunks, chunk_fun)
 
     :ok = Gnat.unsub(conn, sub)
     :ok = Consumer.delete(conn, stream, consumer.name)
   end
 
-  defp receive_chunks(_sub, 0, _chunk_fun) do
+  defp receive_chunks(_conn, _sub, 0, _chunk_fun) do
     :ok
   end
 
-  defp receive_chunks(sub, remaining, chunk_fun) do
+  defp receive_chunks(conn, sub, remaining, chunk_fun) do
     receive do
+      # Flow control message with reply - respond to it
+      {:msg, %{sid: ^sub, status: "100", description: "FlowControl Request", reply_to: reply}}
+      when not is_nil(reply) ->
+        Gnat.pub(conn, reply, "")
+        receive_chunks(conn, sub, remaining, chunk_fun)
+
+      # Flow control or heartbeat message without reply - get next message
+      {:msg, %{sid: ^sub, body: "", status: "100"}} ->
+        receive_chunks(conn, sub, remaining, chunk_fun)
+
+      # Regular data message
       {:msg, %{sid: ^sub, body: body}} ->
         chunk_fun.(body)
-        receive_chunks(sub, remaining - 1, chunk_fun)
+        receive_chunks(conn, sub, remaining - 1, chunk_fun)
     after
       10_000 ->
         {:error, :timeout_waiting_for_messages}
