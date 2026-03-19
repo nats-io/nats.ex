@@ -166,8 +166,8 @@ defmodule Gnat.Jetstream.API.ObjectTest do
     bucket = nuid()
     assert {:ok, %{config: _stream}} = Object.create_bucket(:gnat, bucket)
     assert {:ok, meta} = put_filepath(path, bucket, "big")
-    assert meta.chunks == 8
-    assert meta.size == 8 * 128 * 1024
+    assert meta.chunks == 800
+    assert meta.size == 800 * 128 * 1024
     assert "SHA-256=" <> encoded = meta.digest
     assert Base.url_decode64!(encoded) == sha
 
@@ -184,6 +184,27 @@ defmodule Gnat.Jetstream.API.ObjectTest do
 
     assert :ok = Object.delete(:gnat, bucket, "big")
     assert stream_byte_size(bucket) < 1024
+    :ok = Object.delete_bucket(:gnat, bucket)
+  end
+
+  @tag :tmp_dir
+  test "control messages don't affect chunk count", %{tmp_dir: tmp_dir} do
+    assert {:ok, path, _sha} = generate_big_file(tmp_dir)
+    bucket = nuid()
+    assert {:ok, %{config: _stream}} = Object.create_bucket(:gnat, bucket)
+    assert {:ok, meta} = put_filepath(path, bucket, "test_chunks")
+
+    Process.put(:chunk_count, 0)
+
+    :ok =
+      Object.get(:gnat, bucket, "test_chunks", fn _chunk ->
+        Process.put(:chunk_count, Process.get(:chunk_count) + 1)
+      end)
+
+    chunk_count = Process.get(:chunk_count)
+
+    assert chunk_count == meta.chunks
+
     :ok = Object.delete_bucket(:gnat, bucket)
   end
 
@@ -214,7 +235,7 @@ defmodule Gnat.Jetstream.API.ObjectTest do
     end
   end
 
-  # create a random 1MB binary file
+  # create a random 100MB binary file
   # re-use it on subsequent test runs if it already exists
   defp generate_big_file(tmp_dir) do
     filepath = Path.join(tmp_dir, "big_file.bin")
@@ -222,7 +243,7 @@ defmodule Gnat.Jetstream.API.ObjectTest do
     {:ok, fh} = File.open(filepath, [:write])
 
     sha =
-      Enum.reduce(1..8, sha, fn _, digest ->
+      Enum.reduce(1..800, sha, fn _, digest ->
         rand_chunk = :crypto.strong_rand_bytes(128) |> String.duplicate(1024)
         :ok = IO.binwrite(fh, rand_chunk)
         :crypto.hash_update(digest, rand_chunk)
