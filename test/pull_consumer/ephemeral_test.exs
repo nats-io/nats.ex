@@ -24,6 +24,12 @@ defmodule Gnat.Jetstream.PullConsumer.EphemeralTest do
     end
 
     @impl true
+    def handle_connected(consumer_info, state) do
+      send(state.test_pid, {:connected, consumer_info})
+      {:ok, state}
+    end
+
+    @impl true
     def handle_message(message, state) do
       send(state.test_pid, {:pulled, message})
       {:ack, state}
@@ -57,6 +63,9 @@ defmodule Gnat.Jetstream.PullConsumer.EphemeralTest do
       {:ok, _resp} = Gnat.request(:gnat, "stream_2.ohai", "whatsup")
 
       start_supervised!({ExamplePullConsumer, consumer: consumer, test_pid: self()})
+
+      assert_receive {:connected, consumer_info}
+      assert consumer_info.num_pending == 1
 
       assert_receive {:pulled, message}
       assert %{topic: "stream_2.ohai", body: "whatsup"} = message

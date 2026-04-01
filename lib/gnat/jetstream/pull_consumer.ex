@@ -261,6 +261,42 @@ defmodule Gnat.Jetstream.PullConsumer do
               {ack_action, new_state}
             when ack_action: :ack | :nack | :term | :noreply, new_state: term()
 
+  @doc """
+  Invoked after the consumer has been created or verified on the NATS server.
+
+  This callback is called during connection (and reconnection) after the JetStream
+  consumer has been successfully created or confirmed to exist. It receives the full
+  consumer info map returned by the server, which includes fields like `num_pending`
+  (the number of messages waiting to be delivered).
+
+  This is useful for detecting the initial state of the consumer. For example, if
+  `num_pending` is `0`, you know there are no existing messages to replay and can
+  mark the consumer as caught up immediately.
+
+  Returning `{:ok, state}` allows you to update the consumer's state based on the
+  consumer info.
+
+  This callback is optional. If not implemented, the state is passed through unchanged.
+
+  ## Example
+
+      @impl true
+      def handle_connected(consumer_info, state) do
+        if consumer_info.num_pending == 0 do
+          {:ok, mark_as_loaded(state)}
+        else
+          {:ok, state}
+        end
+      end
+
+  """
+  @callback handle_connected(
+              consumer_info :: Gnat.Jetstream.API.Consumer.info(),
+              state :: term()
+            ) :: {:ok, new_state :: term()}
+
+  @optional_callbacks [handle_connected: 2]
+
   @typedoc """
   The pull consumer reference.
   """
