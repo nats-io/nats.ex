@@ -78,6 +78,13 @@ defmodule Gnat.Jetstream.PullConsumer do
     defaults to `10`
   * `:inbox_prefix` - allows the default `_INBOX.` prefix to be customized. Should end with a dot.
   * `:domain` - use a JetStream domain, this is mostly used on leaf nodes.
+  * `:batch_size` - when set to a value greater than 1, enables batch mode. Messages are
+    buffered and delivered to `c:handle_message/2` in batches. Only the last message per
+    batch is acknowledged, so the underlying consumer should use `ack_policy: :all` for
+    correctness. This dramatically improves throughput for consumers that need to catch up
+    on large backlogs. In batch mode, `:nack` and `:term` returns from `c:handle_message/2`
+    are treated as `:ack` since `ack_policy: :all` cannot selectively reject messages.
+    Defaults to `1` (single-message mode).
 
   ## Dynamic Connection Options
 
@@ -277,6 +284,7 @@ defmodule Gnat.Jetstream.PullConsumer do
           | {:connection_retry_timeout, non_neg_integer()}
           | {:connection_retries, non_neg_integer()}
           | {:domain, String.t()}
+          | {:batch_size, pos_integer()}
 
   @typedoc """
   Connection options used to connect the consumer to NATS server.

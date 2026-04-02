@@ -12,7 +12,7 @@ defmodule Gnat.Jetstream.PullConsumer.ConnectionOptions do
     :domain
   ]
 
-  defstruct @enforce_keys ++ [:stream_name, :consumer_name, :consumer]
+  defstruct @enforce_keys ++ [:stream_name, :consumer_name, :consumer, batch_size: 1]
 
   def validate!(connection_options) do
     validated_opts =
@@ -24,7 +24,8 @@ defmodule Gnat.Jetstream.PullConsumer.ConnectionOptions do
         connection_retry_timeout: @default_retry_timeout,
         connection_retries: @default_retries,
         inbox_prefix: nil,
-        domain: nil
+        domain: nil,
+        batch_size: 1
       ])
 
     stream_name = validated_opts[:stream_name]

@@ -16,7 +16,8 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     :subscription_id,
     :connection_monitor_ref,
     :consumer_name,
-    current_retry: 0
+    current_retry: 0,
+    buffer: []
   ]
 
   def init(%{module: module, init_arg: init_arg}) do
@@ -86,7 +87,15 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
              connection_monitor_ref: monitor_ref,
              consumer_name: final_consumer_name
          },
-         :ok <- next_message(conn, stream_name, final_consumer_name, domain, listening_topic),
+         :ok <-
+           initial_fetch(
+             gen_state,
+             conn,
+             stream_name,
+             final_consumer_name,
+             domain,
+             listening_topic
+           ),
          gen_state = %{gen_state | current_retry: 0} do
       {:ok, gen_state}
     else
@@ -222,6 +231,53 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     end
   end
 
+  # -- Batch mode: terminal signal (404/408) means the batch request is complete --
+  @batch_terminals ["404", "408"]
+
+  def handle_info(
+        {:msg, %{status: status, gnat: gnat}},
+        %__MODULE__{
+          connection_options: %ConnectionOptions{batch_size: batch_size},
+          buffer: buffer
+        } = gen_state
+      )
+      when batch_size > 1 and status in @batch_terminals do
+    case buffer do
+      [] ->
+        # Fully caught up — long-poll for new messages
+        request_batch(gnat, gen_state, :tailing)
+        {:noreply, gen_state}
+
+      _messages ->
+        # Partial batch — process what we have, then try for more
+        gen_state = process_and_ack_batch(gen_state)
+        request_batch(gnat, gen_state, :catching_up)
+        {:noreply, gen_state}
+    end
+  end
+
+  # -- Batch mode: data message — buffer until batch is full --
+  def handle_info(
+        {:msg, message},
+        %__MODULE__{
+          connection_options: %ConnectionOptions{batch_size: batch_size},
+          buffer: buffer
+        } = gen_state
+      )
+      when batch_size > 1 do
+    buffer = [message | buffer]
+    gen_state = %{gen_state | buffer: buffer}
+
+    if length(buffer) >= batch_size do
+      gen_state = process_and_ack_batch(gen_state)
+      request_batch(message.gnat, gen_state, :catching_up)
+      {:noreply, gen_state}
+    else
+      {:noreply, gen_state}
+    end
+  end
+
+  # -- Single-message mode (batch_size == 1, the default) --
   def handle_info(
         {:msg, message},
         %__MODULE__{
@@ -393,5 +449,67 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
       listening_topic,
       domain
     )
+  end
+
+  defp initial_fetch(gen_state, conn, stream_name, consumer_name, domain, listening_topic) do
+    if gen_state.connection_options.batch_size > 1 do
+      request_batch(conn, gen_state, :catching_up)
+    else
+      next_message(conn, stream_name, consumer_name, domain, listening_topic)
+    end
+  end
+
+  @five_seconds_ns 5_000_000_000
+
+  defp request_batch(conn, gen_state, mode) do
+    %{
+      connection_options: %ConnectionOptions{
+        stream_name: stream_name,
+        batch_size: batch_size,
+        domain: domain
+      },
+      consumer_name: consumer_name,
+      listening_topic: listening_topic
+    } = gen_state
+
+    opts =
+      case mode do
+        :catching_up -> [batch: batch_size, no_wait: true]
+        :tailing -> [batch: batch_size, expires: @five_seconds_ns]
+      end
+
+    Gnat.Jetstream.API.Consumer.request_next_message(
+      conn,
+      stream_name,
+      consumer_name,
+      listening_topic,
+      domain,
+      opts
+    )
+  end
+
+  defp process_and_ack_batch(%{buffer: buffer, module: module, state: state} = gen_state) do
+    messages = Enum.reverse(buffer)
+
+    new_state =
+      Enum.reduce(messages, state, fn message, acc_state ->
+        case module.handle_message(message, acc_state) do
+          {:ack, updated_state} ->
+            updated_state
+
+          {action, updated_state} ->
+            Logger.warning(
+              "PullConsumer batch mode does not support #{inspect(action)}, treating as :ack"
+            )
+
+            updated_state
+        end
+      end)
+
+    # With ack_policy: :all, acking the last message covers the entire batch
+    last = List.last(messages)
+    Gnat.Jetstream.ack(last)
+
+    %{gen_state | state: new_state, buffer: []}
   end
 end
