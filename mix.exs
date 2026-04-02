@@ -2,7 +2,7 @@ defmodule Gnat.Mixfile do
   use Mix.Project
 
   @source_url "https://github.com/nats-io/nats.ex"
-  @version "1.13.1"
+  @version "1.14.0-rc0"
 
   def project do
     [
@@ -85,7 +85,8 @@ defmodule Gnat.Mixfile do
         "Garrett Thornburg",
         "Masahiro Tokioka",
         "Kevin Hoffman"
-      ]
+      ],
+      exclude_patterns: ["priv/plts"]
     ]
   end
 end
