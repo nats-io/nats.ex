@@ -72,7 +72,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
 
     with {:ok, conn} <- connection_pid(connection_name),
          monitor_ref = Process.monitor(conn),
-         {:ok, final_consumer_name} <-
+         {:ok, consumer_info} <-
            ensure_consumer_exists(
              conn,
              stream_name,
@@ -80,12 +80,15 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
              consumer,
              domain
            ),
+         final_consumer_name = consumer_info.name,
+         state = maybe_handle_connected(module, consumer_info, gen_state.state),
          {:ok, sid} <- Gnat.sub(conn, self(), listening_topic),
          gen_state = %{
            gen_state
            | subscription_id: sid,
              connection_monitor_ref: monitor_ref,
-             consumer_name: final_consumer_name
+             consumer_name: final_consumer_name,
+             state: state
          },
          :ok <-
            initial_fetch(
@@ -169,8 +172,8 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
   defp ensure_consumer_exists(gnat, stream_name, consumer_name, nil, domain) do
     # Durable consumer case - just check it exists
     try do
-      case check_consumer_exists(gnat, stream_name, consumer_name, domain) do
-        :ok -> {:ok, consumer_name}
+      case Gnat.Jetstream.API.Consumer.info(gnat, stream_name, consumer_name, domain) do
+        {:ok, consumer_info} -> {:ok, consumer_info}
         {:error, reason} -> {:error, reason}
       end
     catch
@@ -184,7 +187,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     try do
       with {:ok, consumer_definition} <- validate_consumer_for_creation(consumer_struct),
            {:ok, consumer_info} <- Gnat.Jetstream.API.Consumer.create(gnat, consumer_definition) do
-        {:ok, consumer_info.name}
+        {:ok, consumer_info}
       end
     catch
       :exit, reason -> {:error, {:process_exit, reason}}
@@ -206,13 +209,12 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     end
   end
 
-  defp check_consumer_exists(gnat, stream_name, consumer_name, domain) do
-    case Gnat.Jetstream.API.Consumer.info(gnat, stream_name, consumer_name, domain) do
-      {:ok, _consumer} ->
-        :ok
-
-      {:error, message} ->
-        {:error, message}
+  defp maybe_handle_connected(module, consumer_info, state) do
+    if function_exported?(module, :handle_connected, 2) do
+      {:ok, state} = module.handle_connected(consumer_info, state)
+      state
+    else
+      state
     end
   end
 
