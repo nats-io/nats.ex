@@ -80,6 +80,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
              consumer,
              domain
            ),
+         :ok <- validate_batch_ack_policy(gen_state.connection_options, consumer_info),
          final_consumer_name = consumer_info.name,
          state = maybe_handle_connected(module, consumer_info, gen_state.state),
          {:ok, sid} <- Gnat.sub(conn, self(), listening_topic),
@@ -208,6 +209,23 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
         {:ok, consumer_definition}
     end
   end
+
+  defp validate_batch_ack_policy(%ConnectionOptions{batch_size: batch_size}, consumer_info)
+       when batch_size > 1 do
+    case consumer_info.config.ack_policy do
+      :all ->
+        :ok
+
+      other ->
+        {:error,
+         "batch_size > 1 requires ack_policy: :all on the consumer, " <>
+           "got: #{inspect(other)}. With ack_policy: :explicit, " <>
+           "only the last message in each batch would be acknowledged and the " <>
+           "server would redeliver the rest"}
+    end
+  end
+
+  defp validate_batch_ack_policy(_connection_options, _consumer_info), do: :ok
 
   defp maybe_handle_connected(module, consumer_info, state) do
     if function_exported?(module, :handle_connected, 2) do
@@ -461,14 +479,13 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     end
   end
 
-  @five_seconds_ns 5_000_000_000
-
   defp request_batch(conn, gen_state, mode) do
     %{
       connection_options: %ConnectionOptions{
         stream_name: stream_name,
         batch_size: batch_size,
-        domain: domain
+        domain: domain,
+        request_expires: expires
       },
       consumer_name: consumer_name,
       listening_topic: listening_topic
@@ -477,7 +494,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     opts =
       case mode do
         :catching_up -> [batch: batch_size, no_wait: true]
-        :tailing -> [batch: batch_size, expires: @five_seconds_ns]
+        :tailing -> [batch: batch_size, expires: expires]
       end
 
     Gnat.Jetstream.API.Consumer.request_next_message(

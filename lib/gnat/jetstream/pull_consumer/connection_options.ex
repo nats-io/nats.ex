@@ -12,7 +12,17 @@ defmodule Gnat.Jetstream.PullConsumer.ConnectionOptions do
     :domain
   ]
 
-  defstruct @enforce_keys ++ [:stream_name, :consumer_name, :consumer, batch_size: 1]
+  # 5 Seconds in nanoseconds
+  @default_request_expires 5_000_000_000
+
+  defstruct @enforce_keys ++
+              [
+                :stream_name,
+                :consumer_name,
+                :consumer,
+                batch_size: 1,
+                request_expires: @default_request_expires
+              ]
 
   def validate!(connection_options) do
     validated_opts =
@@ -25,7 +35,8 @@ defmodule Gnat.Jetstream.PullConsumer.ConnectionOptions do
         connection_retries: @default_retries,
         inbox_prefix: nil,
         domain: nil,
-        batch_size: 1
+        batch_size: 1,
+        request_expires: @default_request_expires
       ])
 
     stream_name = validated_opts[:stream_name]
@@ -43,6 +54,13 @@ defmodule Gnat.Jetstream.PullConsumer.ConnectionOptions do
       consumer && consumer.durable_name != nil && consumer.inactive_threshold == nil ->
         raise ArgumentError,
               "durable consumers specified via :consumer must have inactive_threshold set for auto-cleanup"
+
+      consumer && validated_opts[:batch_size] > 1 && consumer.ack_policy != :all ->
+        raise ArgumentError,
+              "batch_size > 1 requires ack_policy: :all on the consumer, " <>
+                "got: #{inspect(consumer.ack_policy)}. With ack_policy: :explicit, " <>
+                "only the last message in each batch would be acknowledged and the " <>
+                "server would redeliver the rest"
 
       consumer ->
         # For ephemeral/auto-cleanup consumer case, extract stream_name from consumer struct
