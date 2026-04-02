@@ -29,7 +29,7 @@ defmodule BenchBatchPullConsumer do
   use Gnat.Jetstream.PullConsumer
 
   def start(args) do
-    Gnat.Jetstream.PullConsumer.start(__MODULE__, args, name: __MODULE__)
+    Gnat.Jetstream.PullConsumer.start(__MODULE__, args)
   end
 
   @impl true

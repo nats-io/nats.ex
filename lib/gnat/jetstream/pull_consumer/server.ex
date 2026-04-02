@@ -400,11 +400,13 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     )
 
     # Clear consumer name on reconnect so it gets recreated (for ephemeral and auto-cleanup consumers)
+    # Clear buffer to avoid processing stale messages from the dead connection
     gen_state = %{
       gen_state
       | consumer_name: nil,
         subscription_id: nil,
-        connection_monitor_ref: nil
+        connection_monitor_ref: nil,
+        buffer: []
     }
 
     {:connect, :reconnect, gen_state}
