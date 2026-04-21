@@ -243,6 +243,11 @@ defmodule Gnat.Jetstream.PullConsumer do
   Invoked to synchronously process a message pulled by the consumer.
   Depending on the value it returns, the acknowledgement is or is not sent.
 
+  Only real stream messages reach this callback. JetStream informational
+  status messages (e.g. `100` heartbeat, `404`/`408` pull terminator, `409`
+  leadership change) are intercepted by the consumer and never passed here.
+  See `c:handle_status/2` if you want to observe them.
+
   ## ACK actions
 
   Possible ACK actions values explained:
@@ -302,7 +307,42 @@ defmodule Gnat.Jetstream.PullConsumer do
               state :: term()
             ) :: {:ok, new_state :: term()}
 
-  @optional_callbacks [handle_connected: 2]
+  @doc """
+  Invoked when the consumer receives an informational JetStream status message
+  instead of a real stream message.
+
+  JetStream delivers status messages on the same subscription as regular
+  messages — for example a `100` idle heartbeat, a `404`/`408` pull request
+  terminator, or a `409` leadership change. These are not stream records and
+  cannot be acked, so the PullConsumer never forwards them to `c:handle_message/2`.
+
+  By default they are silently dropped and the consumer continues fetching
+  the next message. Implement this callback if you want to observe them — for
+  example to log a warning on leadership changes, or to track heartbeat
+  arrival.
+
+  The callback receives the raw `Gnat.message()` (which includes `:status`
+  and optionally `:description`) and the current state. Returning
+  `{:ok, new_state}` updates the state; the consumer then proceeds the same
+  way it would have if the callback had not been defined.
+
+  This callback is optional.
+
+  ## Example
+
+      @impl true
+      def handle_status(%{status: "409", description: description}, state) do
+        Logger.warning("JetStream 409 from consumer: #\{description}")
+        {:ok, state}
+      end
+
+      def handle_status(_message, state), do: {:ok, state}
+
+  """
+  @callback handle_status(message :: Gnat.message(), state :: term()) ::
+              {:ok, new_state :: term()}
+
+  @optional_callbacks [handle_connected: 2, handle_status: 2]
 
   @typedoc """
   The pull consumer reference.
