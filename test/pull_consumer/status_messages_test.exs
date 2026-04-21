@@ -13,9 +13,9 @@ defmodule Gnat.Jetstream.PullConsumer.StatusMessagesTest do
     @impl true
     def init(opts) do
       {test_pid, opts} = Keyword.pop!(opts, :test_pid)
+      state = Keyword.merge([connection_name: :gnat], opts)
 
-      {:ok, %{test_pid: test_pid},
-       Keyword.merge([connection_name: :gnat], opts)}
+      {:ok, %{test_pid: test_pid}, state}
     end
 
     @impl true
