@@ -53,8 +53,7 @@ defmodule Gnat.Jetstream.API.KV.EntryTest do
         headers: [{"kv-operation", "PURGE"}]
       }
 
-      assert {:ok, %Entry{operation: :purge, key: "foo"}} =
-               Entry.from_message(message, @bucket)
+      assert {:ok, %Entry{operation: :purge, key: "foo"}} = Entry.from_message(message, @bucket)
     end
 
     test "treats a nats-marker-reason tombstone as :delete" do
@@ -64,8 +63,7 @@ defmodule Gnat.Jetstream.API.KV.EntryTest do
         headers: [{"nats-marker-reason", "MaxAge"}]
       }
 
-      assert {:ok, %Entry{operation: :delete, key: "foo"}} =
-               Entry.from_message(message, @bucket)
+      assert {:ok, %Entry{operation: :delete, key: "foo"}} = Entry.from_message(message, @bucket)
     end
 
     test "recovers keys that include dots" do
