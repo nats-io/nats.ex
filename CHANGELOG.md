@@ -9,7 +9,10 @@
   implementations (e.g. caches that need to detect when they are caught up
   with the stream). Returns `:ignore` for messages that are not KV records.
 * `KV.Watcher` now uses `KV.Entry` internally; its public callback API is
-  unchanged.
+  unchanged. The push consumer it creates now enables server-driven flow
+  control and a 5s idle heartbeat (matching nats.go's ordered-consumer
+  defaults), so slow handlers apply backpressure instead of being dropped
+  as slow consumers.
 * **Behavior change (bugfix):** `PullConsumer` no longer forwards JetStream
   informational status messages (e.g. `100` idle heartbeat, `409` leadership
   change) to `c:handle_message/2`. These are not stream records and cannot

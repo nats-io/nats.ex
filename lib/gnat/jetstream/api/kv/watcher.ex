@@ -11,6 +11,12 @@ defmodule Gnat.Jetstream.API.KV.Watcher do
   alias Gnat.Jetstream.API.{Consumer, KV, Util}
   alias Gnat.Jetstream.API.KV.Entry
 
+  # Matches the ordered-consumer defaults used by the nats.go KV watcher:
+  # a 5s idle heartbeat and server-driven flow control. The flow-control
+  # messages arrive as 100-status messages with a reply subject — the client
+  # is expected to publish an empty reply so the server releases backpressure.
+  @flow_control_heartbeat_ns 5_000_000_000
+
   @type keywatch_handler ::
           (action :: :key_deleted | :key_added, key :: String.t(), value :: any() -> nil)
 
@@ -48,6 +54,23 @@ defmodule Gnat.Jetstream.API.KV.Watcher do
     :ok = Consumer.delete(state.conn, stream, state.consumer_name, state.domain)
   end
 
+  # Flow-control request: the server is asking us to acknowledge that we're
+  # keeping up. Responding releases backpressure so the server continues
+  # delivering messages to slow handlers rather than dropping us as a slow
+  # consumer.
+  def handle_info({:msg, %{status: "100", reply_to: reply_to}}, state)
+      when is_binary(reply_to) and reply_to != "" do
+    :ok = Gnat.pub(state.conn, reply_to, "")
+    {:noreply, state}
+  end
+
+  # Idle heartbeat (status 100 with no reply_to) and any other informational
+  # status message (404, 408, 409, etc.) — not a stream record, drop it.
+  def handle_info({:msg, %{status: status}}, state)
+      when is_binary(status) and status != "" do
+    {:noreply, state}
+  end
+
   def handle_info({:msg, message}, state) do
     case Entry.from_message(message, state.bucket_name) do
       {:ok, entry} ->
@@ -77,7 +100,9 @@ defmodule Gnat.Jetstream.API.KV.Watcher do
              stream_name: stream,
              ack_policy: :none,
              max_ack_pending: -1,
-             max_deliver: 1
+             max_deliver: 1,
+             flow_control: true,
+             idle_heartbeat: @flow_control_heartbeat_ns
            }) do
       {:ok, {sub, consumer_name}}
     end
