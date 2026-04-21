@@ -3,6 +3,15 @@ defmodule Gnat.Jetstream.API.KV do
   API for interacting with the Key/Value store functionality in Nats Jetstream.
 
   Learn about the Key/Value store: https://docs.nats.io/nats-concepts/jetstream/key-value-store
+
+  ## Consuming KV changes from a custom PullConsumer
+
+  `watch/3` covers the common "push consumer" use case for reacting to bucket
+  changes. If you need a pull-based consumer instead (e.g. to hydrate a local
+  cache and detect when it is caught up with the stream), see
+  `Gnat.Jetstream.API.KV.Entry` for a shared helper that parses a raw NATS
+  message into a KV operation/key/value triple with optional revision
+  metadata.
   """
   alias Gnat.Jetstream.API.{Stream}
 

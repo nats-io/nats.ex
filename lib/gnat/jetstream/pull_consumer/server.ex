@@ -236,6 +236,15 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     end
   end
 
+  defp maybe_handle_status(message, %__MODULE__{module: module, state: state} = gen_state) do
+    if function_exported?(module, :handle_status, 2) do
+      {:ok, new_state} = module.handle_status(message, state)
+      %{gen_state | state: new_state}
+    else
+      gen_state
+    end
+  end
+
   defp connection_pid(connection_name) when is_pid(connection_name) do
     if Process.alive?(connection_name) do
       {:ok, connection_name}
@@ -274,6 +283,46 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
         request_batch(gnat, gen_state, :catching_up)
         {:noreply, gen_state}
     end
+  end
+
+  # -- Batch mode: non-terminator informational status (e.g. 100 heartbeat, 409
+  # leadership change). Drop it — these aren't stream records and can't be
+  # acked. The batch continues waiting for real messages or a 404/408. --
+  def handle_info(
+        {:msg, %{status: status} = message},
+        %__MODULE__{connection_options: %ConnectionOptions{batch_size: batch_size}} = gen_state
+      )
+      when batch_size > 1 and is_binary(status) and status != "" do
+    gen_state = maybe_handle_status(message, gen_state)
+    {:noreply, gen_state}
+  end
+
+  # -- Single-message mode: informational status. Drop + re-pull so the
+  # consumer doesn't stall. Matches the nats.go convention of never exposing
+  # status messages to the user's message handler. --
+  def handle_info(
+        {:msg, %{status: status} = message},
+        %__MODULE__{
+          connection_options: %ConnectionOptions{
+            stream_name: stream_name,
+            domain: domain
+          },
+          listening_topic: listening_topic,
+          consumer_name: consumer_name
+        } = gen_state
+      )
+      when is_binary(status) and status != "" do
+    gen_state = maybe_handle_status(message, gen_state)
+
+    next_message(
+      message.gnat,
+      stream_name,
+      consumer_name,
+      domain,
+      listening_topic
+    )
+
+    {:noreply, gen_state}
   end
 
   # -- Batch mode: data message — buffer until batch is full --
