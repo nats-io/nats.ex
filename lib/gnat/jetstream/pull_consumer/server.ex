@@ -260,41 +260,43 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     end
   end
 
-  # -- Batch mode: terminal signal (404/408) means the batch request is complete --
-  @batch_terminals ["404", "408"]
-
+  # -- Batch mode: 100 is an idle heartbeat — the pull is still alive, do
+  # nothing but invoke the user callback. --
   def handle_info(
-        {:msg, %{status: status, gnat: gnat}},
+        {:msg, %{status: "100"} = message},
+        %__MODULE__{connection_options: %ConnectionOptions{batch_size: batch_size}} = gen_state
+      )
+      when batch_size > 1 do
+    gen_state = maybe_handle_status(message, gen_state)
+    {:noreply, gen_state}
+  end
+
+  # -- Batch mode: any other status (404/408 terminators, 409 leadership
+  # change / max_ack_pending / max_waiting / consumer-deleted, etc.) ends
+  # the outstanding pull request. Process any partial buffer and issue a
+  # new pull so the consumer doesn't stall. --
+  def handle_info(
+        {:msg, %{status: status, gnat: gnat} = message},
         %__MODULE__{
           connection_options: %ConnectionOptions{batch_size: batch_size},
           buffer: buffer
         } = gen_state
       )
-      when batch_size > 1 and status in @batch_terminals do
+      when batch_size > 1 and is_binary(status) and status != "" do
+    gen_state = maybe_handle_status(message, gen_state)
+
     case buffer do
       [] ->
-        # Fully caught up — long-poll for new messages
+        # Nothing buffered — long-poll for new messages.
         request_batch(gnat, gen_state, :tailing)
         {:noreply, gen_state}
 
       _messages ->
-        # Partial batch — process what we have, then try for more
+        # Partial batch — process what we have, then try for more.
         gen_state = process_and_ack_batch(gen_state)
         request_batch(gnat, gen_state, :catching_up)
         {:noreply, gen_state}
     end
-  end
-
-  # -- Batch mode: non-terminator informational status (e.g. 100 heartbeat, 409
-  # leadership change). Drop it — these aren't stream records and can't be
-  # acked. The batch continues waiting for real messages or a 404/408. --
-  def handle_info(
-        {:msg, %{status: status} = message},
-        %__MODULE__{connection_options: %ConnectionOptions{batch_size: batch_size}} = gen_state
-      )
-      when batch_size > 1 and is_binary(status) and status != "" do
-    gen_state = maybe_handle_status(message, gen_state)
-    {:noreply, gen_state}
   end
 
   # -- Single-message mode: informational status. Drop + re-pull so the
