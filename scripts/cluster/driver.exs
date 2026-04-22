@@ -93,7 +93,7 @@ defmodule FailoverConsumer do
 
   @impl true
   def init(opts) do
-    {:ok, %{count: 0, batch: 10}, opts}
+    {:ok, %{count: 0, batch_size: 10}, opts}
   end
 
   @impl true
