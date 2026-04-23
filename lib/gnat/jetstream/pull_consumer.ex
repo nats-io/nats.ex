@@ -85,6 +85,10 @@ defmodule Gnat.Jetstream.PullConsumer do
     on large backlogs. In batch mode, `:nack` and `:term` returns from `c:handle_message/2`
     are treated as `:ack` since `ack_policy: :all` cannot selectively reject messages.
     Defaults to `1` (single-message mode).
+  * `:request_expires` - duration in nanoseconds a batch-mode pull request will linger on
+    the server while tailing (no backlog) before the server replies with a `408` terminator
+    and the consumer issues a fresh pull. Only used when `:batch_size` is greater than 1.
+    Defaults to `5_000_000_000` (5 seconds).
 
   ## Dynamic Connection Options
 
@@ -361,6 +365,7 @@ defmodule Gnat.Jetstream.PullConsumer do
           | {:connection_retries, non_neg_integer()}
           | {:domain, String.t()}
           | {:batch_size, pos_integer()}
+          | {:request_expires, non_neg_integer()}
 
   @typedoc """
   Connection options used to connect the consumer to NATS server.

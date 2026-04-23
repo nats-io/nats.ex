@@ -162,6 +162,12 @@ defmodule Gnat.Jetstream.PullConsumer.StatusMessagesTest do
         send(state.test_pid, {:handled, message.body})
         {:ack, state}
       end
+
+      @impl true
+      def handle_status(message, state) do
+        send(state.test_pid, {:status, message})
+        {:ok, state}
+      end
     end
 
     test "batch mode issues a new pull after 409 with empty buffer",
@@ -190,6 +196,8 @@ defmodule Gnat.Jetstream.PullConsumer.StatusMessagesTest do
 
       # A new pull must be issued or the consumer is stuck.
       assert_receive {:msg, %{topic: "$JS.API.CONSUMER.MSG.NEXT." <> _}}, 1_000
+      # And handle_status should have observed the 409.
+      assert_receive {:status, %{status: "409", description: "Leadership Change"}}, 1_000
     end
 
     test "batch mode processes partial buffer and re-pulls on 409",
@@ -231,6 +239,7 @@ defmodule Gnat.Jetstream.PullConsumer.StatusMessagesTest do
 
       assert_receive {:handled, "partial-1"}, 1_000
       assert_receive {:msg, %{topic: "$JS.API.CONSUMER.MSG.NEXT." <> _}}, 1_000
+      assert_receive {:status, %{status: "409", description: "Leadership Change"}}, 1_000
     end
 
     test "batch mode treats 100 heartbeat as a no-op (no re-pull)",
@@ -254,6 +263,8 @@ defmodule Gnat.Jetstream.PullConsumer.StatusMessagesTest do
       send(pid, {:msg, %{status: "100", body: "", gnat: :gnat}})
 
       refute_receive {:msg, %{topic: "$JS.API.CONSUMER.MSG.NEXT." <> _}}, 200
+      # But handle_status should still be invoked so users can observe heartbeats.
+      assert_receive {:status, %{status: "100"}}, 500
     end
   end
 

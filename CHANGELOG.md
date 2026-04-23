@@ -3,9 +3,9 @@
 ## 1.14
 
 * Add `PullConsumer.handle_connected/2` optional callback to get consumer info
-* Add `PullConsumer.hanle_status/2` optional callback to observe status messages
+* Add `PullConsumer.handle_status/2` optional callback to observe status messages
 * Added support for `batch_size` option in PullConsumer options to pull messages
-  and acknolwedge them in batches.
+  and acknowledge them in batches.
 * Add `Gnat.Jetstream.API.KV.Entry` with `from_message/2` for parsing a raw
   NATS message from a KV bucket's underlying stream into a structured entry
   (operation, key, value, revision, created, delta). Intended to be shared

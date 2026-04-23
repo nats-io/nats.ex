@@ -301,31 +301,26 @@ defmodule Gnat.Jetstream.PullConsumer.BatchTest do
       assert_receive {:handled, 5, "e"}, 10_000
     end
 
-    test "batch_size 1 uses single-message mode (backward compatibility)" do
+    test "batch_size 1 uses single-message mode (sends +NXT on ack)" do
+      consumer_name = "BATCH_COMPAT_CONSUMER"
+
       consumer = %Consumer{
         stream_name: @stream_name,
-        durable_name: "BATCH_COMPAT_CONSUMER"
+        durable_name: consumer_name,
+        inactive_threshold: 30_000_000_000,
+        ack_policy: :explicit
       }
 
-      {:ok, _} = Consumer.create(:gnat, consumer)
+      # Subscribe to the ack subject to verify +NXT is sent (single-message pipeline)
+      # rather than an empty body (batch-mode ack).
+      {:ok, _} = Gnat.sub(:gnat, self(), "$JS.ACK.#{@stream_name}.#{consumer_name}.>")
 
-      # With batch_size: 1, should use ack_next (single-message pipeline)
-      # Subscribe to the ack subject to verify +NXT is sent (not batch ack)
-      Gnat.sub(:gnat, self(), "$JS.ACK.#{@stream_name}.BATCH_COMPAT_CONSUMER.>")
+      :ok = Gnat.pub(:gnat, "batch_test.compat", "compat-1")
 
-      start_supervised!(
-        {BatchPullConsumer,
-         consumer: %Consumer{
-           stream_name: @stream_name,
-           durable_name: "BATCH_COMPAT_COMPAT",
-           inactive_threshold: 30_000_000_000
-         },
-         batch_size: 1,
-         test_pid: self()}
-      )
+      start_supervised!({BatchPullConsumer, consumer: consumer, batch_size: 1, test_pid: self()})
 
-      # batch_size: 1 doesn't enter batch code path, so we use the durable approach
-      # to verify the message is processed in single-message mode
+      assert_receive {:handled, 1, "compat-1"}, 5_000
+      assert_receive {:msg, %{body: "+NXT"}}, 5_000
     end
 
     test "batch mode with batch_size 2 and odd number of messages" do
