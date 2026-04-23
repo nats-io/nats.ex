@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.14
+
+* Add `PullConsumer.handle_connected/2` optional callback to get consumer info
+* Add `PullConsumer.handle_status/2` optional callback to observe status messages
+* Added support for `batch_size` option in PullConsumer options to pull messages
+  and acknowledge them in batches.
+* Add `Gnat.Jetstream.API.KV.Entry` with `from_message/2` for parsing a raw
+  NATS message from a KV bucket's underlying stream into a structured entry
+  (operation, key, value, revision, created, delta). Intended to be shared
+  between the built-in `KV.Watcher` and user-supplied `PullConsumer`
+  implementations (e.g. caches that need to detect when they are caught up
+  with the stream). Returns `:ignore` for messages that are not KV records.
+* `KV.Watcher` now uses `KV.Entry` internally; its public callback API is
+  unchanged. The push consumer it creates now enables server-driven flow
+  control and a 5s idle heartbeat (matching nats.go's ordered-consumer
+  defaults), so slow handlers apply backpressure instead of being dropped
+  as slow consumers.
+* **Behavior change (bugfix):** `PullConsumer` no longer forwards JetStream
+  informational status messages (e.g. `100` idle heartbeat, `409` leadership
+  change) to `c:handle_message/2`. These are not stream records and cannot
+  be acked. In single-message mode the consumer now drops them and re-issues
+  a pull request.
+* Add an optional `c:handle_status/2` callback to `Gnat.Jetstream.PullConsumer`
+  for users who want to observe status messages (e.g. log on `409`).
+
 ## 1.11
 
 * Allow clients to force authentication without server auth_required by @mmmries in #205

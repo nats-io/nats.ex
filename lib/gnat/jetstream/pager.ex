@@ -33,7 +33,7 @@ defmodule Gnat.Jetstream.Pager do
 
   @spec init(Gnat.t(), String.t(), opts()) :: {:ok, pager()} | {:error, term()}
   def init(conn, stream_name, opts) do
-    domain = Keyword.get(opts, :domainl)
+    domain = Keyword.get(opts, :domain)
 
     consumer = %Consumer{
       stream_name: stream_name,
@@ -75,9 +75,8 @@ defmodule Gnat.Jetstream.Pager do
   end
 
   def cleanup(%{conn: conn} = state) do
-    with :ok <- Gnat.unsub(conn, state.sub) do
-      :ok = Consumer.delete(conn, state.stream_name, state.consumer_name, state.domain)
-    end
+    :ok = Gnat.unsub(conn, state.sub)
+    Consumer.delete(conn, state.stream_name, state.consumer_name, state.domain)
   end
 
   @doc """
@@ -114,7 +113,7 @@ defmodule Gnat.Jetstream.Pager do
 
       {:done, messages} ->
         new_state = Enum.reduce(messages, state, fun)
-        :ok = cleanup(pager)
+        cleanup(pager)
         {:ok, new_state}
     end
   end

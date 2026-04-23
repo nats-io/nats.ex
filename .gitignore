@@ -29,3 +29,8 @@ erl_crash.dump
 
 # ASDF file to for specifying which erlang/elixir version to use for local development
 .tool-versions
+
+# Ignore Cluster details
+scripts/cluster/data
+scripts/cluster/logs
+scripts/cluster/pids

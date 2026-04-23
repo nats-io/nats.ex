@@ -78,6 +78,17 @@ defmodule Gnat.Jetstream.PullConsumer do
     defaults to `10`
   * `:inbox_prefix` - allows the default `_INBOX.` prefix to be customized. Should end with a dot.
   * `:domain` - use a JetStream domain, this is mostly used on leaf nodes.
+  * `:batch_size` - when set to a value greater than 1, enables batch mode. Messages are
+    buffered and delivered to `c:handle_message/2` in batches. Only the last message per
+    batch is acknowledged, so the underlying consumer should use `ack_policy: :all` for
+    correctness. This dramatically improves throughput for consumers that need to catch up
+    on large backlogs. In batch mode, `:nack` and `:term` returns from `c:handle_message/2`
+    are treated as `:ack` since `ack_policy: :all` cannot selectively reject messages.
+    Defaults to `1` (single-message mode).
+  * `:request_expires` - duration in nanoseconds a batch-mode pull request will linger on
+    the server while tailing (no backlog) before the server replies with a `408` terminator
+    and the consumer issues a fresh pull. Only used when `:batch_size` is greater than 1.
+    Defaults to `5_000_000_000` (5 seconds).
 
   ## Dynamic Connection Options
 
@@ -236,6 +247,11 @@ defmodule Gnat.Jetstream.PullConsumer do
   Invoked to synchronously process a message pulled by the consumer.
   Depending on the value it returns, the acknowledgement is or is not sent.
 
+  Only real stream messages reach this callback. JetStream informational
+  status messages (e.g. `100` heartbeat, `404`/`408` pull terminator, `409`
+  leadership change) are intercepted by the consumer and never passed here.
+  See `c:handle_status/2` if you want to observe them.
+
   ## ACK actions
 
   Possible ACK actions values explained:
@@ -261,6 +277,77 @@ defmodule Gnat.Jetstream.PullConsumer do
               {ack_action, new_state}
             when ack_action: :ack | :nack | :term | :noreply, new_state: term()
 
+  @doc """
+  Invoked after the consumer has been created or verified on the NATS server.
+
+  This callback is called during connection (and reconnection) after the JetStream
+  consumer has been successfully created or confirmed to exist. It receives the full
+  consumer info map returned by the server, which includes fields like `num_pending`
+  (the number of messages waiting to be delivered).
+
+  This is useful for detecting the initial state of the consumer. For example, if
+  `num_pending` is `0`, you know there are no existing messages to replay and can
+  mark the consumer as caught up immediately.
+
+  Returning `{:ok, state}` allows you to update the consumer's state based on the
+  consumer info.
+
+  This callback is optional. If not implemented, the state is passed through unchanged.
+
+  ## Example
+
+      @impl true
+      def handle_connected(consumer_info, state) do
+        if consumer_info.num_pending == 0 do
+          {:ok, mark_as_loaded(state)}
+        else
+          {:ok, state}
+        end
+      end
+
+  """
+  @callback handle_connected(
+              consumer_info :: Gnat.Jetstream.API.Consumer.info(),
+              state :: term()
+            ) :: {:ok, new_state :: term()}
+
+  @doc """
+  Invoked when the consumer receives an informational JetStream status message
+  instead of a real stream message.
+
+  JetStream delivers status messages on the same subscription as regular
+  messages — for example a `100` idle heartbeat, a `404`/`408` pull request
+  terminator, or a `409` leadership change. These are not stream records and
+  cannot be acked, so the PullConsumer never forwards them to `c:handle_message/2`.
+
+  By default they are silently dropped and the consumer continues fetching
+  the next message. Implement this callback if you want to observe them — for
+  example to log a warning on leadership changes, or to track heartbeat
+  arrival.
+
+  The callback receives the raw `Gnat.message()` (which includes `:status`
+  and optionally `:description`) and the current state. Returning
+  `{:ok, new_state}` updates the state; the consumer then proceeds the same
+  way it would have if the callback had not been defined.
+
+  This callback is optional.
+
+  ## Example
+
+      @impl true
+      def handle_status(%{status: "409", description: description}, state) do
+        Logger.warning("JetStream 409 from consumer: #\{description}")
+        {:ok, state}
+      end
+
+      def handle_status(_message, state), do: {:ok, state}
+
+  """
+  @callback handle_status(message :: Gnat.message(), state :: term()) ::
+              {:ok, new_state :: term()}
+
+  @optional_callbacks [handle_connected: 2, handle_status: 2]
+
   @typedoc """
   The pull consumer reference.
   """
@@ -277,6 +364,8 @@ defmodule Gnat.Jetstream.PullConsumer do
           | {:connection_retry_timeout, non_neg_integer()}
           | {:connection_retries, non_neg_integer()}
           | {:domain, String.t()}
+          | {:batch_size, pos_integer()}
+          | {:request_expires, non_neg_integer()}
 
   @typedoc """
   Connection options used to connect the consumer to NATS server.

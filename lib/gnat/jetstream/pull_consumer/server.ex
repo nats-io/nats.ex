@@ -16,7 +16,8 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     :subscription_id,
     :connection_monitor_ref,
     :consumer_name,
-    current_retry: 0
+    current_retry: 0,
+    buffer: []
   ]
 
   def init(%{module: module, init_arg: init_arg}) do
@@ -71,7 +72,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
 
     with {:ok, conn} <- connection_pid(connection_name),
          monitor_ref = Process.monitor(conn),
-         {:ok, final_consumer_name} <-
+         {:ok, consumer_info} <-
            ensure_consumer_exists(
              conn,
              stream_name,
@@ -79,14 +80,26 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
              consumer,
              domain
            ),
+         :ok <- validate_batch_ack_policy(gen_state.connection_options, consumer_info),
+         final_consumer_name = consumer_info.name,
+         state = maybe_handle_connected(module, consumer_info, gen_state.state),
          {:ok, sid} <- Gnat.sub(conn, self(), listening_topic),
          gen_state = %{
            gen_state
            | subscription_id: sid,
              connection_monitor_ref: monitor_ref,
-             consumer_name: final_consumer_name
+             consumer_name: final_consumer_name,
+             state: state
          },
-         :ok <- next_message(conn, stream_name, final_consumer_name, domain, listening_topic),
+         :ok <-
+           initial_fetch(
+             gen_state,
+             conn,
+             stream_name,
+             final_consumer_name,
+             domain,
+             listening_topic
+           ),
          gen_state = %{gen_state | current_retry: 0} do
       {:ok, gen_state}
     else
@@ -160,8 +173,8 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
   defp ensure_consumer_exists(gnat, stream_name, consumer_name, nil, domain) do
     # Durable consumer case - just check it exists
     try do
-      case check_consumer_exists(gnat, stream_name, consumer_name, domain) do
-        :ok -> {:ok, consumer_name}
+      case Gnat.Jetstream.API.Consumer.info(gnat, stream_name, consumer_name, domain) do
+        {:ok, consumer_info} -> {:ok, consumer_info}
         {:error, reason} -> {:error, reason}
       end
     catch
@@ -175,7 +188,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     try do
       with {:ok, consumer_definition} <- validate_consumer_for_creation(consumer_struct),
            {:ok, consumer_info} <- Gnat.Jetstream.API.Consumer.create(gnat, consumer_definition) do
-        {:ok, consumer_info.name}
+        {:ok, consumer_info}
       end
     catch
       :exit, reason -> {:error, {:process_exit, reason}}
@@ -197,13 +210,38 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     end
   end
 
-  defp check_consumer_exists(gnat, stream_name, consumer_name, domain) do
-    case Gnat.Jetstream.API.Consumer.info(gnat, stream_name, consumer_name, domain) do
-      {:ok, _consumer} ->
+  defp validate_batch_ack_policy(%ConnectionOptions{batch_size: batch_size}, consumer_info)
+       when batch_size > 1 do
+    case consumer_info.config.ack_policy do
+      :all ->
         :ok
 
-      {:error, message} ->
-        {:error, message}
+      other ->
+        {:error,
+         "batch_size > 1 requires ack_policy: :all on the consumer, " <>
+           "got: #{inspect(other)}. With ack_policy: :explicit, " <>
+           "only the last message in each batch would be acknowledged and the " <>
+           "server would redeliver the rest"}
+    end
+  end
+
+  defp validate_batch_ack_policy(_connection_options, _consumer_info), do: :ok
+
+  defp maybe_handle_connected(module, consumer_info, state) do
+    if function_exported?(module, :handle_connected, 2) do
+      {:ok, state} = module.handle_connected(consumer_info, state)
+      state
+    else
+      state
+    end
+  end
+
+  defp maybe_handle_status(message, %__MODULE__{module: module, state: state} = gen_state) do
+    if function_exported?(module, :handle_status, 2) do
+      {:ok, new_state} = module.handle_status(message, state)
+      %{gen_state | state: new_state}
+    else
+      gen_state
     end
   end
 
@@ -222,6 +260,95 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     end
   end
 
+  # -- Batch mode: 100 is an idle heartbeat — the pull is still alive, do
+  # nothing but invoke the user callback. --
+  def handle_info(
+        {:msg, %{status: "100"} = message},
+        %__MODULE__{connection_options: %ConnectionOptions{batch_size: batch_size}} = gen_state
+      )
+      when batch_size > 1 do
+    gen_state = maybe_handle_status(message, gen_state)
+    {:noreply, gen_state}
+  end
+
+  # -- Batch mode: any other status (404/408 terminators, 409 leadership
+  # change / max_ack_pending / max_waiting / consumer-deleted, etc.) ends
+  # the outstanding pull request. Process any partial buffer and issue a
+  # new pull so the consumer doesn't stall. --
+  def handle_info(
+        {:msg, %{status: status, gnat: gnat} = message},
+        %__MODULE__{
+          connection_options: %ConnectionOptions{batch_size: batch_size},
+          buffer: buffer
+        } = gen_state
+      )
+      when batch_size > 1 and is_binary(status) and status != "" do
+    gen_state = maybe_handle_status(message, gen_state)
+
+    case buffer do
+      [] ->
+        # Nothing buffered — long-poll for new messages.
+        request_batch(gnat, gen_state, :tailing)
+        {:noreply, gen_state}
+
+      _messages ->
+        # Partial batch — process what we have, then try for more.
+        gen_state = process_and_ack_batch(gen_state)
+        request_batch(gnat, gen_state, :catching_up)
+        {:noreply, gen_state}
+    end
+  end
+
+  # -- Single-message mode: informational status. Drop + re-pull so the
+  # consumer doesn't stall. Matches the nats.go convention of never exposing
+  # status messages to the user's message handler. --
+  def handle_info(
+        {:msg, %{status: status} = message},
+        %__MODULE__{
+          connection_options: %ConnectionOptions{
+            stream_name: stream_name,
+            domain: domain
+          },
+          listening_topic: listening_topic,
+          consumer_name: consumer_name
+        } = gen_state
+      )
+      when is_binary(status) and status != "" do
+    gen_state = maybe_handle_status(message, gen_state)
+
+    next_message(
+      message.gnat,
+      stream_name,
+      consumer_name,
+      domain,
+      listening_topic
+    )
+
+    {:noreply, gen_state}
+  end
+
+  # -- Batch mode: data message — buffer until batch is full --
+  def handle_info(
+        {:msg, message},
+        %__MODULE__{
+          connection_options: %ConnectionOptions{batch_size: batch_size},
+          buffer: buffer
+        } = gen_state
+      )
+      when batch_size > 1 do
+    buffer = [message | buffer]
+    gen_state = %{gen_state | buffer: buffer}
+
+    if length(buffer) >= batch_size do
+      gen_state = process_and_ack_batch(gen_state)
+      request_batch(message.gnat, gen_state, :catching_up)
+      {:noreply, gen_state}
+    else
+      {:noreply, gen_state}
+    end
+  end
+
+  # -- Single-message mode (batch_size == 1, the default) --
   def handle_info(
         {:msg, message},
         %__MODULE__{
@@ -324,11 +451,13 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     )
 
     # Clear consumer name on reconnect so it gets recreated (for ephemeral and auto-cleanup consumers)
+    # Clear buffer to avoid processing stale messages from the dead connection
     gen_state = %{
       gen_state
       | consumer_name: nil,
         subscription_id: nil,
-        connection_monitor_ref: nil
+        connection_monitor_ref: nil,
+        buffer: []
     }
 
     {:connect, :reconnect, gen_state}
@@ -393,5 +522,66 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
       listening_topic,
       domain
     )
+  end
+
+  defp initial_fetch(gen_state, conn, stream_name, consumer_name, domain, listening_topic) do
+    if gen_state.connection_options.batch_size > 1 do
+      request_batch(conn, gen_state, :catching_up)
+    else
+      next_message(conn, stream_name, consumer_name, domain, listening_topic)
+    end
+  end
+
+  defp request_batch(conn, gen_state, mode) do
+    %{
+      connection_options: %ConnectionOptions{
+        stream_name: stream_name,
+        batch_size: batch_size,
+        domain: domain,
+        request_expires: expires
+      },
+      consumer_name: consumer_name,
+      listening_topic: listening_topic
+    } = gen_state
+
+    opts =
+      case mode do
+        :catching_up -> [batch: batch_size, no_wait: true]
+        :tailing -> [batch: batch_size, expires: expires]
+      end
+
+    Gnat.Jetstream.API.Consumer.request_next_message(
+      conn,
+      stream_name,
+      consumer_name,
+      listening_topic,
+      domain,
+      opts
+    )
+  end
+
+  defp process_and_ack_batch(%{buffer: buffer, module: module, state: state} = gen_state) do
+    messages = Enum.reverse(buffer)
+
+    new_state =
+      Enum.reduce(messages, state, fn message, acc_state ->
+        case module.handle_message(message, acc_state) do
+          {:ack, updated_state} ->
+            updated_state
+
+          {action, updated_state} ->
+            Logger.warning(
+              "PullConsumer batch mode does not support #{inspect(action)}, treating as :ack"
+            )
+
+            updated_state
+        end
+      end)
+
+    # With ack_policy: :all, acking the last message covers the entire batch
+    last = List.last(messages)
+    Gnat.Jetstream.ack(last)
+
+    %{gen_state | state: new_state, buffer: []}
   end
 end
