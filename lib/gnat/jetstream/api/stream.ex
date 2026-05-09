@@ -6,8 +6,10 @@ defmodule Gnat.Jetstream.API.Stream do
 
   ## The Jetstream.API.Stream struct
 
-  The struct's mandatory fields are `:name` and `:subjects`. The rest will have the NATS
-  default values set.
+  The struct's mandatory fields are `:name` and `:subjects`. Any field left unset (`nil`)
+  is omitted from the request body, so the nats-server applies its own default. This keeps
+  the client compatible with both older servers that recognize legacy fields and newer
+  servers that have removed them.
 
   Stream struct fields explanation:
 
@@ -71,39 +73,54 @@ defmodule Gnat.Jetstream.API.Stream do
   import Gnat.Jetstream.API.Util
 
   @enforce_keys [:name, :subjects]
-  @derive {Jason.Encoder, except: [:domain]}
   defstruct [
+    :allow_direct,
+    :allow_msg_ttl,
+    :allow_rollup_hdrs,
+    :compression,
+    :deny_delete,
+    :deny_purge,
     :description,
-    :mirror,
-    :name,
+    :discard,
+    :discard_new_per_subject,
     :domain,
+    :duplicate_window,
+    :max_age,
+    :max_bytes,
+    :max_consumers,
+    :max_msg_size,
+    :max_msgs,
+    :max_msgs_per_subject,
+    :mirror,
+    :mirror_direct,
+    :name,
     :no_ack,
+    :num_replicas,
     :placement,
+    :retention,
+    :sealed,
     :sources,
+    :storage,
+    :subject_delete_marker_ttl,
     :subjects,
-    :template_owner,
-    allow_direct: false,
-    allow_msg_ttl: false,
-    allow_rollup_hdrs: false,
-    deny_delete: false,
-    deny_purge: false,
-    discard: :old,
-    duplicate_window: 120_000_000_000,
-    max_age: 0,
-    max_bytes: -1,
-    max_consumers: -1,
-    max_msg_size: -1,
-    max_msgs_per_subject: -1,
-    max_msgs: -1,
-    mirror_direct: false,
-    num_replicas: 1,
-    retention: :limits,
-    sealed: false,
-    storage: :file,
-    subject_delete_marker_ttl: 0,
-    discard_new_per_subject: false,
-    compression: "none"
+    :template_owner
   ]
+
+  defimpl Jason.Encoder do
+    # The Stream struct represents user intent: only fields the caller explicitly
+    # set (i.e. non-nil) get sent to the server. This keeps requests forward- and
+    # backward-compatible across nats-server versions that add or remove fields,
+    # since nats-server uses strict JSON parsing (DisallowUnknownFields) and will
+    # reject a request that contains fields it does not recognize. `:domain` is
+    # part of the API subject, not the request body.
+    def encode(stream, opts) do
+      stream
+      |> Map.from_struct()
+      |> Map.drop([:domain])
+      |> Map.reject(fn {_key, value} -> is_nil(value) end)
+      |> Jason.Encode.map(opts)
+    end
+  end
 
   @type nanoseconds :: non_neg_integer()
 
@@ -113,36 +130,36 @@ defmodule Gnat.Jetstream.API.Stream do
         }
 
   @type t :: %__MODULE__{
-          allow_direct: boolean(),
-          allow_msg_ttl: boolean(),
-          allow_rollup_hdrs: boolean(),
-          deny_delete: boolean(),
-          deny_purge: boolean(),
+          allow_direct: nil | boolean(),
+          allow_msg_ttl: nil | boolean(),
+          allow_rollup_hdrs: nil | boolean(),
+          compression: nil | binary(),
+          deny_delete: nil | boolean(),
+          deny_purge: nil | boolean(),
           description: nil | binary(),
-          discard: :old | :new,
+          discard: nil | :old | :new,
+          discard_new_per_subject: nil | boolean(),
           domain: nil | binary(),
           duplicate_window: nil | nanoseconds(),
-          max_age: nanoseconds(),
-          max_bytes: integer(),
-          max_consumers: integer(),
+          max_age: nil | nanoseconds(),
+          max_bytes: nil | integer(),
+          max_consumers: nil | integer(),
           max_msg_size: nil | integer(),
-          max_msgs: integer(),
-          max_msgs_per_subject: integer(),
+          max_msgs: nil | integer(),
+          max_msgs_per_subject: nil | integer(),
           mirror: nil | source(),
-          mirror_direct: boolean(),
+          mirror_direct: nil | boolean(),
           name: binary(),
           no_ack: nil | boolean(),
-          num_replicas: pos_integer(),
+          num_replicas: nil | pos_integer(),
           placement: nil | placement(),
-          retention: :limits | :workqueue | :interest,
-          sealed: boolean(),
+          retention: nil | :limits | :workqueue | :interest,
+          sealed: nil | boolean(),
           sources: nil | list(source()),
-          storage: :file | :memory,
+          storage: nil | :file | :memory,
+          subject_delete_marker_ttl: nil | nanoseconds(),
           subjects: nil | list(binary()),
-          subject_delete_marker_ttl: nanoseconds(),
-          template_owner: nil | binary(),
-          discard_new_per_subject: boolean(),
-          compression: binary()
+          template_owner: nil | binary()
         }
 
   @typedoc """
@@ -496,37 +513,52 @@ defmodule Gnat.Jetstream.API.Stream do
   defp to_stream(stream) do
     %__MODULE__{
       description: Map.get(stream, "description"),
-      discard: Map.fetch!(stream, "discard") |> to_sym(),
+      discard: stream |> Map.get("discard") |> to_discard(),
       duplicate_window: Map.get(stream, "duplicate_window"),
-      max_age: Map.fetch!(stream, "max_age"),
-      max_bytes: Map.fetch!(stream, "max_bytes"),
-      max_consumers: Map.fetch!(stream, "max_consumers"),
+      max_age: Map.get(stream, "max_age"),
+      max_bytes: Map.get(stream, "max_bytes"),
+      max_consumers: Map.get(stream, "max_consumers"),
       max_msg_size: Map.get(stream, "max_msg_size"),
-      max_msgs_per_subject: Map.get(stream, "max_msgs_per_subject", -1),
-      max_msgs: Map.fetch!(stream, "max_msgs"),
+      max_msgs_per_subject: Map.get(stream, "max_msgs_per_subject"),
+      max_msgs: Map.get(stream, "max_msgs"),
       mirror: Map.get(stream, "mirror"),
       name: Map.fetch!(stream, "name"),
       no_ack: Map.get(stream, "no_ack"),
-      num_replicas: Map.fetch!(stream, "num_replicas"),
+      num_replicas: Map.get(stream, "num_replicas"),
       placement: Map.get(stream, "placement"),
-      retention: Map.fetch!(stream, "retention") |> to_sym(),
+      retention: stream |> Map.get("retention") |> to_retention(),
       sources: Map.get(stream, "sources"),
-      storage: Map.fetch!(stream, "storage") |> to_sym(),
+      storage: stream |> Map.get("storage") |> to_storage(),
       subjects: Map.get(stream, "subjects"),
-      template_owner: Map.get(stream, "template_owner")
+      template_owner: Map.get(stream, "template_owner"),
+      allow_direct: Map.get(stream, "allow_direct"),
+      allow_msg_ttl: Map.get(stream, "allow_msg_ttl"),
+      allow_rollup_hdrs: Map.get(stream, "allow_rollup_hdrs"),
+      deny_delete: Map.get(stream, "deny_delete"),
+      deny_purge: Map.get(stream, "deny_purge"),
+      discard_new_per_subject: Map.get(stream, "discard_new_per_subject"),
+      mirror_direct: Map.get(stream, "mirror_direct"),
+      sealed: Map.get(stream, "sealed"),
+      subject_delete_marker_ttl: Map.get(stream, "subject_delete_marker_ttl"),
+      compression: Map.get(stream, "compression")
     }
-    # Check for fields added in NATS versions higher than 2.2.0
-    |> put_if_exist(:allow_direct, stream, "allow_direct")
-    |> put_if_exist(:allow_msg_ttl, stream, "allow_msg_ttl")
-    |> put_if_exist(:allow_rollup_hdrs, stream, "allow_rollup_hdrs")
-    |> put_if_exist(:deny_delete, stream, "deny_delete")
-    |> put_if_exist(:deny_purge, stream, "deny_purge")
-    |> put_if_exist(:discard_new_per_subject, stream, "discard_new_per_subject")
-    |> put_if_exist(:mirror_direct, stream, "mirror_direct")
-    |> put_if_exist(:sealed, stream, "sealed")
-    |> put_if_exist(:subject_delete_marker_ttl, stream, "subject_delete_marker_ttl")
-    |> put_if_exist(:compression, stream, "compression")
   end
+
+  # Explicit enum decoders. These also act as the only compile-time references
+  # to the known enum atoms; without them, `String.to_existing_atom/1` would
+  # fail at runtime since the struct no longer carries default atom values.
+  defp to_retention(nil), do: nil
+  defp to_retention("limits"), do: :limits
+  defp to_retention("workqueue"), do: :workqueue
+  defp to_retention("interest"), do: :interest
+
+  defp to_storage(nil), do: nil
+  defp to_storage("file"), do: :file
+  defp to_storage("memory"), do: :memory
+
+  defp to_discard(nil), do: nil
+  defp to_discard("old"), do: :old
+  defp to_discard("new"), do: :new
 
   defp to_info(%{"config" => config, "state" => state, "created" => created} = response) do
     with {:ok, created, _} <- DateTime.from_iso8601(created) do

@@ -10,7 +10,13 @@ defmodule Gnat.Jetstream.API.StreamTest do
 
     stream = %Stream{name: "LIST_TEST", subjects: ["STREAM_TEST"]}
     {:ok, response} = Stream.create(:gnat, stream)
-    assert response.config == stream
+    assert response.config.name == stream.name
+    assert response.config.subjects == stream.subjects
+    # server-applied defaults round-trip into the parsed config even though
+    # the client did not send them (see encoder: nil fields are omitted).
+    assert response.config.retention == :limits
+    assert response.config.storage == :file
+    assert response.config.discard == :old
 
     assert response.state == %{
              bytes: 0,
@@ -213,7 +219,8 @@ defmodule Gnat.Jetstream.API.StreamTest do
     assert {:ok, _response} = Stream.create(:gnat, stream)
 
     assert {:ok, response} = Stream.info(:gnat, "INFO_TEST")
-    assert response.config == stream
+    assert response.config.name == stream.name
+    assert response.config.subjects == stream.subjects
 
     assert response.state == %{
              bytes: 0,
