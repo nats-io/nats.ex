@@ -15,7 +15,7 @@ defmodule Gnat.Jetstream.API.StreamEncoderTest do
       stream = %Stream{name: "ORDERS", subjects: ["orders.*"]}
       keys = encoded_keys(stream)
 
-      assert keys == ["name", "subjects"]
+      assert Enum.sort(keys) == ["name", "subjects"]
     end
 
     test "does not send :template_owner unless the user set it (regression for #222)" do
