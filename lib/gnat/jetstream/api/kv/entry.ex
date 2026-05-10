@@ -132,10 +132,10 @@ defmodule Gnat.Jetstream.API.KV.Entry do
 
   defp operation(_message), do: :put
 
-  defp apply_metadata(entry, message) do
+  defp apply_metadata(%__MODULE__{} = entry, message) do
     case Message.metadata(message) do
       {:ok, metadata} ->
-        %__MODULE__{
+        %{
           entry
           | revision: metadata.stream_seq,
             created: metadata.timestamp,
