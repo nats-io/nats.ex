@@ -21,7 +21,7 @@ jobs:
         pair:
           - otp: "25"
             elixir: "1.14"
-            nats: "2.10.0"
+            nats: "2.10.24"
 
           - otp: "26"
             elixir: "1.16"
@@ -29,25 +29,25 @@ jobs:
 
           - otp: "27"
             elixir: "1.17"
-            nats: "2.10.24"
+            nats: "2.11.17"
 
           - otp: "27"
             elixir: "1.18"
-            nats: "2.10.24"
-
-          - otp: "28"
-            elixir: "1.18"
-            nats: "2.11.11"
+            nats: "2.12.8"
 
           - otp: "28"
             elixir: "1.18"
             nats: "2.10.24"
 
-          # the main pair handles things like format checking and running dialyzer
-          - main: true
-            otp: "28"
+          - otp: "28"
+            elixir: "1.18"
+            nats: "2.11.17"
+            features: [message_ttl]
+
+          - otp: "28"
             elixir: "1.19"
-            nats: "2.10.24"
+            nats: "2.14.0"
+            features: [format, dialyzer, message_ttl]
 
     env:
       MIX_ENV: test
@@ -77,18 +77,18 @@ jobs:
         run: mix deps.get
 
       - name: Check for valid formatting
-        if: matrix.pair.main
+        if: contains(matrix.pair.features, 'format')
         run: mix format --check-formatted
 
       - name: Run unit tests
         run: mix test --color
 
-      - name: Run NATS 2.11 specific tests
-        if: ${{ matrix.pair.nats == '2.11.11' }}
+      - name: Run Message TTL Tests
+        if: contains(matrix.pair.features, 'message_ttl')
         run: mix test --only message_ttl
 
       - name: Cache Dialyzer PLTs
-        if: matrix.pair.main
+        if: contains(matrix.pair.features, 'dialyzer')
         uses: actions/cache@v4
         with:
           path: |
@@ -99,7 +99,7 @@ jobs:
             dialyzer-${{ matrix.pair.otp }}-${{ matrix.pair.elixir }}-
 
       - name: Run Dialyzer
-        if: matrix.pair.main
+        if: contains(matrix.pair.features, 'dialyzer')
         env:
           MIX_ENV: dev
         run: |

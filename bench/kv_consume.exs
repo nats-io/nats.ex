@@ -5,7 +5,9 @@
 #   1. Pager (batch 500, ack_policy: :all) — fetch a page, process, ack last, repeat
 #   2. Pull + ack_next pipeline (initial batch 500, ack_policy: :explicit) — prime the
 #      pipeline with a batch request, then ack_next each message to keep flow continuous
-#   3. PullConsumer with batch_size (ack_policy: :all) — the new batch mode using the
+#   3. KV.watch (PushConsumer) — uses the standard KV watcher which creates a push-based
+#      ephemeral consumer and delivers messages to a GenServer via handle_info
+#   4. PullConsumer with batch_size (ack_policy: :all) — the new batch mode using the
 #      actual PullConsumer behaviour, batches messages and acks only the last per batch
 #
 # Prerequisites:
@@ -177,7 +179,47 @@ defmodule KVConsumeBench do
   end
 
   # ---------------------------------------------------------------------------
-  # Strategy 3: PullConsumer with batch_size (ack_policy: :all, batch mode)
+  # Strategy 3: KV.watch (PushConsumer)
+  # ---------------------------------------------------------------------------
+  def watch_consume(conn, expected) do
+    tab = :ets.new(:watch_cache, [:set, :public])
+    notify = self()
+
+    counter = :counters.new(1, [:atomics])
+
+    {:ok, watcher} =
+      KV.watch(conn, @bucket, fn _action, key, value ->
+        :ets.insert(tab, {key, value})
+        :counters.add(counter, 1, 1)
+        count = :counters.get(counter, 1)
+
+        if count >= expected do
+          send(notify, {:watch_done, count})
+        end
+      end)
+
+    receive do
+      {:watch_done, _} -> :ok
+    after
+      60_000 ->
+        IO.puts("WARNING: KV.watch timeout")
+    end
+
+    count = :ets.info(tab, :size)
+    Process.unlink(watcher)
+
+    try do
+      KV.unwatch(watcher)
+    catch
+      :exit, _ -> :ok
+    end
+
+    :ets.delete(tab)
+    count
+  end
+
+  # ---------------------------------------------------------------------------
+  # Strategy 4: PullConsumer with batch_size (ack_policy: :all, batch mode)
   #
   # Uses the actual PullConsumer behaviour with the new batch_size option.
   # This is the real-world usage pattern we want to validate.
@@ -248,10 +290,13 @@ IO.puts("  Pager:              #{count1} entries")
 count2 = KVConsumeBench.pull_ack_next_consume(conn, batch)
 IO.puts("  Pull+ack_next:      #{count2} entries")
 
-count3 = KVConsumeBench.batch_pull_consumer_consume(count, batch)
-IO.puts("  Batch PullConsumer: #{count3} entries")
+count3 = KVConsumeBench.watch_consume(conn, count)
+IO.puts("  KV.watch (push):    #{count3} entries")
 
-expected_counts = [count1, count2, count3]
+count4 = KVConsumeBench.batch_pull_consumer_consume(count, batch)
+IO.puts("  Batch PullConsumer: #{count4} entries")
+
+expected_counts = [count1, count2, count3, count4]
 
 if Enum.any?(expected_counts, &(&1 != count)) do
   IO.puts("\nERROR: expected #{count} entries from each approach")
@@ -270,6 +315,9 @@ Benchee.run(
     end,
     "pull+ack_next (initial batch #{batch})" => fn ->
       KVConsumeBench.pull_ack_next_consume(conn, batch)
+    end,
+    "kv_watch (push consumer)" => fn ->
+      KVConsumeBench.watch_consume(conn, count)
     end,
     "batch_pull_consumer (batch #{batch})" => fn ->
       KVConsumeBench.batch_pull_consumer_consume(count, batch)
