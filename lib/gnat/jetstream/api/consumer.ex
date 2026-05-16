@@ -357,6 +357,11 @@ defmodule Gnat.Jetstream.API.Consumer do
     the server. When set to true and no message is present to be consumed, a message with empty
     body and topic value set to `reply_to` is sent. Defaults to false.
 
+  * `idle_heartbeat` - Time in nanoseconds at which the server will emit a `100`-status
+    heartbeat message to `reply_to` while a long-poll pull request is outstanding but no
+    real messages are available. Useful for detecting dropped pull requests when the
+    underlying TCP connection has not died. Must be less than `expires`.
+
   ## Example
 
       iex> {:ok, _response} = Gnat.Jetstream.API.Stream.create(:gnat, %Gnat.Jetstream.API.Stream{name: "astream", subjects: ["subject"]})
@@ -397,6 +402,7 @@ defmodule Gnat.Jetstream.API.Consumer do
       |> put_option_if_not_nil.(:batch)
       |> put_option_if_not_nil.(:no_wait)
       |> put_option_if_not_nil.(:expires)
+      |> put_option_if_not_nil.(:idle_heartbeat)
       |> Jason.encode!()
 
     Gnat.pub(

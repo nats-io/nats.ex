@@ -89,6 +89,26 @@ defmodule Gnat.Jetstream.PullConsumer do
     the server while tailing (no backlog) before the server replies with a `408` terminator
     and the consumer issues a fresh pull. Only used when `:batch_size` is greater than 1.
     Defaults to `5_000_000_000` (5 seconds).
+  * `:idle_heartbeat` - duration in nanoseconds at which the server is asked to emit
+    `100`-status idle heartbeat messages while a long-poll pull request is outstanding
+    but no real messages are available. The PullConsumer also runs a local watchdog: if
+    no traffic at all (data, status, or heartbeat) is observed within `2 * idle_heartbeat`
+    the consumer assumes the pull request was lost (e.g. dropped during a JetStream
+    leadership change without killing the TCP connection) and forces a reconnect.
+    Defaults to `15_000_000_000` (15 seconds, watchdog fires at 30s).
+  * `:heartbeat_check_interval` - cadence in milliseconds at which the local watchdog
+    checks for missed heartbeats. Independent of (and finer-grained than) the
+    missed-heartbeat threshold itself. Defaults to `5_000` (5 seconds).
+
+  ## Telemetry
+
+  The PullConsumer emits the following telemetry events:
+
+  * `[:gnat, :jetstream, :pull_consumer, :heartbeat_expired]` — emitted when the local
+    heartbeat watchdog observes that no inbound message has arrived within
+    `2 * idle_heartbeat` and the consumer is about to force a reconnect. Measurements:
+    `%{gap_ms, threshold_ms}`. Metadata: `%{module, stream_name, consumer_name,
+    connection_name}`.
 
   ## Dynamic Connection Options
 
@@ -366,6 +386,8 @@ defmodule Gnat.Jetstream.PullConsumer do
           | {:domain, String.t()}
           | {:batch_size, pos_integer()}
           | {:request_expires, non_neg_integer()}
+          | {:idle_heartbeat, non_neg_integer()}
+          | {:heartbeat_check_interval, non_neg_integer()}
 
   @typedoc """
   Connection options used to connect the consumer to NATS server.

@@ -14,6 +14,13 @@ defmodule Gnat.Jetstream.PullConsumer.ConnectionOptions do
 
   # 5 Seconds in nanoseconds
   @default_request_expires 5_000_000_000
+  # 15 Seconds in nanoseconds — idle heartbeat sent by the server while a
+  # pull request is outstanding but no messages are available.
+  @default_idle_heartbeat 15_000_000_000
+  # How often the local watchdog checks whether we've heard anything from
+  # the server recently. Independent of (and finer-grained than) the
+  # missed-heartbeat threshold itself.
+  @default_heartbeat_check_interval 5_000
 
   defstruct @enforce_keys ++
               [
@@ -21,7 +28,9 @@ defmodule Gnat.Jetstream.PullConsumer.ConnectionOptions do
                 :consumer_name,
                 :consumer,
                 batch_size: 1,
-                request_expires: @default_request_expires
+                request_expires: @default_request_expires,
+                idle_heartbeat: @default_idle_heartbeat,
+                heartbeat_check_interval: @default_heartbeat_check_interval
               ]
 
   def validate!(connection_options) do
@@ -36,7 +45,9 @@ defmodule Gnat.Jetstream.PullConsumer.ConnectionOptions do
         inbox_prefix: nil,
         domain: nil,
         batch_size: 1,
-        request_expires: @default_request_expires
+        request_expires: @default_request_expires,
+        idle_heartbeat: @default_idle_heartbeat,
+        heartbeat_check_interval: @default_heartbeat_check_interval
       ])
 
     stream_name = validated_opts[:stream_name]

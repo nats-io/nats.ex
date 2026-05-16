@@ -16,6 +16,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     :subscription_id,
     :connection_monitor_ref,
     :consumer_name,
+    :last_response_at,
     current_retry: 0,
     buffer: []
   ]
@@ -36,6 +37,8 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
           module: module,
           consumer_name: connection_options.consumer_name
         }
+
+        schedule_heartbeat_check(gen_state)
 
         {:connect, :init, gen_state}
 
@@ -91,16 +94,9 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
              consumer_name: final_consumer_name,
              state: state
          },
-         :ok <-
-           initial_fetch(
-             gen_state,
-             conn,
-             stream_name,
-             final_consumer_name,
-             domain,
-             listening_topic
-           ),
-         gen_state = %{gen_state | current_retry: 0} do
+         :ok <- initial_fetch(gen_state, conn),
+         gen_state = %{gen_state | current_retry: 0},
+         gen_state = touch_response(gen_state) do
       {:ok, gen_state}
     else
       {:error, reason} ->
@@ -267,6 +263,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
         %__MODULE__{connection_options: %ConnectionOptions{batch_size: batch_size}} = gen_state
       )
       when batch_size > 1 do
+    gen_state = touch_response(gen_state)
     gen_state = maybe_handle_status(message, gen_state)
     {:noreply, gen_state}
   end
@@ -283,6 +280,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
         } = gen_state
       )
       when batch_size > 1 and is_binary(status) and status != "" do
+    gen_state = touch_response(gen_state)
     gen_state = maybe_handle_status(message, gen_state)
 
     case buffer do
@@ -304,25 +302,13 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
   # status messages to the user's message handler. --
   def handle_info(
         {:msg, %{status: status} = message},
-        %__MODULE__{
-          connection_options: %ConnectionOptions{
-            stream_name: stream_name,
-            domain: domain
-          },
-          listening_topic: listening_topic,
-          consumer_name: consumer_name
-        } = gen_state
+        %__MODULE__{} = gen_state
       )
       when is_binary(status) and status != "" do
+    gen_state = touch_response(gen_state)
     gen_state = maybe_handle_status(message, gen_state)
 
-    next_message(
-      message.gnat,
-      stream_name,
-      consumer_name,
-      domain,
-      listening_topic
-    )
+    next_message(message.gnat, gen_state)
 
     {:noreply, gen_state}
   end
@@ -336,6 +322,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
         } = gen_state
       )
       when batch_size > 1 do
+    gen_state = touch_response(gen_state)
     buffer = [message | buffer]
     gen_state = %{gen_state | buffer: buffer}
 
@@ -354,8 +341,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
         %__MODULE__{
           connection_options: %ConnectionOptions{
             stream_name: stream_name,
-            connection_name: connection_name,
-            domain: domain
+            connection_name: connection_name
           },
           listening_topic: listening_topic,
           subscription_id: subscription_id,
@@ -364,6 +350,8 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
           consumer_name: consumer_name
         } = gen_state
       ) do
+    gen_state = touch_response(gen_state)
+
     Logger.debug(
       """
       #{__MODULE__} for #{stream_name}.#{consumer_name} received a message: \
@@ -384,41 +372,18 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
 
       {:nack, state} ->
         Gnat.Jetstream.nack(message)
-
-        next_message(
-          message.gnat,
-          stream_name,
-          consumer_name,
-          domain,
-          listening_topic
-        )
-
+        next_message(message.gnat, gen_state)
         gen_state = %{gen_state | state: state}
         {:noreply, gen_state}
 
       {:term, state} ->
         Gnat.Jetstream.ack_term(message)
-
-        next_message(
-          message.gnat,
-          stream_name,
-          consumer_name,
-          domain,
-          listening_topic
-        )
-
+        next_message(message.gnat, gen_state)
         gen_state = %{gen_state | state: state}
         {:noreply, gen_state}
 
       {:noreply, state} ->
-        next_message(
-          message.gnat,
-          stream_name,
-          consumer_name,
-          domain,
-          listening_topic
-        )
-
+        next_message(message.gnat, gen_state)
         gen_state = %{gen_state | state: state}
         {:noreply, gen_state}
     end
@@ -450,17 +415,63 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
       connection_name: connection_name
     )
 
-    # Clear consumer name on reconnect so it gets recreated (for ephemeral and auto-cleanup consumers)
-    # Clear buffer to avoid processing stale messages from the dead connection
-    gen_state = %{
-      gen_state
-      | consumer_name: nil,
-        subscription_id: nil,
-        connection_monitor_ref: nil,
-        buffer: []
-    }
+    {:connect, :reconnect, reset_to_disconnected(gen_state)}
+  end
 
-    {:connect, :reconnect, gen_state}
+  # -- Heartbeat watchdog: periodic check for "have we heard anything from
+  # the server recently?". Runs on a fixed cadence regardless of connection
+  # state. While disconnected (last_response_at == nil) it does nothing
+  # except reschedule itself. While connected, if the gap since the last
+  # inbound message exceeds `2 * idle_heartbeat`, we treat the pull as
+  # stuck and force a reconnect — this catches dropped pull requests where
+  # the TCP connection is otherwise healthy and no 408/409 is forthcoming. --
+  def handle_info(:heartbeat_check, %__MODULE__{} = gen_state) do
+    schedule_heartbeat_check(gen_state)
+
+    case heartbeat_status(gen_state) do
+      :ok ->
+        {:noreply, gen_state}
+
+      {:expired, gap_ms, threshold_ms} ->
+        %__MODULE__{
+          connection_options: %ConnectionOptions{
+            connection_name: connection_name,
+            stream_name: stream_name
+          },
+          listening_topic: listening_topic,
+          subscription_id: subscription_id,
+          module: module,
+          consumer_name: consumer_name
+        } = gen_state
+
+        Logger.warning(
+          """
+          #{__MODULE__} for #{stream_name}.#{consumer_name} has not received \
+          any traffic from the server in #{gap_ms}ms (threshold #{threshold_ms}ms). \
+          Forcing reconnect.
+          """,
+          module: module,
+          listening_topic: listening_topic,
+          subscription_id: subscription_id,
+          connection_name: connection_name
+        )
+
+        :telemetry.execute(
+          [:gnat, :jetstream, :pull_consumer, :heartbeat_expired],
+          %{gap_ms: gap_ms, threshold_ms: threshold_ms},
+          %{
+            module: module,
+            stream_name: stream_name,
+            consumer_name: consumer_name,
+            connection_name: connection_name
+          }
+        )
+
+        # Tear down the old subscription and monitor before reconnecting so
+        # we don't get a stale {:DOWN, ...} or stray inbox messages from
+        # the connection we're abandoning.
+        {:connect, :heartbeat_expired, reset_to_disconnected(gen_state)}
+    end
   end
 
   def handle_info(
@@ -514,7 +525,16 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     {:disconnect, {:close, from}, gen_state}
   end
 
-  defp next_message(conn, stream_name, consumer_name, domain, listening_topic) do
+  defp next_message(conn, gen_state) do
+    %{
+      connection_options: %ConnectionOptions{
+        stream_name: stream_name,
+        domain: domain
+      },
+      consumer_name: consumer_name,
+      listening_topic: listening_topic
+    } = gen_state
+
     Gnat.Jetstream.API.Consumer.request_next_message(
       conn,
       stream_name,
@@ -524,11 +544,11 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     )
   end
 
-  defp initial_fetch(gen_state, conn, stream_name, consumer_name, domain, listening_topic) do
+  defp initial_fetch(gen_state, conn) do
     if gen_state.connection_options.batch_size > 1 do
       request_batch(conn, gen_state, :catching_up)
     else
-      next_message(conn, stream_name, consumer_name, domain, listening_topic)
+      next_message(conn, gen_state)
     end
   end
 
@@ -538,7 +558,8 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
         stream_name: stream_name,
         batch_size: batch_size,
         domain: domain,
-        request_expires: expires
+        request_expires: expires,
+        idle_heartbeat: idle_heartbeat
       },
       consumer_name: consumer_name,
       listening_topic: listening_topic
@@ -546,8 +567,13 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
 
     opts =
       case mode do
-        :catching_up -> [batch: batch_size, no_wait: true]
-        :tailing -> [batch: batch_size, expires: expires]
+        :catching_up ->
+          # no_wait short-polls — server replies immediately with 404 if
+          # the stream is empty, so heartbeats are unnecessary.
+          [batch: batch_size, no_wait: true]
+
+        :tailing ->
+          [batch: batch_size, expires: expires, idle_heartbeat: idle_heartbeat]
       end
 
     Gnat.Jetstream.API.Consumer.request_next_message(
@@ -558,6 +584,67 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
       domain,
       opts
     )
+  end
+
+  # ---- Heartbeat watchdog helpers ----
+
+  defp touch_response(%__MODULE__{} = gen_state) do
+    %{gen_state | last_response_at: System.monotonic_time(:millisecond)}
+  end
+
+  defp schedule_heartbeat_check(%__MODULE__{
+         connection_options: %ConnectionOptions{heartbeat_check_interval: interval}
+       }) do
+    Process.send_after(self(), :heartbeat_check, interval)
+    :ok
+  end
+
+  defp heartbeat_status(%__MODULE__{last_response_at: nil}), do: :ok
+
+  defp heartbeat_status(%__MODULE__{
+         last_response_at: last,
+         connection_options: %ConnectionOptions{idle_heartbeat: idle_heartbeat_ns}
+       }) do
+    threshold_ms = div(idle_heartbeat_ns, 1_000_000) * 2
+    gap_ms = System.monotonic_time(:millisecond) - last
+
+    if gap_ms > threshold_ms do
+      {:expired, gap_ms, threshold_ms}
+    else
+      :ok
+    end
+  end
+
+  # Tear down everything tied to the current Gnat connection and reset the
+  # corresponding fields in gen_state. Side effects and state mutation live
+  # together so callers don't have to remember to do both.
+  #
+  # Safe to call from any path:
+  #   * Heartbeat-expired reconnect: connection still alive, demonitor +
+  #     unsub do real work.
+  #   * :DOWN handler: monitor already fired (demonitor is a no-op) and the
+  #     Gnat pid is gone (connection_pid returns :not_found, unsub skipped).
+  defp reset_to_disconnected(%__MODULE__{} = gen_state) do
+    if gen_state.connection_monitor_ref do
+      Process.demonitor(gen_state.connection_monitor_ref, [:flush])
+    end
+
+    if gen_state.subscription_id do
+      with {:ok, conn} <- connection_pid(gen_state.connection_options.connection_name) do
+        # Best-effort: if the connection is already gone, there is nothing
+        # to unsubscribe from. We don't surface the error.
+        _ = Gnat.unsub(conn, gen_state.subscription_id)
+      end
+    end
+
+    %{
+      gen_state
+      | consumer_name: nil,
+        subscription_id: nil,
+        connection_monitor_ref: nil,
+        buffer: [],
+        last_response_at: nil
+    }
   end
 
   defp process_and_ack_batch(%{buffer: buffer, module: module, state: state} = gen_state) do
