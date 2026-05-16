@@ -2,13 +2,14 @@
 
 ## 1.14
 
-* `PullConsumer` now requests an `idle_heartbeat` (default 15s) from the server
-  on every long-poll pull request and runs a local watchdog. If no traffic
-  (data, status, or `100` heartbeat) is observed within `2 * idle_heartbeat`,
-  the consumer assumes its pull request was lost (e.g. dropped during a
-  JetStream leadership change without killing the TCP connection) and forces
-  a reconnect. Configurable via the `:idle_heartbeat` and
-  `:heartbeat_check_interval` options.
+* `PullConsumer` now requests an `idle_heartbeat` (defaults to half of
+  `:request_expires`, i.e. 2.5s) from the server on every long-poll pull
+  request and runs a local watchdog. If no traffic (data, status, or `100`
+  heartbeat) is observed within `2 * idle_heartbeat`, the consumer assumes
+  its pull request was lost (e.g. dropped during a JetStream leadership
+  change without killing the TCP connection) and forces a reconnect.
+  Configurable via the `:idle_heartbeat` and `:heartbeat_check_interval`
+  options.
 * `PullConsumer` emits a new telemetry event
   `[:gnat, :jetstream, :pull_consumer, :heartbeat_expired]` when the watchdog
   fires. Measurements: `%{gap_ms, threshold_ms}`. Metadata:

@@ -95,10 +95,12 @@ defmodule Gnat.Jetstream.PullConsumer do
     no traffic at all (data, status, or heartbeat) is observed within `2 * idle_heartbeat`
     the consumer assumes the pull request was lost (e.g. dropped during a JetStream
     leadership change without killing the TCP connection) and forces a reconnect.
-    Defaults to `15_000_000_000` (15 seconds, watchdog fires at 30s).
+    Must be at most `:request_expires / 2` — the server rejects pull requests that
+    violate this. Defaults to half of `:request_expires` (2.5 seconds with default
+    settings, watchdog fires at 5s).
   * `:heartbeat_check_interval` - cadence in milliseconds at which the local watchdog
     checks for missed heartbeats. Independent of (and finer-grained than) the
-    missed-heartbeat threshold itself. Defaults to `5_000` (5 seconds).
+    missed-heartbeat threshold itself. Defaults to `1_000` (1 second).
 
   ## Telemetry
 
