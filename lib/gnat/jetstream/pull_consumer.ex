@@ -71,8 +71,17 @@ defmodule Gnat.Jetstream.PullConsumer do
     that the server will clean it up. The `stream_name` field must also be set.
 
   You can also pass the optional ones:
-  * `:connection_retry_timeout` - a duration in milliseconds after which the PullConsumer which
-    failed to establish NATS connection retries, defaults to `1000`
+
+  > #### Time-unit gotcha {: .warning}
+  >
+  > Server-side JetStream options (`:request_expires`, `:idle_heartbeat`) take
+  > **nanoseconds** because that's what the JetStream wire protocol uses.
+  > Client-side options (`:connection_retry_timeout`, `:heartbeat_check_interval`)
+  > take **milliseconds**. The unit is called out per option below — double-check
+  > before tuning.
+
+  * `:connection_retry_timeout` - a duration in **milliseconds** after which the PullConsumer
+    which failed to establish NATS connection retries, defaults to `1000`
   * `:connection_retries` - a number of attempts the PullConsumer will make to establish the NATS
     connection. When this value is exceeded, the pull consumer stops with the `:timeout` reason,
     defaults to `10`
@@ -85,11 +94,10 @@ defmodule Gnat.Jetstream.PullConsumer do
     on large backlogs. In batch mode, `:nack` and `:term` returns from `c:handle_message/2`
     are treated as `:ack` since `ack_policy: :all` cannot selectively reject messages.
     Defaults to `1` (single-message mode).
-  * `:request_expires` - duration in nanoseconds a batch-mode pull request will linger on
-    the server while tailing (no backlog) before the server replies with a `408` terminator
-    and the consumer issues a fresh pull. Only used when `:batch_size` is greater than 1.
-    Defaults to `5_000_000_000` (5 seconds).
-  * `:idle_heartbeat` - duration in nanoseconds at which the server is asked to emit
+  * `:request_expires` - duration in **nanoseconds** that a long-poll pull request will linger on
+    the server before the server replies with a `408` terminator and the consumer issues a
+    fresh pull. Defaults to `5_000_000_000` (5 seconds).
+  * `:idle_heartbeat` - duration in **nanoseconds** at which the server is asked to emit
     `100`-status idle heartbeat messages while a long-poll pull request is outstanding
     but no real messages are available. The PullConsumer also runs a local watchdog: if
     no traffic at all (data, status, or heartbeat) is observed within `2 * idle_heartbeat`
@@ -98,7 +106,7 @@ defmodule Gnat.Jetstream.PullConsumer do
     Must be at most `:request_expires / 2` — the server rejects pull requests that
     violate this. Defaults to half of `:request_expires` (2.5 seconds with default
     settings, watchdog fires at 5s).
-  * `:heartbeat_check_interval` - cadence in milliseconds at which the local watchdog
+  * `:heartbeat_check_interval` - cadence in **milliseconds** at which the local watchdog
     checks for missed heartbeats. Independent of (and finer-grained than) the
     missed-heartbeat threshold itself. Defaults to `1_000` (1 second).
 

@@ -14,6 +14,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     :listening_topic,
     :module,
     :subscription_id,
+    :connection_pid,
     :connection_monitor_ref,
     :consumer_name,
     :last_response_at,
@@ -73,6 +74,15 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
       connection_name: connection_name
     )
 
+    # Mint a fresh inbox on every (re)connect. Reusing the same topic across
+    # reconnects lets messages from an abandoned pull on the previous
+    # connection leak into the new subscription's mailbox; rotating it
+    # makes those messages addressed to a topic we no longer subscribe to,
+    # and the per-message topic guard in handle_info/2 will drop any that
+    # do still arrive (e.g. delivered locally before unsub propagated).
+    listening_topic =
+      Util.reply_inbox(gen_state.connection_options.inbox_prefix)
+
     with {:ok, conn} <- connection_pid(connection_name),
          monitor_ref = Process.monitor(conn),
          {:ok, consumer_info} <-
@@ -90,8 +100,10 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
          gen_state = %{
            gen_state
            | subscription_id: sid,
+             connection_pid: conn,
              connection_monitor_ref: monitor_ref,
              consumer_name: final_consumer_name,
+             listening_topic: listening_topic,
              state: state
          },
          :ok <- initial_fetch(gen_state, conn),
@@ -256,13 +268,43 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     end
   end
 
-  # -- Batch mode: 100 is an idle heartbeat — the pull is still alive, do
-  # nothing but invoke the user callback. --
+  # -- Drop messages from a stale Gnat subscription. After a reconnect we
+  # mint a fresh inbox + subscription id (sid), but messages already in
+  # flight to the prior subscription can still arrive locally. Acking,
+  # processing, or re-pulling on those would corrupt the new subscription's
+  # state, so we log and drop.
+  #
+  # Gnat's :msg struct doesn't carry the inbox we subscribed on — only the
+  # original publish topic, the connection pid, and an integer sid. So we
+  # identify the current subscription by the (gnat_pid, sid) pair. This
+  # tuple is unique even across Gnat process restarts: a new Gnat process
+  # has a different pid, so its first sid=1 won't collide with the old
+  # process's sid=1. --
   def handle_info(
-        {:msg, %{status: "100"} = message},
-        %__MODULE__{connection_options: %ConnectionOptions{batch_size: batch_size}} = gen_state
+        {:msg, %{gnat: msg_gnat, sid: msg_sid} = message},
+        %__MODULE__{connection_pid: conn, subscription_id: sid} = gen_state
       )
-      when batch_size > 1 do
+      when is_integer(sid) and (msg_gnat != conn or msg_sid != sid) do
+    Logger.warning(
+      "#{__MODULE__} dropping message from stale subscription " <>
+        "(msg=#{inspect(msg_gnat)}/#{inspect(msg_sid)}, " <>
+        "current=#{inspect(conn)}/#{inspect(sid)}, " <>
+        "topic=#{inspect(Map.get(message, :topic))}, " <>
+        "status=#{inspect(Map.get(message, :status))})",
+      module: gen_state.module,
+      listening_topic: gen_state.listening_topic,
+      connection_name: gen_state.connection_options.connection_name
+    )
+
+    {:noreply, gen_state}
+  end
+
+  # -- 100 is an idle heartbeat — the pull is still alive, do nothing but
+  # feed the watchdog and invoke the user callback. Applies to both
+  # single-message and batch modes; do NOT re-pull (issuing a fresh pull on
+  # every heartbeat causes the server-side pull queue to grow without
+  # bound). --
+  def handle_info({:msg, %{status: "100"} = message}, %__MODULE__{} = gen_state) do
     gen_state = touch_response(gen_state)
     gen_state = maybe_handle_status(message, gen_state)
     {:noreply, gen_state}
@@ -529,18 +571,25 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     %{
       connection_options: %ConnectionOptions{
         stream_name: stream_name,
-        domain: domain
+        domain: domain,
+        request_expires: expires,
+        idle_heartbeat: idle_heartbeat
       },
       consumer_name: consumer_name,
       listening_topic: listening_topic
     } = gen_state
 
+    # Single-message-mode pulls long-poll the same way batch mode does in
+    # :tailing — expires bounds the wait, idle_heartbeat keeps the watchdog
+    # fed during quiet periods.
     Gnat.Jetstream.API.Consumer.request_next_message(
       conn,
       stream_name,
       consumer_name,
       listening_topic,
-      domain
+      domain,
+      expires: expires,
+      idle_heartbeat: idle_heartbeat
     )
   end
 
@@ -641,7 +690,9 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
       gen_state
       | consumer_name: nil,
         subscription_id: nil,
+        connection_pid: nil,
         connection_monitor_ref: nil,
+        listening_topic: nil,
         buffer: [],
         last_response_at: nil
     }
