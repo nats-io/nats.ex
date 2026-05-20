@@ -159,7 +159,8 @@ defmodule Gnat.Jetstream.PullConsumer.ConnectivityTest do
 
       :ok = Gnat.pub(:gnat, "ackable", "hello")
 
-      expected_body = %{batch: 1} |> Jason.encode!()
+      expected_body =
+        %{batch: 1, idle_heartbeat: 2_500_000_000, expires: 5_000_000_000} |> Jason.encode!()
 
       assert_receive {:msg, %{body: ^expected_body, reply_to: "CUSTOM_PREFIX." <> _}}
     end
