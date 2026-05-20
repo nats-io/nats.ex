@@ -674,15 +674,56 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
   #   * :DOWN handler: monitor already fired (demonitor is a no-op) and the
   #     Gnat pid is gone (connection_pid returns :not_found, unsub skipped).
   defp reset_to_disconnected(%__MODULE__{} = gen_state) do
+    # Always flush any buffered messages through the user's handler
+    # before tearing down. The handler invocation is pure consumer-side
+    # work and is always safe; the ack is best-effort against the
+    # original Gnat pid. If the ack fails, the server will redeliver
+    # after ack_wait and at-least-once is preserved.
+    #
+    # Why we MUST do this for batch mode: under ack_policy: :all,
+    # acking message N moves the consumer's ack_floor to N, covering
+    # everything ≤ N. If we silently drop a partial batch [101..115]
+    # and a later batch's ack on seq 125 arrives, the server treats
+    # 101..115 as acked and never redelivers them — a true loss.
+    gen_state =
+      if gen_state.buffer == [] do
+        gen_state
+      else
+        Logger.info(
+          "[#{__MODULE__}] flushing #{length(gen_state.buffer)} buffered messages " <>
+            "before reconnect for #{gen_state.connection_options.stream_name}.#{gen_state.consumer_name}"
+        )
+
+        try do
+          process_and_ack_batch(gen_state)
+        catch
+          :exit, reason ->
+            # Ack publish failed (Gnat pid is dead, dying, or wedged).
+            # The user's handler already ran for these messages, and
+            # the server will redeliver after ack_wait — both halves
+            # of at-least-once are covered.
+            Logger.info(
+              "[#{__MODULE__}] ack of flushed batch failed (#{inspect(reason)}); " <>
+                "messages will be redelivered after ack_wait"
+            )
+
+            %{gen_state | buffer: []}
+        end
+      end
+
     if gen_state.connection_monitor_ref do
       Process.demonitor(gen_state.connection_monitor_ref, [:flush])
     end
 
-    if gen_state.subscription_id do
-      with {:ok, conn} <- connection_pid(gen_state.connection_options.connection_name) do
-        # Best-effort: if the connection is already gone, there is nothing
-        # to unsubscribe from. We don't surface the error.
-        _ = Gnat.unsub(conn, gen_state.subscription_id)
+    if gen_state.subscription_id && is_pid(gen_state.connection_pid) do
+      # Best-effort unsub against the same Gnat that owns the sid (the
+      # pid we stored on the successful sub, not Process.whereis(name)
+      # which could resolve to a fresh-but-wedged Gnat after a restart).
+      # try/catch covers a dead pid or a slow GenServer.call.
+      try do
+        _ = Gnat.unsub(gen_state.connection_pid, gen_state.subscription_id)
+      catch
+        :exit, _ -> :ok
       end
     end
 
