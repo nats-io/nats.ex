@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.14
+## 1.15
 
 * `PullConsumer` now requests an `idle_heartbeat` (defaults to half of
   `:request_expires`, i.e. 2.5s) from the server on every long-poll pull
@@ -14,6 +14,9 @@
   `[:gnat, :jetstream, :pull_consumer, :heartbeat_expired]` when the watchdog
   fires. Measurements: `%{gap_ms, threshold_ms}`. Metadata:
   `%{module, stream_name, consumer_name, connection_name}`.
+
+## 1.14
+
 * Add `PullConsumer.handle_connected/2` optional callback to get consumer info
 * Add `PullConsumer.handle_status/2` optional callback to observe status messages
 * Added support for `batch_size` option in PullConsumer options to pull messages
