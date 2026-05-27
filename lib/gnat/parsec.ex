@@ -149,8 +149,8 @@ defmodule Gnat.Parsec do
       payload_length = total_length - header_length
       binary = :erlang.iolist_to_binary(new_chunks)
 
-      <<headers_bin::binary-size(header_length), payload::binary-size(payload_length),
-        "\r\n", rest::binary>> = binary
+      <<headers_bin::binary-size(header_length), payload::binary-size(payload_length), "\r\n",
+        rest::binary>> = binary
 
       {:ok, status, description, headers} = parse_headers(headers_bin)
       {new_partial, new_pending, more} = parse_commands(rest, [])
@@ -158,7 +158,11 @@ defmodule Gnat.Parsec do
       {%{state | partial: new_partial, pending: new_pending},
        [{:hmsg, subject, sid, reply_to, status, description, headers, payload} | more]}
     else
-      {%{state | pending: {:hmsg, subject, sid, reply_to, header_length, total_length, new_chunks, new_have}}, []}
+      {%{
+         state
+         | pending:
+             {:hmsg, subject, sid, reply_to, header_length, total_length, new_chunks, new_have}
+       }, []}
     end
   end
 
