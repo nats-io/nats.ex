@@ -1,6 +1,6 @@
 defmodule Gnat.Parsec do
   @moduledoc false
-  defstruct partial: nil
+  defstruct partial: nil, pending: nil
 
   import NimbleParsec
 
@@ -99,26 +99,77 @@ defmodule Gnat.Parsec do
 
   def new, do: %__MODULE__{}
 
-  def parse(%__MODULE__{partial: nil} = state, string) do
-    {partial, commands} = parse_commands(string, [])
-    {%{state | partial: partial}, commands}
+  # Fast path: we already parsed the MSG header and are just waiting for the body bytes.
+  # Accumulate incoming chunks into an iolist and only call iolist_to_binary once we have
+  # enough bytes. This avoids the O(n²) cost of `partial <> string` that the original code
+  # incurred — copying the entire accumulated buffer on every TCP chunk.
+  def parse(
+        %__MODULE__{pending: {:msg, subject, sid, reply_to, length, chunks, have}} = state,
+        string
+      ) do
+    new_have = have + byte_size(string)
+    new_chunks = [chunks, string]
+
+    if new_have >= length + 2 do
+      binary = :erlang.iolist_to_binary(new_chunks)
+      <<body::binary-size(length), "\r\n", rest::binary>> = binary
+      {new_partial, new_pending, more} = parse_commands(rest, [])
+
+      {%{state | partial: new_partial, pending: new_pending},
+       [{:msg, subject, sid, reply_to, body} | more]}
+    else
+      {%{state | pending: {:msg, subject, sid, reply_to, length, new_chunks, new_have}}, []}
+    end
   end
 
-  def parse(%__MODULE__{partial: partial} = state, string) do
-    {partial, commands} = parse_commands(partial <> string, [])
-    {%{state | partial: partial}, commands}
+  def parse(
+        %__MODULE__{
+          pending: {:hmsg, subject, sid, reply_to, header_length, total_length, chunks, have}
+        } = state,
+        string
+      ) do
+    new_have = have + byte_size(string)
+    new_chunks = [chunks, string]
+
+    if new_have >= total_length + 2 do
+      payload_length = total_length - header_length
+      binary = :erlang.iolist_to_binary(new_chunks)
+
+      <<headers_bin::binary-size(header_length), payload::binary-size(payload_length),
+        "\r\n", rest::binary>> = binary
+
+      {:ok, status, description, headers} = parse_headers(headers_bin)
+      {new_partial, new_pending, more} = parse_commands(rest, [])
+
+      {%{state | partial: new_partial, pending: new_pending},
+       [{:hmsg, subject, sid, reply_to, status, description, headers, payload} | more]}
+    else
+      {%{state | pending: {:hmsg, subject, sid, reply_to, header_length, total_length, new_chunks, new_have}}, []}
+    end
   end
 
-  def parse_commands("", list), do: {nil, Enum.reverse(list)}
+  def parse(%__MODULE__{partial: nil, pending: nil} = state, string) do
+    {partial, pending, commands} = parse_commands(string, [])
+    {%{state | partial: partial, pending: pending}, commands}
+  end
+
+  def parse(%__MODULE__{partial: partial, pending: nil} = state, string) do
+    {new_partial, pending, commands} = parse_commands(partial <> string, [])
+    {%{state | partial: new_partial, pending: pending}, commands}
+  end
+
+  def parse_commands("", list), do: {nil, nil, Enum.reverse(list)}
 
   def parse_commands(str, list) do
     case parse_command(str) do
       {:ok, command, rest} -> parse_commands(rest, [command | list])
-      {:error, partial} -> {partial, Enum.reverse(list)}
+      {:pending, pending_info} -> {nil, pending_info, Enum.reverse(list)}
+      {:error, partial} -> {partial, nil, Enum.reverse(list)}
     end
   end
 
-  @spec parse_command(binary()) :: {:ok, tuple(), binary()} | {:error, binary()}
+  @spec parse_command(binary()) ::
+          {:ok, tuple(), binary()} | {:pending, tuple()} | {:error, binary()}
   def parse_command(string) do
     case command(string) do
       {:ok, [:msg, subject, sid, length], rest, _, _, _} ->
@@ -179,17 +230,20 @@ defmodule Gnat.Parsec do
     {:error, "Could not parse status line prefix"}
   end
 
-  def finish_msg(subject, sid, reply_to, length, rest, string) do
+  def finish_msg(subject, sid, reply_to, length, rest, _string) do
     case rest do
       <<body::size(length)-binary, "\r\n", rest::binary>> ->
         {:ok, {:msg, subject, sid, reply_to, body}, rest}
 
       _other ->
-        {:error, string}
+        # Header parsed, but body bytes not all here yet.
+        # Return the partial body bytes already received so the caller can accumulate
+        # subsequent chunks in an iolist without re-copying the growing buffer.
+        {:pending, {:msg, subject, sid, reply_to, length, rest, byte_size(rest)}}
     end
   end
 
-  def finish_hmsg(subject, sid, reply_to, header_length, total_length, rest, string) do
+  def finish_hmsg(subject, sid, reply_to, header_length, total_length, rest, _string) do
     payload_length = total_length - header_length
 
     case rest do
@@ -199,7 +253,8 @@ defmodule Gnat.Parsec do
         {:ok, {:hmsg, subject, sid, reply_to, status, description, headers, payload}, rest}
 
       _other ->
-        {:error, string}
+        {:pending,
+         {:hmsg, subject, sid, reply_to, header_length, total_length, rest, byte_size(rest)}}
     end
   end
 end

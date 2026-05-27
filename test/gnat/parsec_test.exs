@@ -117,7 +117,8 @@ defmodule Gnat.ParsecTest do
       Parsec.new() |> Parsec.parse("PING\r\nMSG topic 11 4\r\nOH")
 
     assert parsed_message == :ping
-    assert parser_state.partial == "MSG topic 11 4\r\nOH"
+    assert parser_state.partial == nil
+    assert parser_state.pending == {:msg, "topic", 11, nil, 4, "OH", 2}
 
     {parser_state, [msg1, msg2]} =
       Parsec.parse(parser_state, "AI\r\nMSG topic 11 3\r\nWAT\r\nMSG topic")
@@ -125,6 +126,7 @@ defmodule Gnat.ParsecTest do
     assert msg1 == {:msg, "topic", 11, nil, "OHAI"}
     assert msg2 == {:msg, "topic", 11, nil, "WAT"}
     assert parser_state.partial == "MSG topic"
+    assert parser_state.pending == nil
   end
 
   test "parsing INFO message" do
