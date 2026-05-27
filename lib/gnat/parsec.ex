@@ -99,7 +99,21 @@ defmodule Gnat.Parsec do
 
   def new, do: %__MODULE__{}
 
-  # Fast path: we already parsed the MSG header and are just waiting for the body bytes.
+  # Hot path: no partial header fragment, no pending body. This is the common case for
+  # small messages that arrive complete in a single TCP chunk.
+  def parse(%__MODULE__{partial: nil, pending: nil} = state, string) do
+    {partial, pending, commands} = parse_commands(string, [])
+    {%{state | partial: partial, pending: pending}, commands}
+  end
+
+  # Hot path variant: we have a partial header fragment from the previous chunk.
+  # Prepend it and re-parse. Only the header is small, so the binary concatenation is cheap.
+  def parse(%__MODULE__{partial: partial, pending: nil} = state, string) do
+    {new_partial, pending, commands} = parse_commands(partial <> string, [])
+    {%{state | partial: new_partial, pending: pending}, commands}
+  end
+
+  # Large-payload path: we already parsed the MSG header and are waiting for body bytes.
   # Accumulate incoming chunks into an iolist and only call iolist_to_binary once we have
   # enough bytes. This avoids the O(n²) cost of `partial <> string` that the original code
   # incurred — copying the entire accumulated buffer on every TCP chunk.
@@ -146,16 +160,6 @@ defmodule Gnat.Parsec do
     else
       {%{state | pending: {:hmsg, subject, sid, reply_to, header_length, total_length, new_chunks, new_have}}, []}
     end
-  end
-
-  def parse(%__MODULE__{partial: nil, pending: nil} = state, string) do
-    {partial, pending, commands} = parse_commands(string, [])
-    {%{state | partial: partial, pending: pending}, commands}
-  end
-
-  def parse(%__MODULE__{partial: partial, pending: nil} = state, string) do
-    {new_partial, pending, commands} = parse_commands(partial <> string, [])
-    {%{state | partial: new_partial, pending: pending}, commands}
   end
 
   def parse_commands("", list), do: {nil, nil, Enum.reverse(list)}
