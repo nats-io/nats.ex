@@ -14,6 +14,7 @@
   `[:gnat, :jetstream, :pull_consumer, :heartbeat_expired]` when the watchdog
   fires. Measurements: `%{gap_ms, threshold_ms}`. Metadata:
   `%{module, stream_name, consumer_name, connection_name}`.
+* Improve parsing performance for large messages. Contributed by @cbecker in #225
 
 ## 1.14
 
