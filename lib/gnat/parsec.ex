@@ -202,16 +202,16 @@ defmodule Gnat.Parsec do
   def parse_command(string) do
     case command(string) do
       {:ok, [:msg, subject, sid, length], rest, _, _, _} ->
-        finish_msg(subject, sid, nil, length, rest, string)
+        finish_msg(subject, sid, nil, length, rest)
 
       {:ok, [:msg, subject, sid, reply_to, length], rest, _, _, _} ->
-        finish_msg(subject, sid, reply_to, length, rest, string)
+        finish_msg(subject, sid, reply_to, length, rest)
 
       {:ok, [:hmsg, subject, sid, header_length, total_length], rest, _, _, _} ->
-        finish_hmsg(subject, sid, nil, header_length, total_length, rest, string)
+        finish_hmsg(subject, sid, nil, header_length, total_length, rest)
 
       {:ok, [:hmsg, subject, sid, reply_to, header_length, total_length], rest, _, _, _} ->
-        finish_hmsg(subject, sid, reply_to, header_length, total_length, rest, string)
+        finish_hmsg(subject, sid, reply_to, header_length, total_length, rest)
 
       {:ok, [atom], rest, _, _, _} ->
         {:ok, atom, rest}
@@ -259,7 +259,7 @@ defmodule Gnat.Parsec do
     {:error, "Could not parse status line prefix"}
   end
 
-  def finish_msg(subject, sid, reply_to, length, rest, _string) do
+  def finish_msg(subject, sid, reply_to, length, rest) do
     case rest do
       <<body::size(length)-binary, "\r\n", rest::binary>> ->
         {:ok, {:msg, subject, sid, reply_to, body}, rest}
@@ -272,7 +272,7 @@ defmodule Gnat.Parsec do
     end
   end
 
-  def finish_hmsg(subject, sid, reply_to, header_length, total_length, rest, _string) do
+  def finish_hmsg(subject, sid, reply_to, header_length, total_length, rest) do
     payload_length = total_length - header_length
 
     case rest do
