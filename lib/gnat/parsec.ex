@@ -174,6 +174,8 @@ defmodule Gnat.Parsec do
   # Accumulate incoming TCP chunks into an iolist until enough bytes have arrived for the
   # full message body (plus the trailing \r\n). Returns {:accumulating, chunks, have} when
   # more data is still needed, or {:complete, binary} when ready to extract the body.
+  @spec accumulate_body(iolist(), non_neg_integer(), binary(), non_neg_integer()) ::
+          {:accumulating, iolist(), non_neg_integer()} | {:complete, binary()}
   defp accumulate_body(chunks, have, string, needed_length) do
     new_have = have + byte_size(string)
     new_chunks = [chunks, string]
