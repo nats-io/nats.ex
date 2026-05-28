@@ -117,7 +117,8 @@ defmodule Gnat.ParsecTest do
       Parsec.new() |> Parsec.parse("PING\r\nMSG topic 11 4\r\nOH")
 
     assert parsed_message == :ping
-    assert parser_state.partial == "MSG topic 11 4\r\nOH"
+    assert parser_state.partial == nil
+    assert parser_state.pending == {:msg, "topic", 11, nil, 4, "OH", 2}
 
     {parser_state, [msg1, msg2]} =
       Parsec.parse(parser_state, "AI\r\nMSG topic 11 3\r\nWAT\r\nMSG topic")
@@ -125,6 +126,70 @@ defmodule Gnat.ParsecTest do
     assert msg1 == {:msg, "topic", 11, nil, "OHAI"}
     assert msg2 == {:msg, "topic", 11, nil, "WAT"}
     assert parser_state.partial == "MSG topic"
+    assert parser_state.pending == nil
+  end
+
+  test "parsing partial HMSG with body split across multiple TCP chunks" do
+    # Chunk 1: full HMSG header arrives, but only part of the body ("PAY")
+    # header_length=23 covers "NATS/1.0\r\nHeader: X\r\n\r\n", total_length=30 (23 + 7 "PAYLOAD")
+    chunk1 = "HMSG SUBJECT 1 REPLY 23 30\r\nNATS/1.0\r\nHeader: X\r\n\r\nPAY"
+
+    {state1, commands1} = Parsec.new() |> Parsec.parse(chunk1)
+
+    assert commands1 == []
+    assert state1.partial == nil
+    assert {:hmsg, "SUBJECT", 1, "REPLY", 23, 30, _chunks, _have} = state1.pending
+
+    # Chunk 2: remaining body bytes arrive, completing the message
+    chunk2 = "LOAD\r\n"
+
+    {state2, [parsed]} = Parsec.parse(state1, chunk2)
+
+    assert state2.pending == nil
+    assert state2.partial == nil
+    assert parsed == {:hmsg, "SUBJECT", 1, "REPLY", nil, nil, [{"header", "X"}], "PAYLOAD"}
+  end
+
+  test "parsing partial HMSG with body split across three TCP chunks" do
+    # Verifies that the iolist accumulation works across more than two chunks
+    chunk1 = "HMSG SUBJECT 1 23 30\r\nNATS/1.0\r\nHeader: X\r\n\r\nPA"
+    chunk2 = "YLO"
+    chunk3 = "AD\r\n"
+
+    {state1, []} = Parsec.new() |> Parsec.parse(chunk1)
+    assert {:hmsg, "SUBJECT", 1, nil, 23, 30, _chunks, _have} = state1.pending
+
+    {state2, []} = Parsec.parse(state1, chunk2)
+    assert {:hmsg, "SUBJECT", 1, nil, 23, 30, _chunks, _have} = state2.pending
+
+    {state3, [parsed]} = Parsec.parse(state2, chunk3)
+    assert state3.pending == nil
+    assert parsed == {:hmsg, "SUBJECT", 1, nil, nil, nil, [{"header", "X"}], "PAYLOAD"}
+  end
+
+  test "malformed MSG termination raises a descriptive error" do
+    # Put parser into pending state: body is declared as 4 bytes but only 4 bytes
+    # arrive in the first chunk, so 4 < 4 + 2 = 6 and we wait for more data.
+    {state, []} = Parsec.new() |> Parsec.parse("MSG topic 1 4\r\ntest")
+    assert {:msg, "topic", 1, nil, 4, _chunks, _have} = state.pending
+
+    # Second chunk brings the byte count to >= 6 but uses "!!" instead of \r\n.
+    assert_raise RuntimeError, ~r/malformed MSG termination/, fn ->
+      Parsec.parse(state, "!!\r\n")
+    end
+  end
+
+  test "malformed HMSG termination raises a descriptive error" do
+    # header_length=23 ("NATS/1.0\r\nHeader: X\r\n\r\n"), total_length=30 (23 + 7 for "PAYLOAD")
+    # Chunk 1: header line + 26 bytes of payload section not enough (26 < 32)
+    chunk1 = "HMSG SUBJECT 1 23 30\r\nNATS/1.0\r\nHeader: X\r\n\r\nPAY"
+    {state, []} = Parsec.new() |> Parsec.parse(chunk1)
+    assert {:hmsg, "SUBJECT", 1, nil, 23, 30, _chunks, _have} = state.pending
+
+    # Chunk 2: brings byte count to >= 32, but terminates with "!!" instead of \r\n.
+    assert_raise RuntimeError, ~r/malformed HMSG termination/, fn ->
+      Parsec.parse(state, "LOAD!!\r\n")
+    end
   end
 
   test "parsing INFO message" do
