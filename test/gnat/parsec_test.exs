@@ -129,6 +129,44 @@ defmodule Gnat.ParsecTest do
     assert parser_state.pending == nil
   end
 
+  test "parsing partial HMSG — body split across multiple TCP chunks" do
+    # Chunk 1: full HMSG header arrives, but only part of the body ("PAY")
+    # header_length=23 covers "NATS/1.0\r\nHeader: X\r\n\r\n", total_length=30 (23 + 7 "PAYLOAD")
+    chunk1 = "HMSG SUBJECT 1 REPLY 23 30\r\nNATS/1.0\r\nHeader: X\r\n\r\nPAY"
+
+    {state1, commands1} = Parsec.new() |> Parsec.parse(chunk1)
+
+    assert commands1 == []
+    assert state1.partial == nil
+    assert {:hmsg, "SUBJECT", 1, "REPLY", 23, 30, _chunks, _have} = state1.pending
+
+    # Chunk 2: remaining body bytes arrive, completing the message
+    chunk2 = "LOAD\r\n"
+
+    {state2, [parsed]} = Parsec.parse(state1, chunk2)
+
+    assert state2.pending == nil
+    assert state2.partial == nil
+    assert parsed == {:hmsg, "SUBJECT", 1, "REPLY", nil, nil, [{"header", "X"}], "PAYLOAD"}
+  end
+
+  test "parsing partial HMSG — body split across three TCP chunks" do
+    # Verifies that the iolist accumulation works across more than two chunks
+    chunk1 = "HMSG SUBJECT 1 23 30\r\nNATS/1.0\r\nHeader: X\r\n\r\nPA"
+    chunk2 = "YLO"
+    chunk3 = "AD\r\n"
+
+    {state1, []} = Parsec.new() |> Parsec.parse(chunk1)
+    assert {:hmsg, "SUBJECT", 1, nil, 23, 30, _chunks, _have} = state1.pending
+
+    {state2, []} = Parsec.parse(state1, chunk2)
+    assert {:hmsg, "SUBJECT", 1, nil, 23, 30, _chunks, _have} = state2.pending
+
+    {state3, [parsed]} = Parsec.parse(state2, chunk3)
+    assert state3.pending == nil
+    assert parsed == {:hmsg, "SUBJECT", 1, nil, nil, nil, [{"header", "X"}], "PAYLOAD"}
+  end
+
   test "parsing INFO message" do
     {parser_state, [parsed_message]} =
       Parsec.new()

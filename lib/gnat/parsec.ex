@@ -121,18 +121,21 @@ defmodule Gnat.Parsec do
         %__MODULE__{pending: {:msg, subject, sid, reply_to, length, chunks, have}} = state,
         string
       ) do
-    new_have = have + byte_size(string)
-    new_chunks = [chunks, string]
+    case accumulate_body(chunks, have, string, length) do
+      {:accumulating, new_chunks, new_have} ->
+        {%{state | pending: {:msg, subject, sid, reply_to, length, new_chunks, new_have}}, []}
 
-    if new_have >= length + 2 do
-      binary = :erlang.iolist_to_binary(new_chunks)
-      <<body::binary-size(length), "\r\n", rest::binary>> = binary
-      {new_partial, new_pending, more} = parse_commands(rest, [])
+      {:complete, binary} ->
+        case binary do
+          <<body::binary-size(length), "\r\n", rest::binary>> ->
+            {new_partial, new_pending, more} = parse_commands(rest, [])
 
-      {%{state | partial: new_partial, pending: new_pending},
-       [{:msg, subject, sid, reply_to, body} | more]}
-    else
-      {%{state | pending: {:msg, subject, sid, reply_to, length, new_chunks, new_have}}, []}
+            {%{state | partial: new_partial, pending: new_pending},
+             [{:msg, subject, sid, reply_to, body} | more]}
+
+          _other ->
+            raise "malformed MSG termination: expected \\r\\n after #{length} byte body"
+        end
     end
   end
 
@@ -142,27 +145,43 @@ defmodule Gnat.Parsec do
         } = state,
         string
       ) do
+    case accumulate_body(chunks, have, string, total_length) do
+      {:accumulating, new_chunks, new_have} ->
+        {%{
+           state
+           | pending:
+               {:hmsg, subject, sid, reply_to, header_length, total_length, new_chunks, new_have}
+         }, []}
+
+      {:complete, binary} ->
+        payload_length = total_length - header_length
+
+        case binary do
+          <<headers_bin::binary-size(header_length), payload::binary-size(payload_length), "\r\n",
+            rest::binary>> ->
+            {:ok, status, description, headers} = parse_headers(headers_bin)
+            {new_partial, new_pending, more} = parse_commands(rest, [])
+
+            {%{state | partial: new_partial, pending: new_pending},
+             [{:hmsg, subject, sid, reply_to, status, description, headers, payload} | more]}
+
+          _other ->
+            raise "malformed HMSG termination: expected \\r\\n after #{total_length} byte payload"
+        end
+    end
+  end
+
+  # Accumulate incoming TCP chunks into an iolist until enough bytes have arrived for the
+  # full message body (plus the trailing \r\n). Returns {:accumulating, chunks, have} when
+  # more data is still needed, or {:complete, binary} when ready to extract the body.
+  defp accumulate_body(chunks, have, string, needed_length) do
     new_have = have + byte_size(string)
     new_chunks = [chunks, string]
 
-    if new_have >= total_length + 2 do
-      payload_length = total_length - header_length
-      binary = :erlang.iolist_to_binary(new_chunks)
-
-      <<headers_bin::binary-size(header_length), payload::binary-size(payload_length), "\r\n",
-        rest::binary>> = binary
-
-      {:ok, status, description, headers} = parse_headers(headers_bin)
-      {new_partial, new_pending, more} = parse_commands(rest, [])
-
-      {%{state | partial: new_partial, pending: new_pending},
-       [{:hmsg, subject, sid, reply_to, status, description, headers, payload} | more]}
+    if new_have >= needed_length + 2 do
+      {:complete, :erlang.iolist_to_binary(new_chunks)}
     else
-      {%{
-         state
-         | pending:
-             {:hmsg, subject, sid, reply_to, header_length, total_length, new_chunks, new_have}
-       }, []}
+      {:accumulating, new_chunks, new_have}
     end
   end
 
