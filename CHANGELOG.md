@@ -15,6 +15,9 @@
   fires. Measurements: `%{gap_ms, threshold_ms}`. Metadata:
   `%{module, stream_name, consumer_name, connection_name}`.
 * Improve parsing performance for large messages. Contributed by @cbecker in #225
+* Remove the `cowlib` dependency, which carried an unfixed CVE flagged by
+  `mix hex.audit`. Header encoding/decoding is now handled internally with no
+  change in behavior. Contributed by @tank-bohr in #226
 
 ## 1.14
 
