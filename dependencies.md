@@ -6,7 +6,6 @@ This list of dependencies was produced on October 13 2023.
 | Dependency | License |
 |-|-|
 | ed25519 1.4.0 | MIT |
-| cowlib 2.11.0 | ISC |
 | deep_merge 1.0.0 | MIT |
 | jason 1.2.2  | Apache 2.0 |
 | nimble_parsec 1.2.0  | Apache 2.0 |

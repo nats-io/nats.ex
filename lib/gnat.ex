@@ -573,7 +573,7 @@ defmodule Gnat do
 
   defp prepare_headers(opts) do
     if Keyword.has_key?(opts, :headers) do
-      headers = :cow_http.headers(Keyword.get(opts, :headers))
+      headers = Gnat.Headers.encode(Keyword.get(opts, :headers))
       Keyword.put(opts, :headers, headers)
     else
       opts
