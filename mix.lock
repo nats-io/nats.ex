@@ -6,7 +6,6 @@
   "curve25519": {:hex, :curve25519, "1.0.5", "f801179424e4012049fcfcfcda74ac04f65d0ffceeb80e7ef1d3352deb09f5bb", [:mix], [], "hexpm", "0fba3ad55bf1154d4d5fc3ae5fb91b912b77b13f0def6ccb3a5d58168ff4192d"},
   "deep_merge": {:hex, :deep_merge, "1.0.0", "b4aa1a0d1acac393bdf38b2291af38cb1d4a52806cf7a4906f718e1feb5ee961", [:mix], [], "hexpm", "ce708e5f094b9cd4e8f2be4f00d2f4250c4095be93f8cd6d018c753894885430"},
   "dialyxir": {:hex, :dialyxir, "1.4.7", "dda948fcee52962e4b6c5b4b16b2d8fa7d50d8645bbae8b8685c3f9ecb7f5f4d", [:mix], [{:erlex, ">= 0.2.8", [hex: :erlex, repo: "hexpm", optional: false]}], "hexpm", "b34527202e6eb8cee198efec110996c25c5898f43a4094df157f8d28f27d9efe"},
-  "earmark": {:hex, :earmark, "1.3.1", "73812f447f7a42358d3ba79283cfa3075a7580a3a2ed457616d6517ac3738cb9", [:mix], [], "hexpm", "000aaeff08919e95e7aea13e4af7b2b9734577b3e6a7c50ee31ee88cab6ec4fb"},
   "earmark_parser": {:hex, :earmark_parser, "1.4.44", "f20830dd6b5c77afe2b063777ddbbff09f9759396500cdbe7523efd58d7a339c", [:mix], [], "hexpm", "4778ac752b4701a5599215f7030989c989ffdc4f6df457c5f36938cc2d2a2750"},
   "ed25519": {:hex, :ed25519, "1.4.3", "d1422c643fb691f8efc65e66c733bcc92338485858a9469f24a528b915809377", [:mix], [], "hexpm", "37f9de6be4a0e67d56f1b69ec2b79d4d96fea78365f45f5d5d344c48cf81d487"},
   "equivalex": {:hex, :equivalex, "1.0.3", "170d9a82ae066e0020dfe1cf7811381669565922eb3359f6c91d7e9a1124ff74", [:mix], [], "hexpm", "46fa311adb855117d36e461b9c0ad2598f72110ad17ad73d7533c78020e045fc"},
