@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.16
+
+* Add support for the `name` connection setting, which is reported to NATS
+  monitoring endpoints. Contributed by @ahamez in #227
+* Require Elixir 1.16+. Elixir 1.14 and 1.15 are no longer supported (both are
+  past their upstream maintenance window). The CI matrix now runs on Elixir
+  1.16 through 1.19 and Erlang/OTP 26 through 28.
+
 ## 1.15
 
 * `PullConsumer` now requests an `idle_heartbeat` (defaults to half of
