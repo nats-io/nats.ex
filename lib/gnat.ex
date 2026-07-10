@@ -50,6 +50,7 @@ defmodule Gnat do
   * `tls` - If the server should use a TLS connection
   * `inbox_prefix` - Prefix to use for the message inbox of this connection
   * `no_responders` - Enable the no responders behavior (see `Gnat.request/4`)
+  * `name` - The client name reported by NATS monitoring endpoints
   """
   @type connection_settings :: %{
           optional(:connection_timeout) => non_neg_integer(),
@@ -60,7 +61,8 @@ defmodule Gnat do
           optional(:ssl_opts) => list(),
           optional(:tcp_opts) => list(),
           optional(:tls) => boolean(),
-          optional(:no_responders) => boolean()
+          optional(:no_responders) => boolean(),
+          optional(:name) => binary()
         }
 
   @typedoc """

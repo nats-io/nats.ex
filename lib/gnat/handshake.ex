@@ -22,6 +22,7 @@ defmodule Gnat.Handshake do
     |> negotiate_auth(server_settings, user_settings, auth_required)
     |> negotiate_headers(server_settings, user_settings)
     |> negotiate_no_responders(server_settings, user_settings)
+    |> negotiate_name(user_settings)
   end
 
   defp perform_handshake(tcp, user_settings) do
@@ -111,6 +112,14 @@ defmodule Gnat.Handshake do
   end
 
   defp negotiate_no_responders(settings, _server_settings, _user_settings) do
+    settings
+  end
+
+  defp negotiate_name(settings, %{name: name}) when is_binary(name) do
+    Map.put(settings, :name, name)
+  end
+
+  defp negotiate_name(settings, _user_settings) do
     settings
   end
 

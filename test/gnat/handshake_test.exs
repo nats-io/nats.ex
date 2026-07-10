@@ -86,5 +86,16 @@ defmodule Gnat.HandshakeTest do
       assert Map.has_key?(result, :jwt)
       assert result[:protocol] == 1
     end
+
+    test "includes the client name" do
+      assert %{name: "some-name"} = Handshake.negotiate_settings(%{}, %{name: "some-name"})
+    end
+
+    test "does not include a non-binary client name" do
+      refute Map.has_key?(
+               Handshake.negotiate_settings(%{}, %{name: :non_binary_client_name}),
+               :name
+             )
+    end
   end
 end

@@ -19,10 +19,6 @@ jobs:
     strategy:
       matrix:
         pair:
-          - otp: "25"
-            elixir: "1.14"
-            nats: "2.10.24"
-
           - otp: "26"
             elixir: "1.16"
             nats: "2.10.24"
