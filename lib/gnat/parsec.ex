@@ -127,7 +127,7 @@ defmodule Gnat.Parsec do
 
       {:complete, binary} ->
         case binary do
-          <<body::binary-size(length), "\r\n", rest::binary>> ->
+          <<body::binary-size(^length), "\r\n", rest::binary>> ->
             {new_partial, new_pending, more} = parse_commands(rest, [])
 
             {%{state | partial: new_partial, pending: new_pending},
@@ -157,8 +157,8 @@ defmodule Gnat.Parsec do
         payload_length = total_length - header_length
 
         case binary do
-          <<headers_bin::binary-size(header_length), payload::binary-size(payload_length), "\r\n",
-            rest::binary>> ->
+          <<headers_bin::binary-size(^header_length), payload::binary-size(^payload_length),
+            "\r\n", rest::binary>> ->
             {:ok, status, description, headers} = parse_headers(headers_bin)
             {new_partial, new_pending, more} = parse_commands(rest, [])
 
@@ -261,7 +261,7 @@ defmodule Gnat.Parsec do
 
   def finish_msg(subject, sid, reply_to, length, rest) do
     case rest do
-      <<body::size(length)-binary, "\r\n", rest::binary>> ->
+      <<body::size(^length)-binary, "\r\n", rest::binary>> ->
         {:ok, {:msg, subject, sid, reply_to, body}, rest}
 
       _other ->
@@ -276,7 +276,7 @@ defmodule Gnat.Parsec do
     payload_length = total_length - header_length
 
     case rest do
-      <<headers::size(header_length)-binary, payload::size(payload_length)-binary, "\r\n",
+      <<headers::size(^header_length)-binary, payload::size(^payload_length)-binary, "\r\n",
         rest::binary>> ->
         {:ok, status, description, headers} = parse_headers(headers)
         {:ok, {:hmsg, subject, sid, reply_to, status, description, headers, payload}, rest}
