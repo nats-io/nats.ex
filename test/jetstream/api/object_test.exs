@@ -4,7 +4,6 @@ defmodule Gnat.Jetstream.API.ObjectTest do
   import Gnat.Jetstream.API.Util, only: [nuid: 0]
 
   @moduletag with_gnat: :gnat
-  @changelog_path Path.join([Path.dirname(__DIR__), "..", "..", "CHANGELOG.md"])
   @readme_path Path.join([Path.dirname(__DIR__), "..", "..", "README.md"])
 
   describe "create_bucket/3" do
@@ -143,11 +142,11 @@ defmodule Gnat.Jetstream.API.ObjectTest do
     test "overwriting a file" do
       bucket = nuid()
       assert {:ok, %{config: _stream}} = Object.create_bucket(:gnat, bucket)
-      assert {:ok, _} = put_filepath(@readme_path, bucket, "WAT")
-      size_after_readme = stream_byte_size(bucket)
-      assert {:ok, _} = put_filepath(@changelog_path, bucket, "WAT")
-      size_after_changelog = stream_byte_size(bucket)
-      assert size_after_changelog < size_after_readme
+      assert {:ok, _} = put_binary(:binary.copy("a", 20_000), bucket, "WAT")
+      size_after_large = stream_byte_size(bucket)
+      assert {:ok, _} = put_binary(:binary.copy("a", 1_000), bucket, "WAT")
+      size_after_small = stream_byte_size(bucket)
+      assert size_after_small < size_after_large
       assert {:ok, [meta]} = Object.list(:gnat, bucket)
       assert meta.name == "WAT"
 
@@ -255,6 +254,11 @@ defmodule Gnat.Jetstream.API.ObjectTest do
 
   defp put_filepath(path, bucket, name) do
     {:ok, io} = File.open(path, [:read])
+    Object.put(:gnat, bucket, name, io)
+  end
+
+  defp put_binary(binary, bucket, name) do
+    {:ok, io} = StringIO.open(binary)
     Object.put(:gnat, bucket, name, io)
   end
 
