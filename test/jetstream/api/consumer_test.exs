@@ -39,6 +39,7 @@ defmodule Gnat.Jetstream.API.ConsumerTest do
              deliver_subject: nil,
              durable_name: "STREAM1",
              filter_subject: nil,
+             filter_subjects: nil,
              opt_start_seq: nil,
              opt_start_time: nil,
              replay_policy: :instant,
@@ -79,6 +80,32 @@ defmodule Gnat.Jetstream.API.ConsumerTest do
              limit: 1024,
              consumers: []
            }
+  end
+
+  test "creating and getting a consumer with multiple filter subjects" do
+    stream = %Stream{name: "MULTI_FILTER_STREAM", subjects: ["events.>"]}
+    {:ok, _response} = Stream.create(:gnat, stream)
+
+    filter_subjects = ["events.created", "events.updated"]
+
+    consumer = %Consumer{
+      stream_name: "MULTI_FILTER_STREAM",
+      durable_name: "MULTI_FILTER_CONSUMER",
+      filter_subjects: filter_subjects
+    }
+
+    assert {:ok, %{config: created_config}} = Consumer.create(:gnat, consumer)
+    assert created_config.filter_subjects == filter_subjects
+    assert created_config.filter_subject == nil
+
+    assert {:ok, %{config: fetched_config}} =
+             Consumer.info(:gnat, "MULTI_FILTER_STREAM", "MULTI_FILTER_CONSUMER")
+
+    assert fetched_config.filter_subjects == filter_subjects
+    assert fetched_config.filter_subject == nil
+
+    assert :ok = Consumer.delete(:gnat, "MULTI_FILTER_STREAM", "MULTI_FILTER_CONSUMER")
+    assert :ok = Stream.delete(:gnat, "MULTI_FILTER_STREAM")
   end
 
   test "failed creates" do
@@ -126,6 +153,7 @@ defmodule Gnat.Jetstream.API.ConsumerTest do
              deliver_subject: "consumer.STREAM4",
              durable_name: "STREAM4",
              filter_subject: nil,
+             filter_subjects: nil,
              opt_start_seq: nil,
              opt_start_time: nil,
              replay_policy: :instant,
@@ -177,6 +205,17 @@ defmodule Gnat.Jetstream.API.ConsumerTest do
              Consumer.create(:gnat, %Consumer{stream_name: "TEST_STREAM", durable_name: :ohai})
 
     assert reason == "durable_name must be a string"
+  end
+
+  test "filter_subject and filter_subjects are mutually exclusive" do
+    assert {:error, reason} =
+             Consumer.create(:gnat, %Consumer{
+               stream_name: "TEST_STREAM",
+               filter_subject: "events.*",
+               filter_subjects: ["events.created", "events.updated"]
+             })
+
+    assert reason == "filter_subject and filter_subjects cannot both be set"
   end
 
   describe "request_next_message/5" do

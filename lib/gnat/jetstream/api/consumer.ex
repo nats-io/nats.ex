@@ -49,6 +49,9 @@ defmodule Gnat.Jetstream.API.Consumer do
     See [naming](https://docs.nats.io/running-a-nats-service/nats_admin/jetstream_admin/naming).
   * `:filter_subject` - when consuming from a stream with a wildcard subject, this allows you to select
     a subset of the full wildcard subject to receive messages from.
+  * `:filter_subjects` - a list of subject filters for the consumer. Only messages matching at least one
+    filter are delivered. Requires nats-server 2.10.0 or later and cannot be combined with
+    `:filter_subject`.
   * `:flow_control` - when set to true, an empty message with Status header 100 and a reply subject will
     be sent. Consumers must reply to these messages to control the rate of message delivery.
   * `:headers_only` - delivers only the headers of messages in the stream and not the bodies. Additionally
@@ -96,6 +99,7 @@ defmodule Gnat.Jetstream.API.Consumer do
     :domain,
     :durable_name,
     :filter_subject,
+    :filter_subjects,
     :flow_control,
     :headers_only,
     :idle_heartbeat,
@@ -129,6 +133,7 @@ defmodule Gnat.Jetstream.API.Consumer do
           description: nil | binary(),
           durable_name: nil | binary(),
           filter_subject: nil | binary(),
+          filter_subjects: nil | [binary()],
           flow_control: nil | boolean(),
           headers_only: nil | boolean(),
           idle_heartbeat: nil | non_neg_integer(),
@@ -191,6 +196,7 @@ defmodule Gnat.Jetstream.API.Consumer do
           description: nil | binary(),
           durable_name: nil | binary(),
           filter_subject: nil | binary(),
+          filter_subjects: nil | [binary()],
           flow_control: nil | boolean(),
           headers_only: nil | boolean(),
           idle_heartbeat: nil | non_neg_integer(),
@@ -447,7 +453,14 @@ defmodule Gnat.Jetstream.API.Consumer do
       },
       stream_name: cons.stream_name
     }
+    |> maybe_add_consumer_option(:filter_subjects, cons.filter_subjects)
     |> Jason.encode!()
+  end
+
+  defp maybe_add_consumer_option(payload, _option, nil), do: payload
+
+  defp maybe_add_consumer_option(payload, option, value) do
+    put_in(payload, [:config, option], value)
   end
 
   defp to_config(raw) do
@@ -461,6 +474,7 @@ defmodule Gnat.Jetstream.API.Consumer do
       description: Map.get(raw, "description"),
       durable_name: Map.get(raw, "durable_name"),
       filter_subject: raw |> Map.get("filter_subject"),
+      filter_subjects: Map.get(raw, "filter_subjects"),
       flow_control: Map.get(raw, "flow_control"),
       headers_only: Map.get(raw, "headers_only"),
       idle_heartbeat: Map.get(raw, "idle_heartbeat"),
@@ -524,6 +538,9 @@ defmodule Gnat.Jetstream.API.Consumer do
 
       consumer.replay_policy not in [:instant, :original] ->
         {:error, "invalid replay policy: #{consumer.replay_policy}"}
+
+      not is_nil(consumer.filter_subject) and not is_nil(consumer.filter_subjects) ->
+        {:error, "filter_subject and filter_subjects cannot both be set"}
 
       true ->
         :ok
