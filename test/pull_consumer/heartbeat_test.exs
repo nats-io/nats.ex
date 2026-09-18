@@ -129,6 +129,42 @@ defmodule Gnat.Jetstream.PullConsumer.HeartbeatTest do
       # windows to confirm the watchdog stays quiet.
       refute_receive {:watchdog, _, _}, 3_000
     end
+
+    @tag :integration
+    test "does not fire watchdog after acknowledging a message", %{
+      stream_name: stream_name,
+      consumer_name: consumer_name
+    } do
+      test_pid = self()
+      handler_id = "hb-ack-test-#{System.unique_integer()}"
+
+      :ok =
+        :telemetry.attach(
+          handler_id,
+          [:gnat, :jetstream, :pull_consumer, :heartbeat_expired],
+          fn _e, m, meta, _ -> send(test_pid, {:watchdog, m, meta}) end,
+          nil
+        )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      start_supervised!(
+        {IdleConsumer,
+         stream_name: stream_name,
+         consumer_name: consumer_name,
+         request_expires: 1_000_000_000,
+         idle_heartbeat: 500_000_000,
+         heartbeat_check_interval: 200}
+      )
+
+      {:ok, _} = Gnat.sub(:gnat, self(), "$JS.ACK.#{stream_name}.#{consumer_name}.>")
+      :ok = Gnat.pub(:gnat, "hb.test", "message")
+
+      assert_receive {:msg, %{body: "+NXT " <> _payload, topic: ack_topic}}, 1_000
+      assert String.starts_with?(ack_topic, "$JS.ACK.#{stream_name}.#{consumer_name}.")
+
+      refute_receive {:watchdog, _, _}, 3_000
+    end
   end
 
   defp cleanup(stream_name) do
