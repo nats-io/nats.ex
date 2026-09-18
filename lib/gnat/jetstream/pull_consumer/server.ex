@@ -383,7 +383,9 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
         %__MODULE__{
           connection_options: %ConnectionOptions{
             stream_name: stream_name,
-            connection_name: connection_name
+            connection_name: connection_name,
+            request_expires: request_expires,
+            idle_heartbeat: idle_heartbeat
           },
           listening_topic: listening_topic,
           subscription_id: subscription_id,
@@ -407,7 +409,11 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
 
     case module.handle_message(message, state) do
       {:ack, state} ->
-        Gnat.Jetstream.ack_next(message, listening_topic)
+        Gnat.Jetstream.ack_next(message, listening_topic,
+          batch: 1,
+          expires: request_expires,
+          idle_heartbeat: idle_heartbeat
+        )
 
         gen_state = %{gen_state | state: state}
         {:noreply, gen_state}

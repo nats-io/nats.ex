@@ -320,7 +320,13 @@ defmodule Gnat.Jetstream.PullConsumer.BatchTest do
       start_supervised!({BatchPullConsumer, consumer: consumer, batch_size: 1, test_pid: self()})
 
       assert_receive {:handled, 1, "compat-1"}, 5_000
-      assert_receive {:msg, %{body: "+NXT"}}, 5_000
+      assert_receive {:msg, %{body: "+NXT " <> payload}}, 5_000
+
+      assert Jason.decode!(payload) == %{
+               "batch" => 1,
+               "expires" => 500_000_000,
+               "idle_heartbeat" => 250_000_000
+             }
     end
 
     test "batch mode with batch_size 2 and odd number of messages" do

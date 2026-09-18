@@ -3,6 +3,9 @@ defmodule Gnat.Jetstream.PullConsumer.ConnectivityTest do
 
   alias Gnat.Jetstream.API.{Consumer, Stream}
 
+  @request_expires 1_000_000_000
+  @idle_heartbeat 500_000_000
+
   defmodule ExamplePullConsumer do
     use Gnat.Jetstream.PullConsumer
 
@@ -79,33 +82,33 @@ defmodule Gnat.Jetstream.PullConsumer.ConnectivityTest do
 
     test "consumes JetStream messages", %{stream_name: stream_name, consumer_name: consumer_name} do
       start_supervised!(
-        {ExamplePullConsumer, stream_name: stream_name, consumer_name: consumer_name}
+        {ExamplePullConsumer,
+         stream_name: stream_name,
+         consumer_name: consumer_name,
+         request_expires: @request_expires,
+         idle_heartbeat: @idle_heartbeat}
       )
 
       Gnat.sub(:gnat, self(), "$JS.ACK.#{stream_name}.#{consumer_name}.>")
 
       :ok = Gnat.pub(:gnat, "ackable", "hello")
 
-      assert_receive {:msg, %{body: "+NXT", topic: topic}}
-      assert String.starts_with?(topic, "$JS.ACK.#{stream_name}.#{consumer_name}.1")
+      assert_ack_next(stream_name, consumer_name, 1)
 
       :ok = Gnat.pub(:gnat, "ackable", "hello")
 
-      assert_receive {:msg, %{body: "+NXT", topic: topic}}
-      assert String.starts_with?(topic, "$JS.ACK.#{stream_name}.#{consumer_name}.1")
+      assert_ack_next(stream_name, consumer_name, 1)
 
       :ok = Gnat.pub(:gnat, "non-ackable", "hello")
 
       assert_receive {:msg, %{body: "-NAK", topic: topic}}
       assert String.starts_with?(topic, "$JS.ACK.#{stream_name}.#{consumer_name}.1")
 
-      assert_receive {:msg, %{body: "+NXT", topic: topic}}
-      assert String.starts_with?(topic, "$JS.ACK.#{stream_name}.#{consumer_name}.2")
+      assert_ack_next(stream_name, consumer_name, 2)
 
       :ok = Gnat.pub(:gnat, "ackable", "hello")
 
-      assert_receive {:msg, %{body: "+NXT", topic: topic}}
-      assert String.starts_with?(topic, "$JS.ACK.#{stream_name}.#{consumer_name}.1")
+      assert_ack_next(stream_name, consumer_name, 1)
 
       :ok = Gnat.pub(:gnat, "terminatable", "hello")
 
@@ -164,6 +167,21 @@ defmodule Gnat.Jetstream.PullConsumer.ConnectivityTest do
 
       assert_receive {:msg, %{body: ^expected_body, reply_to: "CUSTOM_PREFIX." <> _}}
     end
+  end
+
+  defp assert_ack_next(stream_name, consumer_name, delivery_count) do
+    assert_receive {:msg, %{body: "+NXT " <> payload, topic: topic}}
+
+    assert Jason.decode!(payload) == %{
+             "batch" => 1,
+             "expires" => @request_expires,
+             "idle_heartbeat" => @idle_heartbeat
+           }
+
+    assert String.starts_with?(
+             topic,
+             "$JS.ACK.#{stream_name}.#{consumer_name}.#{delivery_count}"
+           )
   end
 
   defp cleanup do

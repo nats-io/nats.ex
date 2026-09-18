@@ -34,6 +34,31 @@ defmodule Gnat.Jetstream do
   end
 
   @doc """
+  Sends `AckNext` acknowledgement to the server with pull request options.
+
+  Supports `:batch`, `:expires`, `:idle_heartbeat`, and `:no_wait`. `:batch` defaults to `1`.
+  The `:expires` and `:idle_heartbeat` values are expressed in nanoseconds.
+  """
+  @spec ack_next(
+          message :: Gnat.message(),
+          consumer_subject :: binary(),
+          opts :: keyword()
+        ) :: :ok
+  def ack_next(%{reply_to: nil}, _consumer_subject, _opts) do
+    {:error, "Cannot ack message with no reply-to"}
+  end
+
+  def ack_next(%{gnat: gnat, reply_to: reply_to}, consumer_subject, opts) do
+    payload =
+      opts
+      |> Keyword.validate!([:expires, :idle_heartbeat, :no_wait, batch: 1])
+      |> Map.new()
+      |> Jason.encode!()
+
+    Gnat.pub(gnat, reply_to, "+NXT " <> payload, reply_to: consumer_subject)
+  end
+
+  @doc """
   Sends `AckNak` acknowledgement to the server.
 
   Signals that the message will not be processed now and processing can move onto the next message.

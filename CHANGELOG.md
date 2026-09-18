@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.16.1
+
+* Fix `PullConsumer` dropping `:request_expires` and `:idle_heartbeat` after
+  successfully processing a message. The resulting unbounded, heartbeat-free
+  pull caused false watchdog reconnects on quiet streams. ACK-next requests now
+  retain the configured pull options.
+
 ## 1.16
 
 * Add support for the `name` connection setting, which is reported to NATS
