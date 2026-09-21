@@ -125,6 +125,95 @@ defmodule Gnat.Jetstream.API.ObjectTest do
   end
 
   describe "put/4" do
+    test "respects the connection's advertised payload limit", %{conn: conn} do
+      :sys.replace_state(conn, fn state ->
+        put_in(state.server_info.max_payload, 2048)
+      end)
+
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket)
+      assert {:ok, meta} = put_binary(:binary.copy("a", 5000), bucket, "payload-limit")
+      assert meta.chunks == 3
+      assert :ok = Object.get(:gnat, bucket, meta.name, &send(self(), {:chunk, &1}))
+      assert_received {:chunk, <<_::binary-size(2048)>>}
+      assert_received {:chunk, <<_::binary-size(2048)>>}
+      assert_received {:chunk, <<_::binary-size(904)>>}
+      assert :ok = Object.delete_bucket(:gnat, bucket)
+    end
+
+    test "respects the bucket's chunk limit" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket, max_chunk_size: 1024)
+      data = :binary.copy("a", 2500)
+
+      assert {:ok, meta} = put_binary(data, bucket, "small-chunks")
+      assert meta.chunks == 3
+      assert meta.size == byte_size(data)
+      assert :ok = Object.get(:gnat, bucket, meta.name, &send(self(), {:chunk, &1}))
+      assert_received {:chunk, <<_::binary-size(1024)>>}
+      assert_received {:chunk, <<_::binary-size(1024)>>}
+      assert_received {:chunk, <<_::binary-size(452)>>}
+      assert :ok = Object.delete_bucket(:gnat, bucket)
+    end
+
+    test "returns chunk publish errors without publishing metadata" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket, max_bucket_size: 1024)
+
+      assert {:error, %{"code" => 503}} = put_binary(:binary.copy("a", 2048), bucket, "large")
+      assert {:error, %{"code" => 404}} = Object.info(:gnat, bucket, "large")
+      assert :ok = Object.delete_bucket(:gnat, bucket)
+    end
+
+    test "returns metadata publish errors" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket, max_chunk_size: 128)
+
+      assert {:error, %{"code" => 400}} = put_binary("", bucket, "metadata-too-large")
+      assert {:error, %{"code" => 404}} = Object.info(:gnat, bucket, "metadata-too-large")
+      assert :ok = Object.delete_bucket(:gnat, bucket)
+    end
+
+    test "rejects malformed and unrelated publish acknowledgements" do
+      bucket = nuid()
+      assert {:ok, %{config: config}} = Object.create_bucket(:gnat, bucket)
+      assert {:ok, _} = Stream.update(:gnat, %{config | subjects: ["$O.#{bucket}.M.>"]})
+      parent = self()
+
+      responder =
+        start_supervised!(
+          {Task,
+           fn ->
+             {:ok, sid} = Gnat.sub(:gnat, self(), "$O.#{bucket}.C.>")
+             send(parent, :responder_ready)
+
+             for response <- [
+                   "not json",
+                   "{}",
+                   ~s({"stream":"other","seq":1}),
+                   ~s({"stream":"OBJ_#{bucket}","seq":0})
+                 ] do
+               receive do
+                 {:msg, %{reply_to: reply}} -> Gnat.pub(:gnat, reply, response)
+               end
+             end
+
+             Gnat.unsub(:gnat, sid)
+           end}
+        )
+
+      assert_receive :responder_ready
+
+      for _ <- 1..4 do
+        assert {:error, :invalid_publish_ack} = put_binary("data", bucket, "invalid-ack")
+        assert {:error, %{"code" => 404}} = Object.info(:gnat, bucket, "invalid-ack")
+      end
+
+      ref = Process.monitor(responder)
+      assert_receive {:DOWN, ^ref, :process, ^responder, _}
+      assert :ok = Object.delete_bucket(:gnat, bucket)
+    end
+
     test "creates an object" do
       assert {:ok, %{config: _stream}} = Object.create_bucket(:gnat, "MY-STORE")
 

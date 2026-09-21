@@ -120,9 +120,11 @@ defmodule Gnat.Jetstream.API.Object do
     nuid = Util.nuid()
     chunk_topic = chunk_stream_topic(bucket_name, nuid)
 
-    with {:ok, %{config: _}} <- Stream.info(conn, stream_name(bucket_name)),
+    with {:ok, %{config: config}} <- Stream.info(conn, stream_name(bucket_name)),
          :ok <- purge_prior_chunks(conn, bucket_name, object_name),
-         {:ok, chunks, size, digest} <- send_chunks(conn, io, chunk_topic) do
+         chunk_size <- upload_chunk_size(conn, config),
+         {:ok, chunks, size, digest} <-
+           send_chunks(conn, io, chunk_topic, config.name, chunk_size) do
       object_meta = %Meta{
         name: object_name,
         bucket: bucket_name,
@@ -135,8 +137,8 @@ defmodule Gnat.Jetstream.API.Object do
       topic = meta_stream_topic(bucket_name, object_name)
       body = Jason.encode!(object_meta)
 
-      case Gnat.request(conn, topic, body, headers: [{"Nats-Rollup", "sub"}]) do
-        {:ok, _} ->
+      case publish(conn, config.name, topic, body, headers: [{"Nats-Rollup", "sub"}]) do
+        :ok ->
           {:ok, object_meta}
 
         error ->
@@ -322,15 +324,21 @@ defmodule Gnat.Jetstream.API.Object do
   end
 
   @chunk_size 128 * 1024
-  defp send_chunks(conn, io, topic) do
+  defp upload_chunk_size(conn, config) do
+    [@chunk_size, config.max_msg_size, Gnat.server_info(conn).max_payload]
+    |> Enum.filter(&(&1 > 0))
+    |> Enum.min()
+  end
+
+  defp send_chunks(conn, io, topic, stream, chunk_size) do
     sha = :crypto.hash_init(:sha256)
     size = 0
     chunks = 0
-    send_chunks(conn, io, topic, sha, size, chunks)
+    send_chunks(conn, io, topic, stream, chunk_size, sha, size, chunks)
   end
 
-  defp send_chunks(conn, io, topic, sha, size, chunks) do
-    case IO.binread(io, @chunk_size) do
+  defp send_chunks(conn, io, topic, stream, chunk_size, sha, size, chunks) do
+    case IO.binread(io, chunk_size) do
       :eof ->
         sha = :crypto.hash_final(sha)
         {:ok, chunks, size, sha}
@@ -343,13 +351,28 @@ defmodule Gnat.Jetstream.API.Object do
         size = size + byte_size(bytes)
         chunks = chunks + 1
 
-        case Gnat.request(conn, topic, bytes) do
-          {:ok, _} ->
-            send_chunks(conn, io, topic, sha, size, chunks)
+        case publish(conn, stream, topic, bytes) do
+          :ok ->
+            send_chunks(conn, io, topic, stream, chunk_size, sha, size, chunks)
 
           error ->
             error
         end
+    end
+  end
+
+  defp publish(conn, stream, topic, body, opts \\ []) do
+    with {:ok, %{body: reply}} <- Gnat.request(conn, topic, body, opts) do
+      case Jason.decode(reply) do
+        {:ok, %{"error" => error}} ->
+          {:error, error}
+
+        {:ok, %{"stream" => ^stream, "seq" => seq}} when is_integer(seq) and seq > 0 ->
+          :ok
+
+        _ ->
+          {:error, :invalid_publish_ack}
+      end
     end
   end
 
