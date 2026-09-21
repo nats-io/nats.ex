@@ -221,15 +221,13 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
   defp validate_batch_ack_policy(%ConnectionOptions{batch_size: batch_size}, consumer_info)
        when batch_size > 1 do
     case consumer_info.config.ack_policy do
-      :all ->
+      :explicit ->
         :ok
 
       other ->
         {:error,
-         "batch_size > 1 requires ack_policy: :all on the consumer, " <>
-           "got: #{inspect(other)}. With ack_policy: :explicit, " <>
-           "only the last message in each batch would be acknowledged and the " <>
-           "server would redeliver the rest"}
+         "batch_size > 1 requires ack_policy: :explicit on the consumer, " <>
+           "got: #{inspect(other)}"}
     end
   end
 
@@ -680,48 +678,12 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
   #   * :DOWN handler: monitor already fired (demonitor is a no-op) and the
   #     Gnat pid is gone (connection_pid returns :not_found, unsub skipped).
   defp reset_to_disconnected(%__MODULE__{} = gen_state) do
-    # Always flush any buffered messages through the user's handler
-    # before tearing down. The handler invocation is pure consumer-side
-    # work and is always safe; the ack is best-effort against the
-    # original Gnat pid. If the ack fails, the server will redeliver
-    # after ack_wait and at-least-once is preserved.
-    #
-    # Why we MUST do this for batch mode: under ack_policy: :all,
-    # acking message N moves the consumer's ack_floor to N, covering
-    # everything ≤ N. If we silently drop a partial batch [101..115]
-    # and a later batch's ack on seq 125 arrives, the server treats
-    # 101..115 as acked and never redelivers them — a true loss.
-    gen_state =
-      if gen_state.buffer == [] do
-        gen_state
-      else
-        Logger.info(
-          "[#{__MODULE__}] flushing #{length(gen_state.buffer)} buffered messages " <>
-            "before reconnect for #{gen_state.connection_options.stream_name}.#{gen_state.consumer_name}"
-        )
-
-        try do
-          process_and_ack_batch(gen_state)
-        catch
-          :exit, reason ->
-            # Ack publish failed (Gnat pid is dead, dying, or wedged).
-            # The user's handler already ran for these messages, and
-            # the server will redeliver after ack_wait — both halves
-            # of at-least-once are covered.
-            Logger.info(
-              "[#{__MODULE__}] ack of flushed batch failed (#{inspect(reason)}); " <>
-                "messages will be redelivered after ack_wait"
-            )
-
-            %{gen_state | buffer: []}
-        end
-      end
-
     if gen_state.connection_monitor_ref do
       Process.demonitor(gen_state.connection_monitor_ref, [:flush])
     end
 
     if gen_state.subscription_id && is_pid(gen_state.connection_pid) do
+      # Remove the old inbox before a nack can trigger redelivery.
       # Best-effort unsub against the same Gnat that owns the sid (the
       # pid we stored on the successful sub, not Process.whereis(name)
       # which could resolve to a fresh-but-wedged Gnat after a restart).
@@ -732,6 +694,8 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
         :exit, _ -> :ok
       end
     end
+
+    gen_state = process_and_ack_batch(gen_state, &acknowledge_on_disconnect/2)
 
     %{
       gen_state
@@ -745,28 +709,35 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     }
   end
 
-  defp process_and_ack_batch(%{buffer: buffer, module: module, state: state} = gen_state) do
+  defp process_and_ack_batch(gen_state, acknowledge \\ &acknowledge/2) do
+    %{buffer: buffer, module: module, state: state} = gen_state
     messages = Enum.reverse(buffer)
 
     new_state =
       Enum.reduce(messages, state, fn message, acc_state ->
-        case module.handle_message(message, acc_state) do
-          {:ack, updated_state} ->
-            updated_state
-
-          {action, updated_state} ->
-            Logger.warning(
-              "PullConsumer batch mode does not support #{inspect(action)}, treating as :ack"
-            )
-
-            updated_state
-        end
+        {action, updated_state} = module.handle_message(message, acc_state)
+        acknowledge.(message, action)
+        updated_state
       end)
 
-    # With ack_policy: :all, acking the last message covers the entire batch
-    last = List.last(messages)
-    Gnat.Jetstream.ack(last)
-
     %{gen_state | state: new_state, buffer: []}
+  end
+
+  defp acknowledge(message, action) do
+    case action do
+      :ack -> Gnat.Jetstream.ack(message)
+      :nack -> Gnat.Jetstream.nack(message)
+      :term -> Gnat.Jetstream.ack_term(message)
+      :noreply -> :ok
+    end
+  end
+
+  defp acknowledge_on_disconnect(message, action) do
+    # A failed acknowledgement must not prevent processing the remaining buffer.
+    # Handler failures propagate to the supervisor outside this catch.
+    acknowledge(message, action)
+  catch
+    :exit, reason ->
+      Logger.debug("Failed to send #{action} during reconnect: #{inspect(reason)}")
   end
 end

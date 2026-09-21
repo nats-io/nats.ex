@@ -88,11 +88,12 @@ defmodule Gnat.Jetstream.PullConsumer do
   * `:inbox_prefix` - allows the default `_INBOX.` prefix to be customized. Should end with a dot.
   * `:domain` - use a JetStream domain, this is mostly used on leaf nodes.
   * `:batch_size` - when set to a value greater than 1, enables batch mode. Messages are
-    buffered and delivered to `c:handle_message/2` in batches. Only the last message per
-    batch is acknowledged, so the underlying consumer should use `ack_policy: :all` for
-    correctness. This dramatically improves throughput for consumers that need to catch up
-    on large backlogs. In batch mode, `:nack` and `:term` returns from `c:handle_message/2`
-    are treated as `:ack` since `ack_policy: :all` cannot selectively reject messages.
+    buffered until the batch is full or the pull request ends, then passed individually
+    to `c:handle_message/2` in delivery order. Requires `ack_policy: :explicit` on the
+    underlying consumer. Each handler result applies only to that message: `:ack`
+    acknowledges it, `:nack` requests redelivery, `:term` stops redelivery, and `:noreply`
+    leaves it unacknowledged. Before reconnecting, buffered messages are passed to
+    the handler with best-effort acknowledgements on the original connection.
     Defaults to `1` (single-message mode).
   * `:request_expires` - duration in **nanoseconds** that a long-poll pull request will linger on
     the server before the server replies with a `408` terminator and the consumer issues a
