@@ -174,7 +174,7 @@ defmodule Gnat.Jetstream.PullConsumer.StatusMessagesTest do
          %{stream_name: stream_name} do
       consumer = %Gnat.Jetstream.API.Consumer{
         stream_name: stream_name,
-        ack_policy: :all,
+        ack_policy: :explicit,
         deliver_policy: :all
       }
 
@@ -204,7 +204,7 @@ defmodule Gnat.Jetstream.PullConsumer.StatusMessagesTest do
          %{stream_name: stream_name, subject: subject} do
       consumer = %Gnat.Jetstream.API.Consumer{
         stream_name: stream_name,
-        ack_policy: :all,
+        ack_policy: :explicit,
         deliver_policy: :all
       }
 
@@ -246,7 +246,7 @@ defmodule Gnat.Jetstream.PullConsumer.StatusMessagesTest do
          %{stream_name: stream_name} do
       consumer = %Gnat.Jetstream.API.Consumer{
         stream_name: stream_name,
-        ack_policy: :all,
+        ack_policy: :explicit,
         deliver_policy: :all
       }
 
