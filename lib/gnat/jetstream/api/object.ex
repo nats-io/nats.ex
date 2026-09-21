@@ -58,11 +58,31 @@ defmodule Gnat.Jetstream.API.Object do
     end
   end
 
-  @spec get(Gnat.t(), String.t(), String.t(), (binary -> any())) :: :ok | {:error, any}
-  def get(conn, bucket_name, object_name, chunk_fun) do
+  @doc """
+  Streams an object's chunks through `chunk_fun` and verifies its size and SHA-256 digest.
+
+  Chunks reach the callback before the final integrity check. Treat the result as
+  unverified until this function returns `:ok`. Callback exceptions propagate after
+  subscription and consumer cleanup is attempted.
+
+  ## Options
+
+    * `:timeout` - (non-negative integer) the maximum wait for each object chunk,
+      in milliseconds. The wait restarts after each data callback returns.
+      Heartbeats and flow-control messages don't restart it. Defaults to `10_000`.
+
+    * `:total_timeout` - (non-negative integer or `:infinity`) the total receive
+      deadline, in milliseconds, starting after consumer creation. Each wait is
+      limited by both this deadline and `:timeout`. Callback time counts toward
+      the deadline, but callbacks aren't interrupted. Defaults to `:infinity`.
+  """
+  @spec get(Gnat.t(), String.t(), String.t(), (binary -> any()), keyword()) ::
+          :ok | {:error, any}
+  def get(conn, bucket_name, object_name, chunk_fun, opts \\ []) do
     with {:ok, %{config: _stream}} <- Stream.info(conn, stream_name(bucket_name)),
-         {:ok, meta} <- info(conn, bucket_name, object_name) do
-      receive_chunks(conn, meta, chunk_fun)
+         {:ok, meta} <- info(conn, bucket_name, object_name),
+         {:ok, digest} <- decode_digest(meta.digest) do
+      receive_chunks(conn, meta, digest, chunk_fun, opts)
     end
   end
 
@@ -74,8 +94,7 @@ defmodule Gnat.Jetstream.API.Object do
       })
       |> case do
         {:ok, message} ->
-          meta = json_to_meta(message.data)
-          {:ok, meta}
+          json_to_meta(message.data)
 
         error ->
           error
@@ -83,33 +102,51 @@ defmodule Gnat.Jetstream.API.Object do
     end
   end
 
-  @type list_option :: {:show_deleted, boolean()}
+  @type list_option ::
+          {:show_deleted, boolean()}
+          | {:timeout, non_neg_integer()}
+          | {:total_timeout, non_neg_integer() | :infinity}
+
+  @doc """
+  Lists object metadata in a bucket.
+
+  ## Options
+
+    * `:show_deleted` - (boolean) whether to include deleted objects in the result.
+      Defaults to `false`.
+
+    * `:timeout` - (non-negative integer) the maximum wait for each object's metadata,
+      in milliseconds. The wait restarts after each metadata message. Heartbeats and
+      flow-control messages don't restart it. Defaults to `10_000`.
+
+    * `:total_timeout` - (non-negative integer or `:infinity`) the total receive
+      deadline, in milliseconds, starting after consumer creation. Each wait is
+      limited by both this deadline and `:timeout`. Defaults to `:infinity`.
+  """
   @spec list(Gnat.t(), String.t(), list(list_option())) :: {:error, any} | {:ok, list(Meta.t())}
   def list(conn, bucket_name, options \\ []) do
-    with {:ok, %{config: stream}} <- Stream.info(conn, stream_name(bucket_name)),
-         topic <- Util.reply_inbox(),
-         {:ok, sub} <- Gnat.sub(conn, self(), topic),
-         {:ok, consumer} <-
-           Consumer.create(conn, %Consumer{
-             stream_name: stream.name,
-             deliver_subject: topic,
-             deliver_policy: :last_per_subject,
-             filter_subject: meta_stream_subject(bucket_name),
-             ack_policy: :none,
-             max_ack_pending: nil,
-             replay_policy: :instant,
-             max_deliver: 1
-           }),
-         {:ok, messages} <- receive_all_metas(sub, consumer.num_pending) do
-      :ok = Gnat.unsub(conn, sub)
-      :ok = Consumer.delete(conn, stream.name, consumer.name)
+    with {:ok, %{config: stream}} <- Stream.info(conn, stream_name(bucket_name)) do
+      consumer = %Consumer{
+        stream_name: stream.name,
+        deliver_subject: Util.reply_inbox(),
+        deliver_policy: :last_per_subject,
+        filter_subject: meta_stream_subject(bucket_name),
+        ack_policy: :none,
+        max_ack_pending: nil,
+        replay_policy: :instant,
+        max_deliver: 1
+      }
 
-      show_deleted = Keyword.get(options, :show_deleted, false)
-
-      if show_deleted do
-        {:ok, messages}
-      else
-        {:ok, Enum.reject(messages, &(&1.deleted == true))}
+      with {:ok, messages} <-
+             with_consumer(conn, consumer, fn conn, sub, info ->
+               timeouts = receive_timeouts(options)
+               receive_all_metas(conn, sub, info.num_pending, timeouts, [])
+             end) do
+        if Keyword.get(options, :show_deleted, false) do
+          {:ok, messages}
+        else
+          {:ok, Enum.reject(messages, & &1.deleted)}
+        end
       end
     end
   end
@@ -219,26 +256,32 @@ defmodule Gnat.Jetstream.API.Object do
   defp adjust_duplicate_window(_ttl), do: @two_minutes_in_nanoseconds
 
   defp json_to_meta(json) do
-    raw = Jason.decode!(json)
-
-    %{
-      "bucket" => bucket,
-      "chunks" => chunks,
-      "digest" => digest,
-      "name" => name,
-      "nuid" => nuid,
-      "size" => size
-    } = raw
-
-    %Meta{
-      bucket: bucket,
-      chunks: chunks,
-      digest: digest,
-      deleted: Map.get(raw, "deleted", false),
-      name: name,
-      nuid: nuid,
-      size: size
-    }
+    with {:ok, raw} <- Jason.decode(json),
+         %{
+           "bucket" => bucket,
+           "chunks" => chunks,
+           "digest" => digest,
+           "name" => name,
+           "nuid" => nuid,
+           "size" => size
+         }
+         when is_binary(bucket) and is_integer(chunks) and chunks >= 0 and
+                is_binary(digest) and is_binary(name) and is_binary(nuid) and
+                is_integer(size) and size >= 0 <- raw,
+         deleted when is_boolean(deleted) <- Map.get(raw, "deleted", false) do
+      {:ok,
+       %Meta{
+         bucket: bucket,
+         chunks: chunks,
+         digest: digest,
+         deleted: deleted,
+         name: name,
+         nuid: nuid,
+         size: size
+       }}
+    else
+      _ -> {:error, :invalid_object_metadata}
+    end
   end
 
   defp purge_prior_chunks(conn, bucket, name) do
@@ -254,72 +297,156 @@ defmodule Gnat.Jetstream.API.Object do
     end
   end
 
-  defp receive_all_metas(sid, num_pending, messages \\ [])
-
-  defp receive_all_metas(_sid, 0, messages) do
+  defp receive_all_metas(_conn, _sid, 0, _timeouts, messages) do
     {:ok, messages}
   end
 
-  defp receive_all_metas(sid, remaining, messages) do
-    receive do
-      {:msg, %{sid: ^sid, body: body}} ->
-        meta = json_to_meta(body)
-        receive_all_metas(sid, remaining - 1, [meta | messages])
-    after
-      10_000 ->
-        {:error, :timeout_waiting_for_messages}
+  defp receive_all_metas(conn, sid, remaining, timeouts, messages) do
+    with {:ok, body} <- receive_data(conn, sid, timeouts),
+         {:ok, meta} <- json_to_meta(body) do
+      receive_all_metas(conn, sid, remaining - 1, timeouts, [meta | messages])
     end
   end
 
-  defp receive_chunks(conn, %Meta{} = meta, chunk_fun) do
-    topic = chunk_stream_topic(meta)
-    stream = stream_name(meta.bucket)
-    inbox = Util.reply_inbox()
-    {:ok, sub} = Gnat.sub(conn, self(), inbox)
+  defp receive_chunks(conn, meta, digest, chunk_fun, opts) do
+    sha = :crypto.hash_init(:sha256)
 
-    {:ok, consumer} =
-      Consumer.create(conn, %Consumer{
-        stream_name: stream,
-        deliver_subject: inbox,
+    if meta.chunks == 0 do
+      verify_object(meta, digest, sha, 0)
+    else
+      consumer = %Consumer{
+        stream_name: stream_name(meta.bucket),
+        deliver_subject: Util.reply_inbox(),
         deliver_policy: :all,
-        filter_subject: topic,
+        filter_subject: chunk_stream_topic(meta),
         ack_policy: :none,
         max_ack_pending: nil,
         replay_policy: :instant,
         max_deliver: 1,
         flow_control: true,
         idle_heartbeat: 5_000_000_000
-      })
+      }
 
-    :ok = receive_chunks(conn, sub, meta.chunks, chunk_fun)
-
-    :ok = Gnat.unsub(conn, sub)
-    :ok = Consumer.delete(conn, stream, consumer.name)
+      with_consumer(conn, consumer, fn conn, sub, _info ->
+        receive_chunks(conn, sub, meta, digest, chunk_fun, receive_timeouts(opts), sha, 0)
+      end)
+    end
   end
 
-  defp receive_chunks(_conn, _sub, 0, _chunk_fun) do
-    :ok
+  defp receive_chunks(_conn, _sub, %{chunks: 0} = meta, digest, _fun, _timeouts, sha, size) do
+    verify_object(meta, digest, sha, size)
   end
 
-  defp receive_chunks(conn, sub, remaining, chunk_fun) do
-    receive do
-      # Flow control message with reply - respond to it
-      {:msg, %{sid: ^sub, status: "100", description: "FlowControl Request", reply_to: reply}}
-      when not is_nil(reply) ->
-        Gnat.pub(conn, reply, "")
-        receive_chunks(conn, sub, remaining, chunk_fun)
+  defp receive_chunks(conn, sub, meta, digest, chunk_fun, timeouts, sha, size) do
+    with {:ok, body} <- receive_data(conn, sub, timeouts) do
+      size = size + byte_size(body)
 
-      # Flow control or heartbeat message without reply - get next message
-      {:msg, %{sid: ^sub, body: "", status: "100"}} ->
-        receive_chunks(conn, sub, remaining, chunk_fun)
-
-      # Regular data message
-      {:msg, %{sid: ^sub, body: body}} ->
+      if size > meta.size do
+        {:error, :size_mismatch}
+      else
         chunk_fun.(body)
-        receive_chunks(conn, sub, remaining - 1, chunk_fun)
+        sha = :crypto.hash_update(sha, body)
+
+        receive_chunks(
+          conn,
+          sub,
+          %{meta | chunks: meta.chunks - 1},
+          digest,
+          chunk_fun,
+          timeouts,
+          sha,
+          size
+        )
+      end
+    end
+  end
+
+  defp decode_digest("SHA-256=" <> encoded) do
+    case Base.url_decode64(encoded, padding: false) do
+      {:ok, digest} when byte_size(digest) == 32 -> {:ok, digest}
+      _ -> {:error, :invalid_digest}
+    end
+  end
+
+  defp decode_digest(_), do: {:error, :invalid_digest}
+
+  defp verify_object(meta, digest, sha, size) do
+    cond do
+      size != meta.size -> {:error, :size_mismatch}
+      :crypto.hash_final(sha) != digest -> {:error, :digest_mismatch}
+      true -> :ok
+    end
+  end
+
+  defp receive_timeouts(opts) do
+    {Keyword.get(opts, :timeout, 10_000),
+     receive_deadline(Keyword.get(opts, :total_timeout, :infinity))}
+  end
+
+  defp receive_deadline(:infinity), do: :infinity
+
+  defp receive_deadline(timeout) when is_integer(timeout) and timeout >= 0 do
+    System.monotonic_time(:millisecond) + timeout
+  end
+
+  defp receive_data(conn, sub, {timeout, total_deadline}) do
+    deadline = receive_deadline(timeout)
+    deadline = if total_deadline == :infinity, do: deadline, else: min(deadline, total_deadline)
+    receive_data_until(conn, sub, deadline)
+  end
+
+  defp receive_data_until(conn, sub, deadline) do
+    timeout = deadline - System.monotonic_time(:millisecond)
+
+    if timeout <= 0 do
+      {:error, :timeout_waiting_for_messages}
+    else
+      receive do
+        {:msg, %{gnat: ^conn, sid: ^sub, status: "100"} = message} ->
+          if reply = Map.get(message, :reply_to), do: Gnat.pub(conn, reply, "")
+          receive_data_until(conn, sub, deadline)
+
+        {:msg, %{gnat: ^conn, sid: ^sub, status: status} = message} when not is_nil(status) ->
+          {:error, {:object_status, status, Map.get(message, :description)}}
+
+        {:msg, %{gnat: ^conn, sid: ^sub, body: body}} ->
+          {:ok, body}
+      after
+        timeout -> {:error, :timeout_waiting_for_messages}
+      end
+    end
+  end
+
+  defp with_consumer(conn, consumer, fun) do
+    conn = GenServer.whereis(conn)
+
+    with {:ok, sub} <- Gnat.sub(conn, self(), consumer.deliver_subject) do
+      try do
+        with {:ok, info} <- Consumer.create(conn, consumer) do
+          try do
+            fun.(conn, sub, info)
+          after
+            cleanup(fn -> Consumer.delete(conn, consumer.stream_name, info.name) end)
+          end
+        end
+      after
+        cleanup(fn -> Gnat.unsub(conn, sub) end)
+        discard_messages(conn, sub)
+      end
+    end
+  end
+
+  defp cleanup(fun) do
+    fun.()
+  catch
+    :exit, _ -> :ok
+  end
+
+  defp discard_messages(conn, sub) do
+    receive do
+      {:msg, %{gnat: ^conn, sid: ^sub}} -> discard_messages(conn, sub)
     after
-      10_000 ->
-        {:error, :timeout_waiting_for_messages}
+      0 -> :ok
     end
   end
 

@@ -1,6 +1,6 @@
 defmodule Gnat.Jetstream.API.ObjectTest do
   use Gnat.Jetstream.ConnCase, min_server_version: "2.6.2"
-  alias Gnat.Jetstream.API.{Object, Stream}
+  alias Gnat.Jetstream.API.{Consumer, Object, Stream}
   import Gnat.Jetstream.API.Util, only: [nuid: 0]
 
   @moduletag with_gnat: :gnat
@@ -67,6 +67,190 @@ defmodule Gnat.Jetstream.API.ObjectTest do
   end
 
   describe "get/4" do
+    test "verifies empty objects without allocating a consumer" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket)
+      assert {:ok, _} = put_binary("", bucket, "empty")
+      assert :ok = Object.get(:gnat, bucket, "empty", fn _ -> flunk("unexpected chunk") end)
+      assert_read_resources_released(bucket)
+      assert :ok = Object.delete_bucket(:gnat, bucket)
+    end
+
+    test "rejects a digest mismatch and releases read resources" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket)
+      assert {:ok, meta} = put_binary("data", bucket, "corrupt")
+
+      replace_meta(%{
+        meta
+        | digest: "SHA-256=" <> Base.url_encode64(:crypto.hash(:sha256, "other"))
+      })
+
+      assert {:error, :digest_mismatch} = Object.get(:gnat, bucket, meta.name, fn _ -> :ok end)
+      assert_read_resources_released(bucket)
+      assert :ok = Object.delete_bucket(:gnat, bucket)
+    end
+
+    test "rejects invalid digests before delivering data" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket)
+      assert {:ok, meta} = put_binary("data", bucket, "invalid-digest")
+
+      for digest <- ["SHA-512=abc", "SHA-256=???", "SHA-256=YQ=="] do
+        replace_meta(%{meta | digest: digest})
+
+        assert {:error, :invalid_digest} =
+                 Object.get(:gnat, bucket, meta.name, fn _ -> flunk("unexpected chunk") end)
+
+        assert_read_resources_released(bucket)
+      end
+
+      assert :ok = Object.delete_bucket(:gnat, bucket)
+    end
+
+    test "verifies the object size" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket)
+      assert {:ok, meta} = put_binary("data", bucket, "wrong-size")
+
+      for size <- [3, 5] do
+        replace_meta(%{meta | size: size})
+        assert {:error, :size_mismatch} = Object.get(:gnat, bucket, meta.name, fn _ -> :ok end)
+        assert_read_resources_released(bucket)
+      end
+
+      assert :ok = Object.delete_bucket(:gnat, bucket)
+    end
+
+    test "releases subscriptions and consumers when a callback raises or exits" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket, max_chunk_size: 1024)
+      assert {:ok, meta} = put_binary(:binary.copy("a", 3000), bucket, "callbacks")
+
+      assert_raise RuntimeError, "callback failed", fn ->
+        Object.get(:gnat, bucket, meta.name, fn _ -> raise "callback failed" end)
+      end
+
+      assert_read_resources_released(bucket)
+      refute_received {:msg, _}
+
+      assert catch_exit(Object.get(:gnat, bucket, meta.name, fn _ -> exit(:callback_failed) end)) ==
+               :callback_failed
+
+      assert_read_resources_released(bucket)
+      refute_received {:msg, _}
+      assert :ok = Object.delete_bucket(:gnat, bucket)
+    end
+
+    test "returns consumer creation errors and releases the subscription" do
+      bucket = nuid()
+      config = create_limited_bucket(bucket)
+      assert {:ok, meta} = put_binary("data", bucket, "no-consumers")
+      assert {:ok, consumer} = Consumer.create(:gnat, %Consumer{stream_name: config.name})
+
+      assert {:error, %{"code" => 400}} = Object.get(:gnat, bucket, meta.name, fn _ -> :ok end)
+      assert {:ok, 1} = Gnat.active_subscriptions(:gnat)
+      assert :ok = Consumer.delete(:gnat, config.name, consumer.name)
+    end
+
+    test "missing chunks time out and release read resources" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket)
+      assert {:ok, meta} = put_binary("data", bucket, "missing")
+
+      assert :ok =
+               Stream.purge(:gnat, "OBJ_#{bucket}", nil, %{filter: "$O.#{bucket}.C.#{meta.nuid}"})
+
+      assert {:error, :timeout_waiting_for_messages} =
+               Object.get(:gnat, bucket, meta.name, fn _ -> flunk("unexpected chunk") end,
+                 timeout: 50
+               )
+
+      assert_read_resources_released(bucket)
+      assert :ok = Object.delete_bucket(:gnat, bucket)
+    end
+
+    test "data chunks reset the inactivity timeout after callbacks" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket, max_chunk_size: 1024)
+      cleanup_bucket_on_exit(bucket)
+      assert {:ok, meta} = put_binary(:binary.copy("a", 3000), bucket, "progress")
+
+      assert :ok =
+               Object.get(:gnat, bucket, meta.name, fn _ -> Process.sleep(150) end, timeout: 100)
+
+      assert_read_resources_released(bucket)
+    end
+
+    @tag timeout: 20_000
+    test "the default permits progressing reads lasting longer than ten seconds" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket, max_chunk_size: 1024)
+      cleanup_bucket_on_exit(bucket)
+      assert {:ok, meta} = put_binary(:binary.copy("a", 1500), bucket, "long-read")
+
+      assert :ok =
+               Object.get(:gnat, bucket, meta.name, fn chunk ->
+                 if byte_size(chunk) == 1024, do: Process.sleep(10_100)
+               end)
+
+      assert_read_resources_released(bucket)
+    end
+
+    test "the optional total deadline expires despite data progress" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket, max_chunk_size: 1024)
+      cleanup_bucket_on_exit(bucket)
+      assert {:ok, meta} = put_binary(:binary.copy("a", 3000), bucket, "total-timeout")
+
+      assert {:error, :timeout_waiting_for_messages} =
+               Object.get(:gnat, bucket, meta.name, fn _ -> Process.sleep(150) end,
+                 timeout: 1000,
+                 total_timeout: 100
+               )
+
+      assert_read_resources_released(bucket)
+    end
+
+    test "the inactivity timeout can expire before the total deadline" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket)
+      cleanup_bucket_on_exit(bucket)
+      assert {:ok, meta} = put_binary("data", bucket, "idle-timeout")
+
+      assert :ok =
+               Stream.purge(:gnat, "OBJ_#{bucket}", nil, %{filter: "$O.#{bucket}.C.#{meta.nuid}"})
+
+      started = System.monotonic_time(:millisecond)
+
+      assert {:error, :timeout_waiting_for_messages} =
+               Object.get(:gnat, bucket, meta.name, fn _ -> flunk("unexpected chunk") end,
+                 timeout: 50,
+                 total_timeout: 5000
+               )
+
+      assert System.monotonic_time(:millisecond) - started < 3000
+      assert_read_resources_released(bucket)
+    end
+
+    @tag timeout: 8000
+    test "heartbeats don't extend the inactivity timeout" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket)
+      assert {:ok, meta} = put_binary("data", bucket, "missing")
+
+      assert :ok =
+               Stream.purge(:gnat, "OBJ_#{bucket}", nil, %{filter: "$O.#{bucket}.C.#{meta.nuid}"})
+
+      assert {:error, :timeout_waiting_for_messages} =
+               Object.get(:gnat, bucket, meta.name, fn _ -> flunk("unexpected chunk") end,
+                 timeout: 5500
+               )
+
+      assert_read_resources_released(bucket)
+      assert :ok = Object.delete_bucket(:gnat, bucket)
+    end
+
     test "retrieves and object chunk-by-chunk" do
       nuid = nuid()
       assert {:ok, _} = Object.create_bucket(:gnat, nuid)
@@ -99,6 +283,49 @@ defmodule Gnat.Jetstream.API.ObjectTest do
   end
 
   describe "list/3" do
+    test "a receive timeout releases subscriptions and consumers" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket)
+      assert {:ok, _} = put_binary("data", bucket, "timeout")
+
+      assert {:error, :timeout_waiting_for_messages} = Object.list(:gnat, bucket, timeout: 0)
+      assert_read_resources_released(bucket)
+      refute_received {:msg, _}
+      assert :ok = Object.delete_bucket(:gnat, bucket)
+    end
+
+    test "the optional total deadline applies to metadata listing" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket)
+      cleanup_bucket_on_exit(bucket)
+      assert {:ok, _} = put_binary("data", bucket, "total-timeout")
+
+      assert {:error, :timeout_waiting_for_messages} =
+               Object.list(:gnat, bucket, total_timeout: 0)
+
+      assert_read_resources_released(bucket)
+      refute_received {:msg, _}
+    end
+
+    test "consumer creation errors release the subscription" do
+      bucket = nuid()
+      config = create_limited_bucket(bucket)
+      assert {:ok, consumer} = Consumer.create(:gnat, %Consumer{stream_name: config.name})
+
+      assert {:error, %{"code" => 400}} = Object.list(:gnat, bucket)
+      assert {:ok, 1} = Gnat.active_subscriptions(:gnat)
+      assert :ok = Consumer.delete(:gnat, config.name, consumer.name)
+    end
+
+    test "invalid metadata returns an error and releases read resources" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket)
+      assert {:ok, _} = Gnat.request(:gnat, "$O.#{bucket}.M.bad", "not json")
+      assert {:error, :invalid_object_metadata} = Object.list(:gnat, bucket)
+      assert_read_resources_released(bucket)
+      assert :ok = Object.delete_bucket(:gnat, bucket)
+    end
+
     test "list an empty bucket" do
       bucket = nuid()
       assert {:ok, %{config: _config}} = Object.create_bucket(:gnat, bucket)
@@ -342,17 +569,63 @@ defmodule Gnat.Jetstream.API.ObjectTest do
   end
 
   defp put_filepath(path, bucket, name) do
-    {:ok, io} = File.open(path, [:read])
-    Object.put(:gnat, bucket, name, io)
+    File.open!(path, [:read], &Object.put(:gnat, bucket, name, &1))
   end
 
   defp put_binary(binary, bucket, name) do
     {:ok, io} = StringIO.open(binary)
-    Object.put(:gnat, bucket, name, io)
+
+    try do
+      Object.put(:gnat, bucket, name, io)
+    after
+      StringIO.close(io)
+    end
   end
 
   defp stream_byte_size(bucket) do
     {:ok, %{state: state}} = Stream.info(:gnat, "OBJ_#{bucket}")
     state.bytes
+  end
+
+  defp replace_meta(meta) do
+    topic = "$O.#{meta.bucket}.M.#{Base.url_encode64(meta.name)}"
+
+    assert {:ok, %{body: body}} =
+             Gnat.request(:gnat, topic, Jason.encode!(meta), headers: [{"Nats-Rollup", "sub"}])
+
+    assert %{"seq" => _} = Jason.decode!(body)
+  end
+
+  defp assert_read_resources_released(bucket) do
+    # The connection retains its shared request/reply subscription.
+    assert {:ok, 1} = Gnat.active_subscriptions(:gnat)
+    assert {:ok, %{consumers: consumers}} = Consumer.list(:gnat, "OBJ_#{bucket}")
+    assert consumers in [nil, []]
+  end
+
+  defp create_limited_bucket(bucket) do
+    assert {:ok, %{config: config}} =
+             Stream.create(:gnat, %Stream{
+               name: "OBJ_#{bucket}",
+               subjects: ["$O.#{bucket}.C.>", "$O.#{bucket}.M.>"],
+               discard: :new,
+               allow_rollup_hdrs: true,
+               max_consumers: 1
+             })
+
+    cleanup_bucket_on_exit(bucket)
+    config
+  end
+
+  defp cleanup_bucket_on_exit(bucket) do
+    on_exit(fn ->
+      {:ok, conn} = Gnat.start_link()
+
+      try do
+        assert :ok = Object.delete_bucket(conn, bucket)
+      after
+        Gnat.stop(conn)
+      end
+    end)
   end
 end
