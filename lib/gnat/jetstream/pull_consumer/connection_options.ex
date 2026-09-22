@@ -76,9 +76,9 @@ defmodule Gnat.Jetstream.PullConsumer.ConnectionOptions do
         raise ArgumentError,
               "durable consumers specified via :consumer must have inactive_threshold set for auto-cleanup"
 
-      consumer && validated_opts[:batch_size] > 1 && consumer.ack_policy != :explicit ->
+      consumer && validated_opts[:batch_size] > 1 && consumer.ack_policy not in [:explicit, :all] ->
         raise ArgumentError,
-              "batch_size > 1 requires ack_policy: :explicit on the consumer, " <>
+              "batch_size > 1 requires ack_policy: :explicit or :all on the consumer, " <>
                 "got: #{inspect(consumer.ack_policy)}"
 
       consumer ->

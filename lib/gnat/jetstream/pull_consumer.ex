@@ -89,10 +89,22 @@ defmodule Gnat.Jetstream.PullConsumer do
   * `:domain` - use a JetStream domain, this is mostly used on leaf nodes.
   * `:batch_size` - when set to a value greater than 1, enables batch mode. Messages are
     buffered until the batch is full or the pull request ends, then passed individually
-    to `c:handle_message/2` in delivery order. Requires `ack_policy: :explicit` on the
-    underlying consumer. Each handler result applies only to that message: `:ack`
+    to `c:handle_message/2` in delivery order. Supports `ack_policy: :explicit` (recommended)
+    and `:all` on the underlying consumer. With `:explicit`, each handler result applies
+    only to that message: `:ack`
     acknowledges it, `:nack` requests redelivery, `:term` stops redelivery, and `:noreply`
-    leaves it unacknowledged. Before reconnecting, buffered messages are passed to
+    leaves it unacknowledged. With `:all`, the last message is acknowledged after every
+    callback in the batch returns `{:ack, state}`. Any other return value raises an
+    `ArgumentError` and stops the worker without acknowledging the batch or processing
+    its remaining messages. Successfully processed messages in that batch may be redelivered.
+
+    `:all` requires a single reader that finishes processing each message before returning
+    `:ack`. A cumulative acknowledgement also acknowledges earlier deliveries to other
+    workers sharing the same server consumer, even if they haven't finished processing.
+    An ephemeral consumer doesn't enforce exclusive access. Use `:explicit` for shared
+    consumers or per-message outcomes.
+
+    Before reconnecting, buffered messages are passed to
     the handler with best-effort acknowledgements on the original connection.
     Defaults to `1` (single-message mode).
   * `:request_expires` - duration in **nanoseconds** that a long-poll pull request will linger on
@@ -295,6 +307,11 @@ defmodule Gnat.Jetstream.PullConsumer do
     successfully processed.
   * `:noreply` - nothing is sent. You may send later asynchronously an ACK or NACK message using
     the `Jetstream.ack/1` or `Jetstream.nack/1` and similar functions from `Jetstream` module.
+
+  With `batch_size > 1` and `ack_policy: :all`, only `{:ack, state}` is supported.
+  The batch is acknowledged after every callback succeeds. Any other return value stops
+  the worker with an `ArgumentError` and leaves the batch unacknowledged. Use
+  `ack_policy: :explicit` to handle message outcomes independently.
 
   ## Example
 

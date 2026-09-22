@@ -17,6 +17,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     :connection_pid,
     :connection_monitor_ref,
     :consumer_name,
+    :ack_policy,
     :last_response_at,
     current_retry: 0,
     buffer: []
@@ -103,6 +104,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
              connection_pid: conn,
              connection_monitor_ref: monitor_ref,
              consumer_name: final_consumer_name,
+             ack_policy: consumer_info.config.ack_policy,
              listening_topic: listening_topic,
              state: state
          },
@@ -221,12 +223,12 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
   defp validate_batch_ack_policy(%ConnectionOptions{batch_size: batch_size}, consumer_info)
        when batch_size > 1 do
     case consumer_info.config.ack_policy do
-      :explicit ->
+      policy when policy in [:explicit, :all] ->
         :ok
 
       other ->
         {:error,
-         "batch_size > 1 requires ack_policy: :explicit on the consumer, " <>
+         "batch_size > 1 requires ack_policy: :explicit or :all on the consumer, " <>
            "got: #{inspect(other)}"}
     end
   end
@@ -709,7 +711,33 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     }
   end
 
-  defp process_and_ack_batch(gen_state, acknowledge \\ &acknowledge/2) do
+  defp process_and_ack_batch(gen_state, acknowledge \\ &acknowledge/2)
+
+  defp process_and_ack_batch(%{buffer: []} = gen_state, _acknowledge), do: gen_state
+
+  defp process_and_ack_batch(%{ack_policy: :all} = gen_state, acknowledge) do
+    %{buffer: [last | _] = buffer, module: module, state: state} = gen_state
+
+    new_state =
+      buffer
+      |> Enum.reverse()
+      |> Enum.reduce(state, fn message, acc_state ->
+        case module.handle_message(message, acc_state) do
+          {:ack, updated_state} ->
+            updated_state
+
+          other ->
+            raise ArgumentError,
+                  "batch mode with ack_policy: :all requires handle_message/2 to return {:ack, state}, " <>
+                    "got: #{inspect(other)}. Use ack_policy: :explicit for per-message outcomes"
+        end
+      end)
+
+    acknowledge.(last, :ack)
+    %{gen_state | state: new_state, buffer: []}
+  end
+
+  defp process_and_ack_batch(%{ack_policy: :explicit} = gen_state, acknowledge) do
     %{buffer: buffer, module: module, state: state} = gen_state
     messages = Enum.reverse(buffer)
 
