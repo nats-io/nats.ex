@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.0
+
+* Adds support for `PullConsumer` with `ack_policy: :explicit` that pull in batch mode. This makes durable and multi-client consumers strongly consistent. Big thanks to @ericmj for #230
+  * Also fixes a bug where batch consumers with `ack_policy: :all` used to ignore return values of `:nack`, `:term` and `:noreply` which was confusing/incorrect (we logged an error and treated them as `:ack`). Now we will raise an `ArgumentError` and require that your `PullConsumer`s with `ack_policy: :all` can only respond with `:ack` since we can't individually address the messages with our flow.
+* `Gnat.Jetstream.API.Object` now validates that each chunk properly stored in the stream and does content hash validation on read. You can now rely on getting `:ok` vs `:error` from this API. Previously we didn't check the SHA-256 hash on read, so you could get `:ok` even if we missed a chunk or the final contents didn't line up with the recorded integrity hash. Again, thanks to @ericmj for #231
+
 ## 1.16.1
 
 * Fix `PullConsumer` dropping `:request_expires` and `:idle_heartbeat` after
