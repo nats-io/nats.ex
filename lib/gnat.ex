@@ -198,6 +198,33 @@ defmodule Gnat do
     result
   end
 
+  @doc false
+  def sub_async(pid, subscriber, topic) do
+    subscription_request(pid, {:sub, subscriber, topic, []}, :sub, %{topic: topic})
+  end
+
+  @doc false
+  def unsub_async(pid, sid) do
+    subscription_request(pid, {:unsub, sid, []}, :unsub, %{})
+  end
+
+  @doc false
+  def subscription_response(message, {request, event, start, metadata}) do
+    case :gen_server.check_response(message, request) do
+      {:reply, _} = response ->
+        :telemetry.execute([:gnat, event], %{latency: :erlang.monotonic_time() - start}, metadata)
+        response
+
+      other ->
+        other
+    end
+  end
+
+  defp subscription_request(pid, message, event, metadata) do
+    start = :erlang.monotonic_time()
+    {:gen_server.send_request(pid, message), event, start, metadata}
+  end
+
   @doc """
   Publish a message
 
@@ -555,7 +582,7 @@ defmodule Gnat do
       %{monitor_ref: ref} ->
         command = Command.build(:unsub, sid, opts)
         :ok = socket_write(state, command)
-        Process.demonitor(ref)
+        Process.demonitor(ref, [:flush])
         state = cleanup_subscription_from_state(state, sid, opts)
         state
     end

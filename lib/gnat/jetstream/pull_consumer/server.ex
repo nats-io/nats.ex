@@ -16,6 +16,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     :subscription_id,
     :connection_pid,
     :connection_monitor_ref,
+    :subscription_request,
     :consumer_name,
     :ack_policy,
     :last_response_at,
@@ -52,19 +53,21 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     end
   end
 
+  def connect({:subscription_error, reason}, gen_state) do
+    connection_failed(reason, gen_state)
+  end
+
   def connect(
         _,
         %__MODULE__{
           connection_options: %ConnectionOptions{
             stream_name: stream_name,
-            consumer_name: consumer_name,
             consumer: consumer,
             connection_name: connection_name,
-            connection_retry_timeout: connection_retry_timeout,
-            connection_retries: connection_retries,
             domain: domain
           },
           listening_topic: listening_topic,
+          consumer_name: consumer_name,
           module: module
         } = gen_state
       ) do
@@ -75,17 +78,12 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
       connection_name: connection_name
     )
 
-    # Mint a fresh inbox on every (re)connect. Reusing the same topic across
-    # reconnects lets messages from an abandoned pull on the previous
-    # connection leak into the new subscription's mailbox; rotating it
-    # makes those messages addressed to a topic we no longer subscribe to,
-    # and the per-message topic guard in handle_info/2 will drop any that
-    # do still arrive (e.g. delivered locally before unsub propagated).
+    # Each pull subscription has its own inbox so terminal statuses from an
+    # abandoned request can't change the replacement request's accounting.
     listening_topic =
       Util.reply_inbox(gen_state.connection_options.inbox_prefix)
 
     with {:ok, conn} <- connection_pid(connection_name),
-         monitor_ref = Process.monitor(conn),
          {:ok, consumer_info} <-
            ensure_consumer_exists(
              conn,
@@ -94,98 +92,90 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
              consumer,
              domain
            ),
-         :ok <- validate_batch_ack_policy(gen_state.connection_options, consumer_info),
-         final_consumer_name = consumer_info.name,
-         state = maybe_handle_connected(module, consumer_info, gen_state.state),
-         {:ok, sid} <- Gnat.sub(conn, self(), listening_topic),
-         gen_state = %{
-           gen_state
-           | subscription_id: sid,
-             connection_pid: conn,
-             connection_monitor_ref: monitor_ref,
-             consumer_name: final_consumer_name,
-             ack_policy: consumer_info.config.ack_policy,
-             listening_topic: listening_topic,
-             state: state
-         },
-         :ok <- initial_fetch(gen_state, conn),
-         gen_state = %{gen_state | current_retry: 0},
-         gen_state = touch_response(gen_state) do
-      {:ok, gen_state}
+         :ok <- validate_batch_ack_policy(gen_state.connection_options, consumer_info) do
+      gen_state = %{
+        gen_state
+        | consumer_name: consumer_info.name,
+          ack_policy: consumer_info.config.ack_policy
+      }
+
+      subscribe(conn, listening_topic, consumer_info, gen_state)
     else
-      {:error, reason} ->
-        if gen_state.current_retry >= connection_retries do
-          Logger.error(
-            """
-            #{__MODULE__} for #{stream_name}.#{gen_state.consumer_name} failed to connect to NATS and \
-            retries limit has been exhausted. Stopping.
-            """,
-            module: module,
-            listening_topic: listening_topic,
-            connection_name: connection_name
-          )
-
-          {:stop, :timeout, %{gen_state | current_retry: 0}}
-        else
-          Logger.debug(
-            """
-            #{__MODULE__} for #{stream_name}.#{gen_state.consumer_name} failed to connect to Gnat \
-            and will retry. Reason: #{inspect(reason)}
-            """,
-            module: module,
-            listening_topic: listening_topic,
-            connection_name: connection_name
-          )
-
-          gen_state = Map.update!(gen_state, :current_retry, &(&1 + 1))
-          {:backoff, connection_retry_timeout, gen_state}
-        end
+      {:error, reason} -> connection_failed(reason, gen_state)
     end
   end
 
-  def disconnect(
-        {:close, from},
-        %__MODULE__{
-          connection_options: %ConnectionOptions{
-            stream_name: stream_name,
-            connection_name: connection_name
-          },
-          listening_topic: listening_topic,
-          subscription_id: subscription_id,
-          module: module,
-          consumer_name: consumer_name
-        } = gen_state
-      ) do
-    Logger.debug(
-      "#{__MODULE__} for #{stream_name}.#{consumer_name} is disconnecting from Gnat.",
-      module: module,
-      listening_topic: listening_topic,
-      subscription_id: subscription_id,
-      connection_name: connection_name
-    )
+  defp subscribe(conn, listening_topic, consumer_info, gen_state) do
+    request = Gnat.sub_async(conn, self(), listening_topic)
 
-    with {:ok, conn} <- connection_pid(connection_name),
-         true <- Process.demonitor(gen_state.connection_monitor_ref, [:flush]),
-         :ok <- Gnat.unsub(conn, subscription_id) do
-      Logger.debug(
-        "#{__MODULE__} for #{stream_name}.#{consumer_name} is shutting down.",
-        module: module,
-        listening_topic: listening_topic,
-        subscription_id: subscription_id,
+    {:ok,
+     %{
+       gen_state
+       | connection_pid: conn,
+         listening_topic: listening_topic,
+         subscription_request: {:subscribe, request, consumer_info}
+     }}
+  end
+
+  defp subscription_ready(sid, consumer_info, gen_state) do
+    conn = gen_state.connection_pid
+    gen_state = %{gen_state | subscription_id: sid, subscription_request: nil}
+
+    monitor_ref = Process.monitor(conn)
+    state = maybe_handle_connected(gen_state.module, consumer_info, gen_state.state)
+    gen_state = %{gen_state | connection_monitor_ref: monitor_ref, state: state}
+
+    case initial_fetch(gen_state, conn) do
+      :ok ->
+        {:noreply, touch_response(%{gen_state | current_retry: 0})}
+
+      {:error, reason} ->
+        {:noreply, reset_to_disconnected(gen_state, false, {:subscription_error, reason})}
+    end
+  end
+
+  defp connection_failed(reason, gen_state) do
+    %{
+      connection_options: %ConnectionOptions{
+        stream_name: stream_name,
+        connection_name: connection_name,
+        connection_retry_timeout: connection_retry_timeout,
+        connection_retries: connection_retries
+      }
+    } = gen_state
+
+    if gen_state.current_retry >= connection_retries do
+      Logger.error(
+        "#{__MODULE__} for #{stream_name}.#{gen_state.consumer_name} exhausted connection retries.",
+        module: gen_state.module,
         connection_name: connection_name
       )
 
-      Connection.reply(from, :ok)
-      {:stop, :shutdown, gen_state}
+      {:stop, :timeout, %{gen_state | current_retry: 0}}
+    else
+      Logger.debug(
+        "#{__MODULE__} for #{stream_name}.#{gen_state.consumer_name} will retry connecting: #{inspect(reason)}",
+        module: gen_state.module,
+        connection_name: connection_name
+      )
+
+      {:backoff, connection_retry_timeout,
+       %{gen_state | current_retry: gen_state.current_retry + 1}}
     end
   end
 
-  defp ensure_consumer_exists(gnat, stream_name, consumer_name, nil, domain) do
-    # Durable consumer case - just check it exists
+  defp ensure_consumer_exists(gnat, stream_name, consumer_name, consumer, domain)
+       when is_binary(consumer_name) do
     try do
       case Gnat.Jetstream.API.Consumer.info(gnat, stream_name, consumer_name, domain) do
-        {:ok, consumer_info} -> {:ok, consumer_info}
-        {:error, reason} -> {:error, reason}
+        {:ok, consumer_info} ->
+          {:ok, consumer_info}
+
+        {:error, %{"err_code" => 10014}} when not is_nil(consumer) ->
+          ensure_consumer_exists(gnat, stream_name, nil, consumer, domain)
+
+        {:error, reason} ->
+          {:error, reason}
       end
     catch
       :exit, reason -> {:error, {:process_exit, reason}}
@@ -247,7 +237,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
   defp maybe_handle_status(message, %__MODULE__{module: module, state: state} = gen_state) do
     if function_exported?(module, :handle_status, 2) do
       {:ok, new_state} = module.handle_status(message, state)
-      %{gen_state | state: new_state}
+      touch_response(%{gen_state | state: new_state})
     else
       gen_state
     end
@@ -268,23 +258,36 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     end
   end
 
-  # -- Drop messages from a stale Gnat subscription. After a reconnect we
-  # mint a fresh inbox + subscription id (sid), but messages already in
-  # flight to the prior subscription can still arrive locally. Acking,
-  # processing, or re-pulling on those would corrupt the new subscription's
-  # state, so we log and drop.
-  #
-  # Gnat's :msg struct doesn't carry the inbox we subscribed on — only the
-  # original publish topic, the connection pid, and an integer sid. So we
-  # identify the current subscription by the (gnat_pid, sid) pair. This
-  # tuple is unique even across Gnat process restarts: a new Gnat process
-  # has a different pid, so its first sid=1 won't collide with the old
-  # process's sid=1. --
+  # Subscription identity includes the connection PID because subscription IDs
+  # are reused by replacement Gnat processes. Recovery drains accepted deliveries
+  # before replacing this identity; unrelated messages must not affect a new pull.
+  def handle_info(message, %{subscription_request: {operation, request, context}} = gen_state) do
+    case Gnat.subscription_response(message, request) do
+      {:reply, {:ok, sid}} when operation == :subscribe ->
+        subscription_ready(sid, context, gen_state)
+
+      {:reply, :ok} when operation == :unsubscribe ->
+        subscription_retired(gen_state, context)
+
+      {:reply, {:error, reason}} when operation == :subscribe ->
+        subscription_failed(reason, gen_state)
+
+      {:error, {reason, _conn}} ->
+        case operation do
+          :subscribe -> subscription_failed(reason, gen_state)
+          :unsubscribe -> subscription_retired(gen_state, %{context | acknowledge?: false})
+        end
+
+      :no_reply ->
+        handle_subscription_message(message, gen_state)
+    end
+  end
+
   def handle_info(
         {:msg, %{gnat: msg_gnat, sid: msg_sid} = message},
         %__MODULE__{connection_pid: conn, subscription_id: sid} = gen_state
       )
-      when is_integer(sid) and (msg_gnat != conn or msg_sid != sid) do
+      when msg_gnat != conn or msg_sid != sid do
     Logger.warning(
       "#{__MODULE__} dropping message from stale subscription " <>
         "(msg=#{inspect(msg_gnat)}/#{inspect(msg_sid)}, " <>
@@ -297,6 +300,16 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     )
 
     {:noreply, gen_state}
+  end
+
+  def handle_info(
+        {:msg, %{status: status, description: description} = message},
+        %__MODULE__{} = gen_state
+      )
+      when (status == "409" and description == "Consumer Deleted") or
+             (status == "404" and description == "Consumer Not Found") do
+    gen_state = maybe_handle_status(message, gen_state)
+    {:noreply, reset_to_disconnected(gen_state)}
   end
 
   # -- 100 is an idle heartbeat — the pull is still alive, do nothing but
@@ -328,14 +341,11 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     case buffer do
       [] ->
         # Nothing buffered — long-poll for new messages.
-        request_batch(gnat, gen_state, :tailing)
-        {:noreply, gen_state}
+        continue_after_send(gen_state, request_batch(gnat, gen_state, :tailing))
 
       _messages ->
         # Partial batch — process what we have, then try for more.
-        gen_state = process_and_ack_batch(gen_state)
-        request_batch(gnat, gen_state, :catching_up)
-        {:noreply, gen_state}
+        process_batch_and_fetch(gen_state, gnat)
     end
   end
 
@@ -350,9 +360,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     gen_state = touch_response(gen_state)
     gen_state = maybe_handle_status(message, gen_state)
 
-    next_message(message.gnat, gen_state)
-
-    {:noreply, gen_state}
+    continue_after_send(gen_state, next_message(message.gnat, gen_state))
   end
 
   # -- Batch mode: data message — buffer until batch is full --
@@ -369,9 +377,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     gen_state = %{gen_state | buffer: buffer}
 
     if length(buffer) >= batch_size do
-      gen_state = process_and_ack_batch(gen_state)
-      request_batch(message.gnat, gen_state, :catching_up)
-      {:noreply, gen_state}
+      process_batch_and_fetch(gen_state, message.gnat)
     else
       {:noreply, gen_state}
     end
@@ -407,34 +413,27 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
       connection_name: connection_name
     )
 
-    case module.handle_message(message, state) do
-      {:ack, state} ->
-        Gnat.Jetstream.ack_next(message, listening_topic,
-          batch: 1,
-          expires: request_expires,
-          idle_heartbeat: idle_heartbeat
-        )
+    {action, state} = module.handle_message(message, state)
+    gen_state = touch_response(%{gen_state | state: state})
 
-        gen_state = %{gen_state | state: state}
-        {:noreply, gen_state}
+    result =
+      case action do
+        :ack ->
+          connection_result(fn ->
+            Gnat.Jetstream.ack_next(message, listening_topic,
+              batch: 1,
+              expires: request_expires,
+              idle_heartbeat: idle_heartbeat
+            )
+          end)
 
-      {:nack, state} ->
-        Gnat.Jetstream.nack(message)
-        next_message(message.gnat, gen_state)
-        gen_state = %{gen_state | state: state}
-        {:noreply, gen_state}
+        action when action in [:nack, :term, :noreply] ->
+          with :ok <- acknowledge(message, action) do
+            next_message(message.gnat, gen_state)
+          end
+      end
 
-      {:term, state} ->
-        Gnat.Jetstream.ack_term(message)
-        next_message(message.gnat, gen_state)
-        gen_state = %{gen_state | state: state}
-        {:noreply, gen_state}
-
-      {:noreply, state} ->
-        next_message(message.gnat, gen_state)
-        gen_state = %{gen_state | state: state}
-        {:noreply, gen_state}
-    end
+    continue_after_send(gen_state, result)
   end
 
   def handle_info(
@@ -463,7 +462,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
       connection_name: connection_name
     )
 
-    {:connect, :reconnect, reset_to_disconnected(gen_state)}
+    {:noreply, reset_to_disconnected(gen_state, false)}
   end
 
   # -- Heartbeat watchdog: periodic check for "have we heard anything from
@@ -518,7 +517,7 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
         # Tear down the old subscription and monitor before reconnecting so
         # we don't get a stale {:DOWN, ...} or stray inbox messages from
         # the connection we're abandoning.
-        {:connect, :heartbeat_expired, reset_to_disconnected(gen_state)}
+        {:noreply, reset_to_disconnected(gen_state)}
     end
   end
 
@@ -549,28 +548,45 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     {:noreply, gen_state}
   end
 
-  def handle_call(
-        :close,
-        from,
-        %__MODULE__{
-          connection_options: %ConnectionOptions{
-            connection_name: connection_name,
-            stream_name: stream_name
-          },
-          subscription_id: subscription_id,
-          listening_topic: listening_topic,
-          module: module,
-          consumer_name: consumer_name
-        } = gen_state
-      ) do
-    Logger.debug("#{__MODULE__} for #{stream_name}.#{consumer_name} received :close call.",
-      module: module,
-      listening_topic: listening_topic,
-      subscription_id: subscription_id,
-      connection_name: connection_name
-    )
+  def handle_call(:close, _from, gen_state) do
+    # Gnat monitors subscribers and removes their subscriptions on exit, including
+    # subscriptions created by requests still queued when the subscriber exits.
+    {:stop, :shutdown, :ok, gen_state}
+  end
 
-    {:disconnect, {:close, from}, gen_state}
+  defp handle_subscription_message(:heartbeat_check, gen_state) do
+    schedule_heartbeat_check(gen_state)
+    {:noreply, gen_state}
+  end
+
+  defp handle_subscription_message(
+         {:msg, %{gnat: conn, sid: sid} = message},
+         %{connection_pid: conn, subscription_id: sid} = gen_state
+       ) do
+    case message do
+      %{status: status} when is_binary(status) and status != "" ->
+        {:noreply, gen_state}
+
+      _ ->
+        {:noreply, %{gen_state | buffer: [message | gen_state.buffer]}}
+    end
+  end
+
+  defp handle_subscription_message(_message, gen_state), do: {:noreply, gen_state}
+
+  defp subscription_failed(reason, gen_state) do
+    gen_state = clear_subscription(gen_state)
+    {:connect, {:subscription_error, reason}, gen_state}
+  end
+
+  defp subscription_retired(gen_state, %{acknowledge?: acknowledge?, reason: reason}) do
+    gen_state =
+      gen_state
+      |> collect_delivered_messages()
+      |> process_delivered_messages(acknowledge?)
+      |> clear_subscription()
+
+    {:connect, reason, gen_state}
   end
 
   defp next_message(conn, gen_state) do
@@ -588,15 +604,17 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     # Single-message-mode pulls long-poll the same way batch mode does in
     # :tailing — expires bounds the wait, idle_heartbeat keeps the watchdog
     # fed during quiet periods.
-    Gnat.Jetstream.API.Consumer.request_next_message(
-      conn,
-      stream_name,
-      consumer_name,
-      listening_topic,
-      domain,
-      expires: expires,
-      idle_heartbeat: idle_heartbeat
-    )
+    connection_result(fn ->
+      Gnat.Jetstream.API.Consumer.request_next_message(
+        conn,
+        stream_name,
+        consumer_name,
+        listening_topic,
+        domain,
+        expires: expires,
+        idle_heartbeat: idle_heartbeat
+      )
+    end)
   end
 
   defp initial_fetch(gen_state, conn) do
@@ -631,14 +649,16 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
           [batch: batch_size, expires: expires, idle_heartbeat: idle_heartbeat]
       end
 
-    Gnat.Jetstream.API.Consumer.request_next_message(
-      conn,
-      stream_name,
-      consumer_name,
-      listening_topic,
-      domain,
-      opts
-    )
+    connection_result(fn ->
+      Gnat.Jetstream.API.Consumer.request_next_message(
+        conn,
+        stream_name,
+        consumer_name,
+        listening_topic,
+        domain,
+        opts
+      )
+    end)
   end
 
   # ---- Heartbeat watchdog helpers ----
@@ -670,39 +690,38 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     end
   end
 
-  # Tear down everything tied to the current Gnat connection and reset the
-  # corresponding fields in gen_state. Side effects and state mutation live
-  # together so callers don't have to remember to do both.
-  #
-  # Safe to call from any path:
-  #   * Heartbeat-expired reconnect: connection still alive, demonitor +
-  #     unsub do real work.
-  #   * :DOWN handler: monitor already fired (demonitor is a no-op) and the
-  #     Gnat pid is gone (connection_pid returns :not_found, unsub skipped).
-  defp reset_to_disconnected(%__MODULE__{} = gen_state) do
+  # Keep the subscription identity until Gnat confirms retirement or exits.
+  # Its request monitor also lets recovery wait without blocking this process.
+  defp reset_to_disconnected(gen_state, acknowledge? \\ true, reason \\ :reconnect) do
     if gen_state.connection_monitor_ref do
       Process.demonitor(gen_state.connection_monitor_ref, [:flush])
     end
 
-    if gen_state.subscription_id && is_pid(gen_state.connection_pid) do
-      # Remove the old inbox before a nack can trigger redelivery.
-      # Best-effort unsub against the same Gnat that owns the sid (the
-      # pid we stored on the successful sub, not Process.whereis(name)
-      # which could resolve to a fresh-but-wedged Gnat after a restart).
-      # try/catch covers a dead pid or a slow GenServer.call.
-      try do
-        _ = Gnat.unsub(gen_state.connection_pid, gen_state.subscription_id)
-      catch
-        :exit, _ -> :ok
-      end
-    end
+    request = Gnat.unsub_async(gen_state.connection_pid, gen_state.subscription_id)
 
-    gen_state = process_and_ack_batch(gen_state, &acknowledge_on_disconnect/2)
+    gen_state =
+      if acknowledge? do
+        gen_state
+      else
+        gen_state
+        |> collect_delivered_messages()
+        |> process_delivered_messages(false)
+      end
 
     %{
       gen_state
-      | consumer_name: nil,
-        subscription_id: nil,
+      | connection_monitor_ref: nil,
+        subscription_request:
+          {:unsubscribe, request, %{acknowledge?: acknowledge?, reason: reason}},
+        last_response_at: nil
+    }
+  end
+
+  defp clear_subscription(gen_state) do
+    %{
+      gen_state
+      | subscription_id: nil,
+        subscription_request: nil,
         connection_pid: nil,
         connection_monitor_ref: nil,
         listening_topic: nil,
@@ -711,11 +730,49 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
     }
   end
 
+  defp process_delivered_messages(gen_state, acknowledge?) do
+    acknowledge = if acknowledge?, do: &acknowledge/2, else: &skip_acknowledgement/2
+
+    case process_and_ack_batch(gen_state, acknowledge) do
+      {:ok, gen_state} ->
+        gen_state
+
+      {{:error, _reason}, gen_state} ->
+        process_delivered_messages(gen_state, false)
+    end
+  end
+
+  defp skip_acknowledgement(_message, action) when action in [:ack, :nack, :term, :noreply],
+    do: :ok
+
+  # Once Gnat replies to unsubscribe, that process can't
+  # forward more messages for this subscription. Its earlier deliveries precede
+  # the reply in our mailbox. The same ordering holds for a dead connection's
+  # deliveries and its DOWN signal.
+  defp collect_delivered_messages(%{connection_pid: conn, subscription_id: sid} = gen_state)
+       when is_pid(conn) and is_integer(sid) do
+    receive do
+      {:msg, %{gnat: ^conn, sid: ^sid, status: status}} when is_binary(status) and status != "" ->
+        collect_delivered_messages(gen_state)
+
+      {:msg, %{gnat: ^conn, sid: ^sid} = message} ->
+        collect_delivered_messages(%{gen_state | buffer: [message | gen_state.buffer]})
+    after
+      0 -> gen_state
+    end
+  end
+
+  defp collect_delivered_messages(gen_state), do: gen_state
+
   defp process_and_ack_batch(gen_state, acknowledge \\ &acknowledge/2)
 
-  defp process_and_ack_batch(%{buffer: []} = gen_state, _acknowledge), do: gen_state
+  defp process_and_ack_batch(%{buffer: []} = gen_state, _acknowledge), do: {:ok, gen_state}
 
-  defp process_and_ack_batch(%{ack_policy: :all} = gen_state, acknowledge) do
+  defp process_and_ack_batch(
+         %{ack_policy: :all, connection_options: %{batch_size: batch_size}} = gen_state,
+         acknowledge
+       )
+       when batch_size > 1 do
     %{buffer: [last | _] = buffer, module: module, state: state} = gen_state
 
     new_state =
@@ -733,39 +790,56 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
         end
       end)
 
-    acknowledge.(last, :ack)
-    %{gen_state | state: new_state, buffer: []}
+    result = acknowledge.(last, :ack)
+    {result, touch_response(%{gen_state | state: new_state, buffer: []})}
   end
 
-  defp process_and_ack_batch(%{ack_policy: :explicit} = gen_state, acknowledge) do
-    %{buffer: buffer, module: module, state: state} = gen_state
-    messages = Enum.reverse(buffer)
-
-    new_state =
-      Enum.reduce(messages, state, fn message, acc_state ->
-        {action, updated_state} = module.handle_message(message, acc_state)
-        acknowledge.(message, action)
-        updated_state
-      end)
-
-    %{gen_state | state: new_state, buffer: []}
+  defp process_and_ack_batch(gen_state, acknowledge) do
+    process_messages(Enum.reverse(gen_state.buffer), %{gen_state | buffer: []}, acknowledge)
   end
 
-  defp acknowledge(message, action) do
-    case action do
-      :ack -> Gnat.Jetstream.ack(message)
-      :nack -> Gnat.Jetstream.nack(message)
-      :term -> Gnat.Jetstream.ack_term(message)
-      :noreply -> :ok
+  defp process_messages([], gen_state, _acknowledge), do: {:ok, touch_response(gen_state)}
+
+  defp process_messages([message | rest], gen_state, acknowledge) do
+    {action, state} = gen_state.module.handle_message(message, gen_state.state)
+    gen_state = %{gen_state | state: state}
+
+    case acknowledge.(message, action) do
+      :ok -> process_messages(rest, gen_state, acknowledge)
+      error -> {error, %{gen_state | buffer: Enum.reverse(rest)}}
     end
   end
 
-  defp acknowledge_on_disconnect(message, action) do
-    # A failed acknowledgement must not prevent processing the remaining buffer.
-    # Handler failures propagate to the supervisor outside this catch.
-    acknowledge(message, action)
+  defp process_batch_and_fetch(gen_state, conn) do
+    case process_and_ack_batch(gen_state) do
+      {:ok, gen_state} ->
+        continue_after_send(gen_state, request_batch(conn, gen_state, :catching_up))
+
+      {error, gen_state} ->
+        continue_after_send(gen_state, error)
+    end
+  end
+
+  defp continue_after_send(gen_state, :ok), do: {:noreply, gen_state}
+
+  defp continue_after_send(gen_state, {:error, _reason}) do
+    {:noreply, reset_to_disconnected(gen_state, false)}
+  end
+
+  defp connection_result(fun) do
+    fun.()
   catch
-    :exit, reason ->
-      Logger.debug("Failed to send #{action} during reconnect: #{inspect(reason)}")
+    :exit, reason -> {:error, {:connection_exit, reason}}
+  end
+
+  defp acknowledge(message, action) do
+    connection_result(fn ->
+      case action do
+        :ack -> Gnat.Jetstream.ack(message)
+        :nack -> Gnat.Jetstream.nack(message)
+        :term -> Gnat.Jetstream.ack_term(message)
+        :noreply -> :ok
+      end
+    end)
   end
 end

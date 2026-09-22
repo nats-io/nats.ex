@@ -19,6 +19,12 @@ defmodule Gnat.Jetstream.PullConsumer.StatusMessagesTest do
     end
 
     @impl true
+    def handle_connected(_info, state) do
+      send(state.test_pid, {:connected, self()})
+      {:ok, state}
+    end
+
+    @impl true
     def handle_message(message, state) do
       send(state.test_pid, {:handle_message, message})
       {:ack, state}
@@ -43,6 +49,12 @@ defmodule Gnat.Jetstream.PullConsumer.StatusMessagesTest do
       {test_pid, opts} = Keyword.pop!(opts, :test_pid)
 
       {:ok, test_pid, Keyword.merge([connection_name: :gnat], opts)}
+    end
+
+    @impl true
+    def handle_connected(_info, test_pid) do
+      send(test_pid, {:connected, self()})
+      {:ok, test_pid}
     end
 
     @impl true
@@ -82,8 +94,9 @@ defmodule Gnat.Jetstream.PullConsumer.StatusMessagesTest do
            test_pid: self(), stream_name: stream_name, consumer_name: consumer_name}
         )
 
-      send(pid, {:msg, %{status: "409", description: "Leadership Change", body: "", gnat: :gnat}})
-      send(pid, {:msg, %{status: "100", body: "", gnat: :gnat}})
+      assert_receive {:connected, ^pid}
+      send_status(pid, "409", "Leadership Change")
+      send_status(pid, "100", "Idle Heartbeat")
 
       refute_receive {:handle_message, _}, 100
     end
@@ -96,7 +109,8 @@ defmodule Gnat.Jetstream.PullConsumer.StatusMessagesTest do
            test_pid: self(), stream_name: stream_name, consumer_name: consumer_name}
         )
 
-      send(pid, {:msg, %{status: "409", description: "Leadership Change", body: "", gnat: :gnat}})
+      assert_receive {:connected, ^pid}
+      send_status(pid, "409", "Leadership Change")
 
       assert_receive {:handle_status, %{status: "409", description: "Leadership Change"}}
       refute_receive {:handle_message, _}, 100
@@ -117,7 +131,7 @@ defmodule Gnat.Jetstream.PullConsumer.StatusMessagesTest do
       # Drain the initial pull issued on connect.
       assert_receive {:msg, %{topic: "$JS.API.CONSUMER.MSG.NEXT." <> _}}, 1_000
 
-      send(pid, {:msg, %{status: "409", description: "Leadership Change", body: "", gnat: :gnat}})
+      send_status(pid, "409", "Leadership Change")
 
       # A new pull must be issued or the consumer is stuck.
       assert_receive {:msg, %{topic: "$JS.API.CONSUMER.MSG.NEXT." <> _}}, 1_000
@@ -192,7 +206,7 @@ defmodule Gnat.Jetstream.PullConsumer.StatusMessagesTest do
       # fires on the post-409 re-pull.
       drain_pulls(200)
 
-      send(pid, {:msg, %{status: "409", description: "Leadership Change", body: "", gnat: :gnat}})
+      send_status(pid, "409", "Leadership Change")
 
       # A new pull must be issued or the consumer is stuck.
       assert_receive {:msg, %{topic: "$JS.API.CONSUMER.MSG.NEXT." <> _}}, 1_000
@@ -235,7 +249,7 @@ defmodule Gnat.Jetstream.PullConsumer.StatusMessagesTest do
 
       # A 409 should cause the partial buffer to be processed (handle_message
       # called for "partial-1") and a fresh pull to be issued.
-      send(pid, {:msg, %{status: "409", description: "Leadership Change", body: "", gnat: :gnat}})
+      send_status(pid, "409", "Leadership Change")
 
       assert_receive {:handled, "partial-1"}, 1_000
       assert_receive {:msg, %{topic: "$JS.API.CONSUMER.MSG.NEXT." <> _}}, 1_000
@@ -260,12 +274,27 @@ defmodule Gnat.Jetstream.PullConsumer.StatusMessagesTest do
       drain_pulls(200)
 
       # 100 is a keep-alive on the existing pull — must NOT cause a re-pull.
-      send(pid, {:msg, %{status: "100", body: "", gnat: :gnat}})
+      send_status(pid, "100", "Idle Heartbeat")
 
       refute_receive {:msg, %{topic: "$JS.API.CONSUMER.MSG.NEXT." <> _}}, 200
       # But handle_status should still be invoked so users can observe heartbeats.
       assert_receive {:status, %{status: "100"}}, 500
     end
+  end
+
+  defp send_status(pid, status, description) do
+    %{mod_state: state} = :sys.get_state(pid)
+
+    send(pid, {
+      :msg,
+      %{
+        status: status,
+        description: description,
+        body: "",
+        gnat: state.connection_pid,
+        sid: state.subscription_id
+      }
+    })
   end
 
   defp drain_pulls(timeout) do

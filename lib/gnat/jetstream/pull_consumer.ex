@@ -104,8 +104,9 @@ defmodule Gnat.Jetstream.PullConsumer do
     An ephemeral consumer doesn't enforce exclusive access. Use `:explicit` for shared
     consumers or per-message outcomes.
 
-    Before reconnecting, buffered messages are passed to
-    the handler with best-effort acknowledgements on the original connection.
+    Before reconnecting, buffered messages and deliveries already in the process
+    mailbox are passed to the handler in order, with best-effort acknowledgements
+    on the original connection.
     Defaults to `1` (single-message mode).
   * `:request_expires` - duration in **nanoseconds** that a long-poll pull request will linger on
     the server before the server replies with a `408` terminator and the consumer issues a
@@ -115,13 +116,34 @@ defmodule Gnat.Jetstream.PullConsumer do
     but no real messages are available. The PullConsumer also runs a local watchdog: if
     no traffic at all (data, status, or heartbeat) is observed within `2 * idle_heartbeat`
     the consumer assumes the pull request was lost (e.g. dropped during a JetStream
-    leadership change without killing the TCP connection) and forces a reconnect.
+    leadership change without killing the TCP connection) and renews its pull
+    subscription. Callback execution time doesn't count toward this interval.
     Must be at most `:request_expires / 2` — the server rejects pull requests that
     violate this. Defaults to half of `:request_expires` (2.5 seconds with default
     settings, watchdog fires at 5s).
   * `:heartbeat_check_interval` - cadence in **milliseconds** at which the local watchdog
     checks for missed heartbeats. Independent of (and finer-grained than) the
     missed-heartbeat threshold itself. Defaults to `1_000` (1 second).
+
+  ## Recovery
+
+  Recovery reuses the server-side consumer while it exists, including ephemeral
+  consumers. A consumer supplied through `:consumer` is recreated only when the
+  server reports that it no longer exists. Its configured delivery policy applies
+  on recreation; for example, `:new` starts with messages published after recreation.
+  A consumer supplied through `:consumer_name` must be recreated by its owner.
+
+  A missed heartbeat renews the pull subscription on the existing Gnat connection.
+  If the connection process exits, the pull consumer waits for the configured
+  connection name to resolve to its replacement. Recovery processes deliveries
+  already received by this process before subscribing again. Subscription setup and
+  retirement wait for a reply or connection exit without abandoning pending operations.
+  Failed acknowledgement sends don't discard callback state or skip the remaining
+  received messages; recovery skips further acknowledgement sends for those
+  messages after the first failure.
+  Server redelivery still depends on the acknowledgement and delivery-limit settings;
+  a completed callback may run again if its acknowledgement couldn't reach the server.
+  Callback exceptions and exits propagate to supervision.
 
   ## Telemetry
 
@@ -487,6 +509,11 @@ defmodule Gnat.Jetstream.PullConsumer do
 
   @doc """
   Closes the pull consumer and stops underlying process.
+
+  Once the process handles the close request, it stops without waiting for Gnat.
+  Gnat removes the subscriptions when it handles the subscriber's exit notification.
+  This also cleans up subscriptions created by pending requests after the process exits.
+  Buffered messages aren't processed during close.
 
   ## Example
 
