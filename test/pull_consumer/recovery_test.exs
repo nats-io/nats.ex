@@ -553,6 +553,9 @@ defmodule Gnat.Jetstream.PullConsumer.RecoveryTest do
     conn = Process.whereis(:gnat)
     pid = start_consumer(stream, :managed_durable)
     assert_receive {:connected, ^pid, name}
+
+    # Wait for the initial pull to finish before suspending its connection.
+    :sys.get_state(pid)
     :sys.suspend(conn)
     expire(pid)
     await(fn -> pending_calls(conn, :unsub) == 1 end)
