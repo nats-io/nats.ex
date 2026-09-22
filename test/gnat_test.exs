@@ -345,13 +345,19 @@ defmodule GnatTest do
   test "recording errors from the broker" do
     import ExUnit.CaptureLog
     {:ok, gnat} = Gnat.start_link()
+    topic = "broker_errors.#{System.unique_integer([:positive])}"
+    {:ok, sid} = Gnat.sub(gnat, self(), topic)
 
     assert capture_log(fn ->
              Process.flag(:trap_exit, true)
-             Gnat.sub(gnat, self(), "invalid. subject")
-             # errors are reported asynchronously so we need to wait a moment
-             Process.sleep(20)
+             {:ok, _} = Gnat.sub(gnat, self(), "invalid. subject")
+
+             # The broker processes this publish after the invalid subscription.
+             :ok = Gnat.pub(gnat, topic, "ready")
+             assert_receive {:msg, %{sid: ^sid, body: "ready"}}
            end) =~ "Invalid Subject"
+
+    :ok = Gnat.stop(gnat)
   end
 
   test "connection timeout" do
