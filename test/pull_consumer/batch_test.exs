@@ -614,51 +614,193 @@ defmodule Gnat.Jetstream.PullConsumer.BatchTest do
       assert consumer_info.num_pending == 3
     end
 
-    for policy <- [:all, :none] do
-      @tag policy: policy
-      test "rejects ephemeral consumer with ack_policy #{policy} in batch mode", %{policy: policy} do
-        consumer = %Consumer{stream_name: @stream_name, ack_policy: policy}
+    test "rejects ephemeral consumer with ack_policy none in batch mode" do
+      consumer = %Consumer{stream_name: @stream_name, ack_policy: :none}
 
-        assert_raise ArgumentError, ~r/batch_size > 1 requires ack_policy: :explicit/, fn ->
-          Gnat.Jetstream.PullConsumer.ConnectionOptions.validate!(
-            connection_name: :gnat,
-            consumer: consumer,
-            batch_size: 3
-          )
+      assert_raise ArgumentError,
+                   ~r/batch_size > 1 requires ack_policy: :explicit or :all/,
+                   fn ->
+                     Gnat.Jetstream.PullConsumer.ConnectionOptions.validate!(
+                       connection_name: :gnat,
+                       consumer: consumer,
+                       batch_size: 3
+                     )
+                   end
+    end
+
+    test "rejects durable consumer with ack_policy none in batch mode" do
+      consumer_name = "BATCH_INVALID_POLICY"
+
+      {:ok, _} =
+        Consumer.create(:gnat, %Consumer{
+          stream_name: @stream_name,
+          durable_name: consumer_name,
+          ack_policy: :none
+        })
+
+      {:ok, _} =
+        Gnat.sub(:gnat, self(), "$JS.API.CONSUMER.MSG.NEXT.#{@stream_name}.#{consumer_name}")
+
+      pid =
+        start_supervised!(
+          {BatchPullConsumer,
+           stream_name: @stream_name,
+           consumer_name: consumer_name,
+           batch_size: 3,
+           test_pid: self(),
+           connection_retry_timeout: 50,
+           connection_retries: 1},
+          restart: :temporary
+        )
+
+      ref = Process.monitor(pid)
+
+      assert_receive {:DOWN, ^ref, :process, ^pid, :timeout}, 5_000
+      refute_receive {:connected, _}
+      refute_receive {:msg, %{topic: "$JS.API.CONSUMER.MSG.NEXT." <> _}}
+    end
+
+    for mode <- [:durable, :ephemeral], count <- [2, 3] do
+      @tag consumer_mode: mode, message_count: count
+      test "ack all acknowledges only the last of #{count} messages for a #{mode} consumer", %{
+        consumer_mode: mode,
+        message_count: count
+      } do
+        consumer =
+          case mode do
+            :durable -> create_durable("ack_all", ack_policy: :all)
+            :ephemeral -> %Consumer{stream_name: @stream_name, ack_policy: :all}
+          end
+
+        {:ok, _} = Gnat.sub(:gnat, self(), "$JS.ACK.#{@stream_name}.>")
+        publish_messages(Enum.map(1..count, &Integer.to_string/1))
+        pid = start_controlled(consumer, 3)
+
+        for i <- 1..count do
+          body = Integer.to_string(i)
+          assert_receive {:handling, ^pid, ^i, %{body: ^body, reply_to: topic}}
+          refute_receive {:msg, _}
+          send(pid, :ack)
+
+          if i == count do
+            assert_receive {:msg, %{topic: ^topic, body: ""}}
+          end
         end
+
+        %{mod_state: %{consumer_name: name}} = :sys.get_state(pid)
+        info = await_pending(name, 0)
+        assert info.ack_floor.stream_seq == count
+        refute_receive {:msg, _}
+
+        publish_messages(["next"])
+        next_count = count + 1
+        assert_receive {:handling, ^pid, ^next_count, %{body: "next", reply_to: topic}}
+        send(pid, :ack)
+        assert_receive {:msg, %{topic: ^topic, body: ""}}
+        await_pending(name, 0)
       end
+    end
 
-      @tag policy: policy
-      test "rejects durable consumer with ack_policy #{policy} in batch mode", %{policy: policy} do
-        consumer_name = "BATCH_INVALID_POLICY"
-
-        {:ok, _} =
-          Consumer.create(:gnat, %Consumer{
-            stream_name: @stream_name,
-            durable_name: consumer_name,
-            ack_policy: policy
-          })
-
-        {:ok, _} =
-          Gnat.sub(:gnat, self(), "$JS.API.CONSUMER.MSG.NEXT.#{@stream_name}.#{consumer_name}")
-
-        pid =
-          start_supervised!(
-            {BatchPullConsumer,
-             stream_name: @stream_name,
-             consumer_name: consumer_name,
-             batch_size: 3,
-             test_pid: self(),
-             connection_retry_timeout: 50,
-             connection_retries: 1},
-            restart: :temporary
-          )
-
+    for action <- [:nack, :term, :noreply], flush <- [:full, :expired, :reconnect] do
+      @tag handler_action: action, flush: flush
+      test "ack all rejects #{action} without acknowledging the #{flush} batch", %{
+        handler_action: action,
+        flush: flush
+      } do
+        consumer = create_durable("ack_all_outcomes", ack_policy: :all)
+        {:ok, _} = Gnat.sub(:gnat, self(), "$JS.ACK.#{@stream_name}.#{consumer}.>")
+        batch_size = if flush == :full, do: 3, else: 4
+        pid = start_controlled(consumer, batch_size)
         ref = Process.monitor(pid)
+        assert_receive {:connected, ^pid}
+        assert_receive {:status, ^pid, "404"}
+        publish_messages(["1", "2", "3"])
 
-        assert_receive {:DOWN, ^ref, :process, ^pid, :timeout}, 5_000
-        refute_receive {:connected, _}
-        refute_receive {:msg, %{topic: "$JS.API.CONSUMER.MSG.NEXT." <> _}}
+        if flush == :reconnect do
+          await_buffer(pid, 3)
+          reconnect(pid, :heartbeat_expired)
+        end
+
+        assert_receive {:handling, ^pid, 1, %{body: "1"}}
+        send(pid, :ack)
+        assert_receive {:handling, ^pid, 2, %{body: "2"}}
+        send(pid, action)
+        assert_receive {:DOWN, ^ref, :process, ^pid, {reason, stacktrace}}
+        error = Exception.normalize(:error, reason, stacktrace)
+        assert %ArgumentError{} = error
+
+        assert error.message =~
+                 "ack_policy: :all requires handle_message/2 to return {:ack, state}"
+
+        assert error.message =~ inspect(action)
+        assert error.message =~ "ack_policy: :explicit"
+
+        info = await_pending(consumer, 3)
+        assert info.ack_floor.stream_seq == 0
+        refute_receive {:handling, ^pid, 3, _}
+        refute_receive {:msg, _}
+        refute_receive {:connected, ^pid}
+      end
+    end
+
+    for action <- [:raise, :exit] do
+      @tag handler_action: action
+      test "ack all leaves the whole batch pending on handler #{action}", %{
+        handler_action: action
+      } do
+        consumer = create_durable("ack_all_failure", ack_policy: :all)
+        publish_messages(["1", "2", "3"])
+        pid = start_controlled(consumer, 3)
+        ref = Process.monitor(pid)
+        assert_receive {:handling, ^pid, 1, %{body: "1"}}
+        send(pid, :ack)
+        assert_receive {:handling, ^pid, 2, %{body: "2"}}
+        send(pid, action)
+        assert_receive {:DOWN, ^ref, :process, ^pid, reason}
+
+        case action do
+          :raise ->
+            {error, stacktrace} = reason
+
+            assert %RuntimeError{message: "handler failed"} =
+                     Exception.normalize(:error, error, stacktrace)
+
+          :exit ->
+            assert reason == :handler_exit
+        end
+
+        info = await_pending(consumer, 3)
+        assert info.ack_floor.stream_seq == 0
+        refute_receive {:handling, ^pid, 3, _}
+      end
+    end
+
+    for reason <- [:connection_down, :heartbeat_expired] do
+      @tag reconnect_reason: reason
+      test "ack all processes the partial buffer before #{reason}", %{reconnect_reason: reason} do
+        consumer = create_durable("ack_all_reconnect", ack_policy: :all, max_deliver: 1)
+        pid = start_controlled(consumer, 3, ControlledConsumer, request_expires: 1_000_000_000)
+        assert_receive {:connected, ^pid}
+        assert_receive {:status, ^pid, "404"}
+        publish_messages(["1", "2"])
+        await_buffer(pid, 2)
+        reconnect(pid, reason)
+
+        assert_receive {:handling, ^pid, 1, %{body: "1"}}, 3_000
+        send(pid, :ack)
+        assert_receive {:handling, ^pid, 2, %{body: "2"}}
+        send(pid, :ack)
+        assert_receive {:connected, ^pid}, 3_000
+        await_buffer(pid, 0)
+
+        if reason == :heartbeat_expired do
+          await_pending(consumer, 0)
+        end
+
+        publish_messages(["3"])
+        assert_receive {:handling, ^pid, 3, %{body: "3"}}, 3_000
+        send(pid, :ack)
+        await_pending(consumer, 0)
       end
     end
 
