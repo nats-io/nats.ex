@@ -346,9 +346,11 @@ defmodule GnatTest do
     import ExUnit.CaptureLog
     {:ok, gnat} = Gnat.start_link()
 
+    %{socket: socket} = :sys.get_state(gnat)
+
     assert capture_log(fn ->
              Process.flag(:trap_exit, true)
-             Gnat.sub(gnat, self(), "invalid. subject")
+             :ok = :gen_tcp.send(socket, "SUB invalid. subject 1\r\n")
              # errors are reported asynchronously so we need to wait a moment
              Process.sleep(20)
            end) =~ "Invalid Subject"
