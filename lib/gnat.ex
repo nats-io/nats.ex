@@ -8,7 +8,7 @@ defmodule Gnat do
   """
   use GenServer
   require Logger
-  alias Gnat.{Command, Parsec}
+  alias Gnat.{Command, Parsec, Validation}
 
   @type t :: GenServer.server()
   @type headers :: [{binary(), iodata()}]
@@ -149,10 +149,17 @@ defmodule Gnat do
   You can also pass arbitrary SSL or TCP options in the `tcp_opts` and `ssl_opts` keys.
   If you pass custom TCP options please include `:binary`. Gnat uses binary matching to parse messages.
 
+  The `:inbox_prefix` must be a binary without spaces, tabs, carriage returns or
+  line feeds. Invalid values raise `ArgumentError` before connecting.
+
   The final `opts` argument will be passed to the `GenServer.start_link` call so you can pass things like `[name: :gnat_connection]`.
   """
   @spec start_link(connection_settings(), keyword()) :: GenServer.on_start()
   def start_link(connection_settings \\ %{}, opts \\ []) do
+    Validation.inbox_prefix!(
+      Map.get(connection_settings, :inbox_prefix, @default_connection_settings.inbox_prefix)
+    )
+
     GenServer.start_link(__MODULE__, connection_settings, opts)
   end
 
@@ -177,6 +184,11 @@ defmodule Gnat do
   When a queue_group is supplied messages will be spread among the subscribers
   in the same group. (see [nats queueing](https://nats.io/documentation/concepts/nats-queueing/))
 
+  Subjects must be non-empty binaries without spaces, tabs, carriage returns or
+  line feeds. Queue groups must be binaries without those characters; an empty
+  queue group means no queue group. The server validates the subject grammar.
+  Invalid values raise `ArgumentError` in the caller before subscribing.
+
   The subscribed process will begin receiving messages with a structure of `t:sent_message/0`
 
   ```
@@ -192,6 +204,12 @@ defmodule Gnat do
           {:ok, non_neg_integer()} | {:ok, String.t()} | {:error, String.t()}
   def sub(pid, subscriber, topic, opts \\ []) do
     start = :erlang.monotonic_time()
+    Validation.subject!(topic, :subscription)
+
+    if Keyword.has_key?(opts, :queue_group) do
+      Validation.queue_group!(Keyword.fetch!(opts, :queue_group))
+    end
+
     result = GenServer.call(pid, {:sub, subscriber, topic, opts})
     latency = :erlang.monotonic_time() - start
     :telemetry.execute([:gnat, :sub], %{latency: latency}, %{topic: topic})
@@ -248,6 +266,10 @@ defmodule Gnat do
   :ok = Gnat.pub(gnat, "listen", "Yo", headers: [{"foo", "bar"}])
   ```
 
+  The topic and optional reply subject must be non-empty binaries without spaces,
+  tabs, carriage returns or line feeds. Invalid values raise `ArgumentError` in
+  the caller before sending. The server validates the subject grammar.
+
   Headers must be passed as a `t:headers()` value (a list of tuples).
   Sending and parsing headers has more overhead than typical nats messages
   (see [the Nats 2.2 release notes for details](https://docs.nats.io/whats_new_22#message-headers)),
@@ -256,6 +278,12 @@ defmodule Gnat do
   @spec pub(t(), String.t(), binary(), keyword()) :: :ok
   def pub(pid, topic, message, opts \\ []) do
     start = :erlang.monotonic_time()
+    Validation.subject!(topic, :publish)
+
+    if Keyword.has_key?(opts, :reply_to) do
+      Validation.subject!(Keyword.fetch!(opts, :reply_to), :reply)
+    end
+
     opts = prepare_headers(opts)
     result = GenServer.call(pid, {:pub, topic, message, opts})
     latency = :erlang.monotonic_time() - start
@@ -268,6 +296,9 @@ defmodule Gnat do
 
   Following the nats [request-reply pattern](https://docs.nats.io/nats-concepts/core-nats/reqreply) this
   function generates a one-time topic to receive replies and then sends a message to the provided topic.
+
+  The topic follows the same rules as `pub/4`. Invalid topics raise `ArgumentError`
+  in the caller before registering or sending the request.
 
   Supported options:
     * `receive_timeout` - An integer number of milliseconds to wait for a response. Defaults to 60_000
@@ -292,6 +323,7 @@ defmodule Gnat do
           {:ok, message} | {:error, :timeout} | {:error, :no_responders}
   def request(pid, topic, body, opts \\ []) do
     start = :erlang.monotonic_time()
+    Validation.subject!(topic, :publish)
     receive_timeout = Keyword.get(opts, :receive_timeout, 60_000)
     req = %{recipient: self(), body: body, topic: topic}
     opts = prepare_headers(opts)
@@ -316,6 +348,9 @@ defmodule Gnat do
   This function makes it easy to do a scatter-gather operation where you wait for a limited time
   and optionally a maximum number of replies.
 
+  The topic follows the same rules as `pub/4`. Invalid topics raise `ArgumentError`
+  in the caller before registering or sending the request.
+
   Supported options:
     * `receive_timeout` - An integer number of milliseconds to wait for responses. Defaults to 60_000
     * `max_messages` - An integer number of messages to listen for. Defaults to -1 meaning unlimited
@@ -331,6 +366,7 @@ defmodule Gnat do
           {:ok, list(message())} | {:error, :no_responders}
   def request_multi(pid, topic, body, opts \\ []) do
     start = :erlang.monotonic_time()
+    Validation.subject!(topic, :publish)
     receive_timeout_ms = Keyword.get(opts, :receive_timeout, 60_000)
     expiration = System.monotonic_time(:millisecond) + receive_timeout_ms
     max_messages = Keyword.get(opts, :max_messages, -1)

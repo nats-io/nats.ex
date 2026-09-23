@@ -348,9 +348,11 @@ defmodule GnatTest do
     topic = "broker_errors.#{System.unique_integer([:positive])}"
     {:ok, sid} = Gnat.sub(gnat, self(), topic)
 
+    %{socket: socket} = :sys.get_state(gnat)
+
     assert capture_log(fn ->
              Process.flag(:trap_exit, true)
-             {:ok, _} = Gnat.sub(gnat, self(), "invalid. subject")
+             :ok = :gen_tcp.send(socket, "SUB invalid. subject #{sid + 1}\r\n")
 
              # The broker processes this publish after the invalid subscription.
              :ok = Gnat.pub(gnat, topic, "ready")
