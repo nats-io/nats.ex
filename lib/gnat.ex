@@ -149,8 +149,8 @@ defmodule Gnat do
   You can also pass arbitrary SSL or TCP options in the `tcp_opts` and `ssl_opts` keys.
   If you pass custom TCP options please include `:binary`. Gnat uses binary matching to parse messages.
 
-  Invalid `:inbox_prefix` values raise `ArgumentError` before connecting. The prefix
-  must produce a literal subject when the generated inbox identifier is appended.
+  The `:inbox_prefix` must be a binary without spaces, tabs, carriage returns or
+  line feeds. Invalid values raise `ArgumentError` before connecting.
 
   The final `opts` argument will be passed to the `GenServer.start_link` call so you can pass things like `[name: :gnat_connection]`.
   """
@@ -184,9 +184,9 @@ defmodule Gnat do
   When a queue_group is supplied messages will be spread among the subscribers
   in the same group. (see [nats queueing](https://nats.io/documentation/concepts/nats-queueing/))
 
-  Subjects must contain non-empty dot-separated tokens. `*` can match a whole
-  token, and `>` can appear as the final whole token. Subjects and queue groups
-  must be non-empty UTF-8 strings without whitespace or control characters.
+  Subjects must be non-empty binaries without spaces, tabs, carriage returns or
+  line feeds. Queue groups must be binaries without those characters; an empty
+  queue group means no queue group. The server validates the subject grammar.
   Invalid values raise `ArgumentError` in the caller before subscribing.
 
   The subscribed process will begin receiving messages with a structure of `t:sent_message/0`
@@ -239,9 +239,9 @@ defmodule Gnat do
   :ok = Gnat.pub(gnat, "listen", "Yo", headers: [{"foo", "bar"}])
   ```
 
-  The topic and optional reply subject must be non-empty UTF-8 strings with
-  non-empty dot-separated tokens, without wildcards, whitespace or control
-  characters. Invalid values raise `ArgumentError` in the caller before sending.
+  The topic and optional reply subject must be non-empty binaries without spaces,
+  tabs, carriage returns or line feeds. Invalid values raise `ArgumentError` in
+  the caller before sending. The server validates the subject grammar.
 
   Headers must be passed as a `t:headers()` value (a list of tuples).
   Sending and parsing headers has more overhead than typical nats messages

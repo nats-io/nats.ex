@@ -3,30 +3,39 @@ defmodule Gnat.ProtocolValidationTest do
 
   @invalid_subjects [
     "",
-    ".",
-    ".foo",
-    "foo.",
-    "foo..bar",
     "foo bar",
     "foo\tbar",
     "foo\rbar",
     "foo\nbar",
     "foo\r\nPING\r\n",
-    "foo\0bar",
-    "foo\vbar",
-    "foo\fbar",
-    "foo\u007Fbar",
-    "foo\u00A0bar",
-    <<255>>,
     nil,
     :topic,
     ~c"topic",
     ["topic"]
   ]
-  @invalid_literals @invalid_subjects ++ ["*", ">", "foo.*", "foo.>", "foo*bar", "foo>bar"]
+  @non_delimiter_bytes for byte <- 0..255, byte not in [9, 10, 13, 32], do: <<"a", byte, "b">>
+  @server_validated_subjects [
+                               ".",
+                               ".foo",
+                               "foo.",
+                               "foo..bar",
+                               "*",
+                               ">",
+                               "foo.*",
+                               "foo.>",
+                               "foo*bar",
+                               "foo>bar",
+                               ">.foo",
+                               "foo.>.bar",
+                               "**",
+                               "foo\u00A0bar",
+                               "foo\u2000bar",
+                               "foo\u2028bar",
+                               "foo\u3000bar"
+                             ] ++ @non_delimiter_bytes
 
   test "publish rejects invalid subjects before contacting the connection" do
-    for topic <- @invalid_literals, opts <- [[], [headers: [{"x", "y"}]]] do
+    for topic <- @invalid_subjects, opts <- [[], [headers: [{"x", "y"}]]] do
       assert_raise ArgumentError, ~r/invalid publish subject/, fn ->
         Gnat.pub(self(), topic, "payload", opts)
       end
@@ -34,7 +43,7 @@ defmodule Gnat.ProtocolValidationTest do
   end
 
   test "publish rejects invalid reply subjects with and without headers" do
-    for reply <- @invalid_literals, opts <- [[], [headers: [{"x", "y"}]]] do
+    for reply <- @invalid_subjects, opts <- [[], [headers: [{"x", "y"}]]] do
       assert_raise ArgumentError, ~r/invalid reply subject/, fn ->
         Gnat.pub(self(), "topic", "payload", Keyword.put(opts, :reply_to, reply))
       end
@@ -42,7 +51,7 @@ defmodule Gnat.ProtocolValidationTest do
   end
 
   test "both request APIs reject invalid subjects before registering a request" do
-    for topic <- @invalid_literals,
+    for topic <- @invalid_subjects,
         request <- [&Gnat.request/4, &Gnat.request_multi/4],
         opts <- [[], [headers: [{"x", "y"}]]] do
       assert_raise ArgumentError, ~r/invalid publish subject/, fn ->
@@ -51,20 +60,18 @@ defmodule Gnat.ProtocolValidationTest do
     end
   end
 
-  test "subscribe rejects malformed subjects and wildcard placement before contacting the connection" do
-    subjects = @invalid_subjects ++ ["foo*", "*foo", "foo>", ">foo", ">.foo", "foo.>.bar", "**"]
-
-    for topic <- subjects do
+  test "subscribe rejects protocol delimiters before contacting the connection" do
+    for topic <- @invalid_subjects do
       assert_raise ArgumentError, ~r/invalid subscription subject/, fn ->
         Gnat.sub(self(), self(), topic)
       end
     end
   end
 
-  test "subscribe rejects empty, non-string, whitespace and control queue groups" do
+  test "subscribe rejects non-binary queue groups and protocol delimiters" do
     for queue <-
-          ["", nil, :queue, ~c"queue", ["queue"], <<255>>] ++
-            Enum.map([0, 9, 10, 11, 12, 13, 32, 127, 160], &"workers#{<<&1::utf8>>}east") do
+          [nil, :queue, ~c"queue", ["queue"]] ++
+            Enum.map([9, 10, 13, 32], &"workers#{<<&1::utf8>>}east") do
       assert_raise ArgumentError, ~r/invalid queue group/, fn ->
         Gnat.sub(self(), self(), "topic", queue_group: queue)
       end
@@ -76,18 +83,55 @@ defmodule Gnat.ProtocolValidationTest do
           nil,
           :inbox,
           ~c"inbox",
-          "a..",
-          ".",
-          "a.*.",
-          "a.>.",
+          "a\t",
+          "a\r",
+          "a\n",
           "a\r\nPING\r\n",
-          "a ",
-          <<255>>
+          "a "
         ] do
       assert_raise ArgumentError, ~r/invalid inbox prefix/, fn ->
         Gnat.start_link(%{host: "127.0.0.1", port: 0, inbox_prefix: prefix})
       end
     end
+  end
+
+  test "publish leaves subject grammar and non-delimiter bytes to the server" do
+    for topic <- @server_validated_subjects do
+      assert_connection_call(
+        fn conn -> Gnat.pub(conn, topic, "payload", reply_to: topic) end,
+        {:pub, topic, "payload", [reply_to: topic]},
+        :ok
+      )
+    end
+  end
+
+  test "subscribe leaves subject and queue grammar and non-delimiter bytes to the server" do
+    subscriber = self()
+
+    for topic <- @server_validated_subjects do
+      assert_connection_call(
+        fn conn -> Gnat.sub(conn, subscriber, topic, queue_group: topic) end,
+        {:sub, subscriber, topic, [queue_group: topic]},
+        {:ok, 1}
+      )
+    end
+  end
+
+  test "inbox prefixes allow grammar and non-delimiter bytes for the server to validate" do
+    for prefix <- ["" | @server_validated_subjects] do
+      assert :ok = Gnat.Validation.inbox_prefix!(prefix)
+    end
+  end
+
+  test "empty queue groups behave as unqueued subscriptions" do
+    {:ok, conn} = Gnat.start_link()
+    topic = "validation.#{System.unique_integer([:positive])}.empty_queue"
+    {:ok, first} = Gnat.sub(conn, self(), topic, queue_group: "")
+    {:ok, second} = Gnat.sub(conn, self(), topic, queue_group: "")
+    assert :ok = Gnat.pub(conn, topic, "data")
+    assert_receive {:msg, %{sid: ^first, body: "data"}}
+    assert_receive {:msg, %{sid: ^second, body: "data"}}
+    assert :ok = Gnat.stop(conn)
   end
 
   test "invalid operations leave connection state unchanged and valid traffic still works" do
@@ -160,5 +204,13 @@ defmodule Gnat.ProtocolValidationTest do
 
       assert :ok = Gnat.stop(conn)
     end
+  end
+
+  defp assert_connection_call(operation, expected, reply) do
+    conn = self()
+    task = Task.async(fn -> operation.(conn) end)
+    assert_receive {:"$gen_call", from, ^expected}
+    GenServer.reply(from, reply)
+    assert Task.await(task) == reply
   end
 end
