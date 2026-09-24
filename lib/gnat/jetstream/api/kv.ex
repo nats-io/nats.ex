@@ -95,11 +95,16 @@ defmodule Gnat.Jetstream.API.KV do
   end
 
   @doc """
-  Create a Key in a Key/Value Bucket
+  Create a key in a Key/Value bucket if it doesn't already exist.
+
+  Deleted and purged keys can be recreated. Creation is conditional on the
+  key's revision, so concurrent creators can't overwrite each other. Returns
+  `:ok` after a valid publish acknowledgement or `{:error, reason}`, including
+  the server's error map when a live key already exists.
 
   ## Options
 
-  * `:timeout` - receive timeout for the request
+  * `:timeout` - receive timeout for each request, including tombstone lookup and recreation
 
   ## Examples
 
@@ -116,11 +121,87 @@ defmodule Gnat.Jetstream.API.KV do
   def create_key(conn, bucket_name, key, value, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, 5_000)
 
-    reply = Gnat.request(conn, key_name(bucket_name, key), value, receive_timeout: timeout)
+    case create_at_revision(conn, bucket_name, key, value, 0, timeout) do
+      {:error, %{"err_code" => code}} = conflict when code in [10071, 10164] ->
+        case deleted_revision(conn, bucket_name, key, timeout) do
+          {:ok, revision} when is_integer(revision) ->
+            create_at_revision(conn, bucket_name, key, value, revision, timeout)
 
-    case reply do
-      {:ok, _} -> :ok
-      error -> error
+          {:ok, nil} ->
+            conflict
+
+          error ->
+            error
+        end
+
+      result ->
+        result
+    end
+  end
+
+  defp create_at_revision(conn, bucket_name, key, value, revision, timeout) do
+    stream = stream_name(bucket_name)
+
+    with {:ok, %{body: body}} <-
+           Gnat.request(conn, key_name(bucket_name, key), value,
+             headers: [{"Nats-Expected-Last-Subject-Sequence", Integer.to_string(revision)}],
+             receive_timeout: timeout
+           ) do
+      case Jason.decode(body) do
+        {:ok, %{"error" => error}} ->
+          {:error, error}
+
+        {:ok, %{"stream" => ^stream, "seq" => seq}} when is_integer(seq) and seq > 0 ->
+          :ok
+
+        _ ->
+          {:error, :invalid_publish_ack}
+      end
+    end
+  end
+
+  defp deleted_revision(conn, bucket_name, key, timeout) do
+    subject = key_name(bucket_name, key)
+
+    with {:ok, %{body: body}} <-
+           Gnat.request(
+             conn,
+             "$JS.API.STREAM.MSG.GET.#{stream_name(bucket_name)}",
+             Jason.encode!(%{last_by_subj: subject}),
+             receive_timeout: timeout
+           ) do
+      case Jason.decode(body) do
+        {:ok, %{"error" => error}} ->
+          {:error, error}
+
+        {:ok, %{"message" => %{"seq" => revision, "hdrs" => hdrs}}}
+        when is_integer(revision) and revision > 0 and is_binary(hdrs) ->
+          with {:ok, decoded_headers} <- Base.decode64(hdrs),
+               {:ok, nil, nil, headers} <- Gnat.Parsec.parse_headers(decoded_headers) do
+            deleted? =
+              Enum.any?(headers, fn
+                {"kv-operation", op} when op in ["DEL", "PURGE"] ->
+                  true
+
+                {"nats-marker-reason", reason} when reason in ["MaxAge", "Purge", "Remove"] ->
+                  true
+
+                _ ->
+                  false
+              end)
+
+            {:ok, if(deleted?, do: revision)}
+          else
+            _ -> {:error, :invalid_lookup_response}
+          end
+
+        {:ok, %{"message" => %{"seq" => revision} = message}}
+        when is_integer(revision) and revision > 0 and not is_map_key(message, "hdrs") ->
+          {:ok, nil}
+
+        _ ->
+          {:error, :invalid_lookup_response}
+      end
     end
   end
 
