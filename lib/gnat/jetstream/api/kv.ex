@@ -14,6 +14,7 @@ defmodule Gnat.Jetstream.API.KV do
   metadata.
   """
   alias Gnat.Jetstream.API.{Stream}
+  alias Gnat.Jetstream.API.KV.Entry
 
   @stream_prefix "KV_"
   @subject_prefix "$KV."
@@ -190,19 +191,10 @@ defmodule Gnat.Jetstream.API.KV do
         when is_integer(revision) and revision > 0 and is_binary(hdrs) ->
           with {:ok, decoded_headers} <- Base.decode64(hdrs),
                {:ok, nil, nil, headers} <- Gnat.Parsec.parse_headers(decoded_headers) do
-            deleted? =
-              Enum.any?(headers, fn
-                {"kv-operation", op} when op in ["DEL", "PURGE"] ->
-                  true
-
-                {"nats-marker-reason", reason} when reason in ["MaxAge", "Purge", "Remove"] ->
-                  true
-
-                _ ->
-                  false
-              end)
-
-            {:ok, if(deleted?, do: revision)}
+            case Entry.operation(headers) do
+              :put -> {:ok, nil}
+              _deleted -> {:ok, revision}
+            end
           else
             _ -> {:error, :invalid_lookup_response}
           end
@@ -342,17 +334,10 @@ defmodule Gnat.Jetstream.API.KV do
 
     pager_opts = [domain: domain, batch: batch_size]
 
-    Pager.reduce(conn, stream, pager_opts, %{}, fn msg, acc ->
-      case msg do
-        %{topic: key, body: body, headers: headers} ->
-          if {"kv-operation", "DEL"} in headers do
-            acc
-          else
-            Map.put(acc, subject_to_key(key, bucket_name), body)
-          end
-
-        %{topic: key, body: body} ->
-          Map.put(acc, subject_to_key(key, bucket_name), body)
+    Pager.reduce(conn, stream, pager_opts, %{}, fn %{topic: key, body: body} = msg, acc ->
+      case Entry.operation(Map.get(msg, :headers)) do
+        :put -> Map.put(acc, subject_to_key(key, bucket_name), body)
+        _deleted -> acc
       end
     end)
   end
@@ -381,22 +366,10 @@ defmodule Gnat.Jetstream.API.KV do
     pager_opts = [domain: domain, headers_only: true, batch: batch_size]
 
     result =
-      Pager.reduce(conn, stream, pager_opts, MapSet.new(), fn msg, acc ->
-        case msg do
-          %{topic: key, headers: headers} ->
-            cond do
-              {"kv-operation", "DEL"} in headers ->
-                MapSet.delete(acc, subject_to_key(key, bucket_name))
-
-              {"kv-operation", "PURGE"} in headers ->
-                MapSet.delete(acc, subject_to_key(key, bucket_name))
-
-              true ->
-                MapSet.put(acc, subject_to_key(key, bucket_name))
-            end
-
-          %{topic: key} ->
-            MapSet.put(acc, subject_to_key(key, bucket_name))
+      Pager.reduce(conn, stream, pager_opts, MapSet.new(), fn %{topic: key} = msg, acc ->
+        case Entry.operation(Map.get(msg, :headers)) do
+          :put -> MapSet.put(acc, subject_to_key(key, bucket_name))
+          _deleted -> MapSet.delete(acc, subject_to_key(key, bucket_name))
         end
       end)
 
