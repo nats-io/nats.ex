@@ -57,14 +57,14 @@ defmodule Gnat.Jetstream.API.KV.EntryTest do
                Entry.from_message(message, @bucket)
     end
 
-    test "treats a nats-marker-reason tombstone as :delete" do
+    test "treats a nats-marker-reason tombstone as a removal" do
       message = %{
         topic: "$KV.my_bucket.foo",
         body: "",
         headers: [{"nats-marker-reason", "MaxAge"}]
       }
 
-      assert {:ok, %Entry{operation: :delete, key: "foo"}} =
+      assert {:ok, %Entry{operation: :purge, key: "foo"}} =
                Entry.from_message(message, @bucket)
     end
 
@@ -102,6 +102,39 @@ defmodule Gnat.Jetstream.API.KV.EntryTest do
       message = %{topic: "_INBOX.foo", body: "", status: "100"}
 
       assert :ignore = Entry.from_message(message, @bucket)
+    end
+  end
+
+  describe "operation/1" do
+    test "classifies kv-operation headers" do
+      assert :delete == Entry.operation([{"kv-operation", "DEL"}])
+      assert :purge == Entry.operation([{"kv-operation", "PURGE"}])
+      assert :put == Entry.operation([{"kv-operation", "SOMETHING_ELSE"}])
+    end
+
+    test "classifies server-generated marker reasons like the official clients" do
+      assert :purge == Entry.operation([{"nats-marker-reason", "MaxAge"}])
+      assert :purge == Entry.operation([{"nats-marker-reason", "Purge"}])
+      assert :delete == Entry.operation([{"nats-marker-reason", "Remove"}])
+      assert :put == Entry.operation([{"nats-marker-reason", "SomethingNew"}])
+    end
+
+    test "kv-operation takes precedence over a marker reason" do
+      headers = [{"nats-marker-reason", "Remove"}, {"kv-operation", "PURGE"}]
+      assert :purge == Entry.operation(headers)
+
+      headers = [{"kv-operation", "CUSTOM"}, {"nats-marker-reason", "Remove"}]
+      assert :put == Entry.operation(headers)
+    end
+
+    test "falls back to the marker reason when kv-operation is empty" do
+      assert :delete == Entry.operation([{"kv-operation", ""}, {"nats-marker-reason", "Remove"}])
+    end
+
+    test "treats unrelated or missing headers as a put" do
+      assert :put == Entry.operation([{"nats-msg-id", "abc"}])
+      assert :put == Entry.operation([])
+      assert :put == Entry.operation(nil)
     end
   end
 end

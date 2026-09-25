@@ -99,7 +99,7 @@ defmodule Gnat.Jetstream.API.KV.Entry do
         bucket: bucket_name,
         key: key,
         value: Map.get(message, :body, ""),
-        operation: operation(message)
+        operation: operation(Map.get(message, :headers))
       }
 
       {:ok, apply_metadata(entry, message)}
@@ -121,16 +121,41 @@ defmodule Gnat.Jetstream.API.KV.Entry do
     end
   end
 
-  defp operation(%{headers: headers}) when is_list(headers) do
-    Enum.find_value(headers, :put, fn
-      {@operation_header, @operation_del} -> :delete
-      {@operation_header, @operation_purge} -> :purge
-      {@nats_marker_reason_header, _} -> :delete
-      _ -> false
-    end)
+  @doc """
+  Classify a KV record by its parsed headers.
+
+  This is the single definition of what counts as a put, delete, or purge in a
+  KV bucket, and it follows the rules used by the official NATS clients:
+
+  * A `kv-operation` header takes precedence. `DEL` is a `:delete` and `PURGE`
+    is a `:purge`. Any other value is treated as a `:put`.
+  * Otherwise a server-generated `nats-marker-reason` header is consulted.
+    `MaxAge` and `Purge` are a `:purge` and `Remove` is a `:delete`. Unknown
+    reasons are treated as a `:put`.
+  * A record with no headers, or `nil`, is a `:put`.
+
+  Header names are expected in the lower-cased form produced by the `Gnat`
+  parser.
+  """
+  @spec operation([{String.t(), String.t()}] | nil) :: operation()
+  def operation(headers) when is_list(headers) do
+    case List.keyfind(headers, @operation_header, 0) do
+      {_, @operation_del} -> :delete
+      {_, @operation_purge} -> :purge
+      {_, value} when value != "" -> :put
+      _ -> marker_operation(headers)
+    end
   end
 
-  defp operation(_message), do: :put
+  def operation(nil), do: :put
+
+  defp marker_operation(headers) do
+    case List.keyfind(headers, @nats_marker_reason_header, 0) do
+      {_, reason} when reason in ["MaxAge", "Purge"] -> :purge
+      {_, "Remove"} -> :delete
+      _ -> :put
+    end
+  end
 
   defp apply_metadata(%__MODULE__{} = entry, message) do
     case Message.metadata(message) do

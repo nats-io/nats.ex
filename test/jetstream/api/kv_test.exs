@@ -250,7 +250,7 @@ defmodule Gnat.Jetstream.API.KVTest do
 
       assert :ok = KV.create_key(:gnat, bucket, "foo", "original")
       assert_receive {:key_added, "foo", "original"}
-      assert_receive {:key_deleted, "foo", ""}, 2_000
+      assert_receive {:key_purged, "foo", ""}, 2_000
       assert :ok = KV.create_key(:gnat, bucket, "foo", "recreated")
       assert "recreated" = KV.get_value(:gnat, bucket, "foo")
       KV.unwatch(watcher)
@@ -419,7 +419,8 @@ defmodule Gnat.Jetstream.API.KVTest do
     KV.put_value(:gnat, "LIMIT_MARKER_TTL_TEST", "foo", "bar")
     assert_receive({:key_added, "foo", "bar"})
 
-    assert_receive({:key_deleted, "foo", ""}, 1500)
+    # a limit marker is a server-generated purge, matching the official clients
+    assert_receive({:key_purged, "foo", ""}, 1500)
 
     KV.unwatch(watcher_pid)
     assert :ok = KV.delete_bucket(:gnat, "LIMIT_MARKER_TTL_TEST")
@@ -480,6 +481,14 @@ defmodule Gnat.Jetstream.API.KVTest do
       KV.put_value(:gnat, bucket, "foo", "bar")
       KV.put_value(:gnat, bucket, "baz", "quz")
       KV.delete_key(:gnat, bucket, "baz")
+      assert {:ok, %{"foo" => "bar"}} == KV.contents(:gnat, bucket)
+      :ok = KV.delete_bucket(:gnat, bucket)
+    end
+
+    test "purged keys not included", %{bucket: bucket} do
+      KV.put_value(:gnat, bucket, "foo", "bar")
+      KV.put_value(:gnat, bucket, "baz", "quz")
+      KV.purge_key(:gnat, bucket, "baz")
       assert {:ok, %{"foo" => "bar"}} == KV.contents(:gnat, bucket)
       :ok = KV.delete_bucket(:gnat, bucket)
     end

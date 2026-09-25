@@ -6,6 +6,9 @@
   * Returns `{:error, :key_exists}` when a live value already exists for the key.
   * Validates the publish acknowledgement and returns `{:error, reason}` when the server rejects the write.
   * Accepts a `:domain` option so the tombstone lookup works on JetStream domains.
+* `Gnat.Jetstream.API.KV.Entry.operation/1` is now public and is the single definition of how KV records are classified as a put, delete, or purge. It follows the official clients: a `kv-operation` header takes precedence, and server-generated `nats-marker-reason` markers map `MaxAge` and `Purge` to `:purge` and `Remove` to `:delete`. `create_key/5`, `keys/3`, `contents/3`, and the watcher all share it.
+  * **Behavior change:** the watcher now reports keys removed by a TTL limit marker as `:key_purged` instead of `:key_deleted`.
+  * `keys/3` and `contents/3` now exclude keys removed by limit markers, and `contents/3` no longer includes purged keys with an empty value.
 
 ## 1.17.0
 
