@@ -77,8 +77,7 @@ defmodule Gnat.Jetstream.API.KVTest do
       assert {:ok, before} =
                Stream.get_message(:gnat, "KV_#{bucket}", %{last_by_subj: "$KV.#{bucket}.foo"})
 
-      assert {:error, %{"code" => 400, "err_code" => 10071}} =
-               KV.create_key(:gnat, bucket, "foo", "replacement")
+      assert {:error, :key_exists} = KV.create_key(:gnat, bucket, "foo", "replacement")
 
       assert "original" = KV.get_value(:gnat, bucket, "foo")
 
@@ -95,8 +94,7 @@ defmodule Gnat.Jetstream.API.KVTest do
         assert :ok = KV.create_key(:gnat, bucket, "foo", "recreated")
         assert "recreated" = KV.get_value(:gnat, bucket, "foo")
 
-        assert {:error, %{"err_code" => 10071}} =
-                 KV.create_key(:gnat, bucket, "foo", "replacement")
+        assert {:error, :key_exists} = KV.create_key(:gnat, bucket, "foo", "replacement")
 
         assert {:ok, %{seq: 3}} =
                  Stream.get_message(:gnat, "KV_#{bucket}", %{last_by_subj: "$KV.#{bucket}.foo"})
@@ -139,7 +137,7 @@ defmodule Gnat.Jetstream.API.KVTest do
         assert [{winner, :ok}] = Enum.filter(results, fn {_, result} -> result == :ok end)
 
         for {_, result} <- results, result != :ok do
-          assert {:error, %{"code" => 400, "err_code" => 10071}} = result
+          assert {:error, :key_exists} = result
         end
 
         assert ^winner = KV.get_value(:gnat, bucket, "foo")
@@ -163,8 +161,7 @@ defmodule Gnat.Jetstream.API.KVTest do
     test "an empty live value isn't a tombstone", %{bucket: bucket} do
       assert :ok = KV.put_value(:gnat, bucket, "foo", "")
 
-      assert {:error, %{"err_code" => 10071}} =
-               KV.create_key(:gnat, bucket, "foo", "replacement")
+      assert {:error, :key_exists} = KV.create_key(:gnat, bucket, "foo", "replacement")
 
       assert {:ok, %{seq: 1}} =
                Stream.get_message(:gnat, "KV_#{bucket}", %{last_by_subj: "$KV.#{bucket}.foo"})
@@ -227,7 +224,7 @@ defmodule Gnat.Jetstream.API.KVTest do
         assert_receive :request_completed
         assert :ok = KV.create_key(:gnat, bucket, "foo", "winner")
         send(task.pid, :continue)
-        assert {:error, %{"err_code" => 10071}} = Task.await(task)
+        assert {:error, :key_exists} = Task.await(task)
         assert "winner" = KV.get_value(:gnat, bucket, "foo")
       end
     end
@@ -280,6 +277,10 @@ defmodule Gnat.Jetstream.API.KVTest do
     :ok = Gnat.unsub(:gnat, sid)
   end
 
+  # No JetStream domain by this name exists on the test server, so only our own
+  # subscription answers API requests routed to it.
+  @unserved_domain "UNSERVED_TEST_DOMAIN"
+
   test "create_key rejects malformed tombstone lookup replies" do
     tombstone = Base.encode64("NATS/1.0\r\nKV-Operation: DEL\r\n\r\n")
 
@@ -299,28 +300,56 @@ defmodule Gnat.Jetstream.API.KVTest do
       Jason.encode!(%{message: %{seq: 2, hdrs: Base.encode64("invalid headers")}})
     ]
 
-    conn = self()
+    {publish_subject, lookup_subject, sids} = fake_bucket("INVALID_LOOKUP")
 
     for response <- responses do
-      task = Task.async(fn -> KV.create_key(conn, "INVALID_LOOKUP", "foo", "value") end)
+      task =
+        Task.async(fn ->
+          KV.create_key(:gnat, "INVALID_LOOKUP", "foo", "value", domain: @unserved_domain)
+        end)
 
-      reply_to_request(
-        "$KV.INVALID_LOOKUP.foo",
-        Jason.encode!(%{error: %{code: 400, err_code: 10071}})
-      )
-
-      reply_to_request("$JS.API.STREAM.MSG.GET.KV_INVALID_LOOKUP", response)
+      reply_to_request(publish_subject, Jason.encode!(%{error: %{code: 400, err_code: 10071}}))
+      reply_to_request(lookup_subject, response)
       assert {:error, :invalid_lookup_response} = Task.await(task)
     end
+
+    for sid <- sids, do: :ok = Gnat.unsub(:gnat, sid)
   end
 
-  defp reply_to_request(topic, body) do
-    assert_receive {:"$gen_call", from, {:request, %{topic: ^topic, recipient: recipient}}}
-    subscription = make_ref()
-    GenServer.reply(from, {:ok, subscription})
-    send(recipient, {:msg, %{topic: subscription, body: body}})
-    assert_receive {:"$gen_call", from, {:unsub, ^subscription, []}}
-    GenServer.reply(from, :ok)
+  test "create_key maps replicated-stream sequence conflicts to :key_exists" do
+    {publish_subject, lookup_subject, sids} = fake_bucket("REPLICATED_CONFLICT")
+
+    task =
+      Task.async(fn ->
+        KV.create_key(:gnat, "REPLICATED_CONFLICT", "foo", "value", domain: @unserved_domain)
+      end)
+
+    reply_to_request(publish_subject, Jason.encode!(%{error: %{code: 400, err_code: 10164}}))
+
+    lookup = reply_to_request(lookup_subject, Jason.encode!(%{message: %{seq: 7}}))
+    assert %{"last_by_subj" => ^publish_subject} = Jason.decode!(lookup)
+
+    assert {:error, :key_exists} = Task.await(task)
+
+    for sid <- sids, do: :ok = Gnat.unsub(:gnat, sid)
+  end
+
+  # Subscribes to the publish and tombstone-lookup subjects for a bucket that
+  # doesn't exist, so the test can play the server's part in the exchange.
+  defp fake_bucket(bucket) do
+    publish_subject = "$KV.#{bucket}.foo"
+    lookup_subject = "$JS.#{@unserved_domain}.API.STREAM.MSG.GET.KV_#{bucket}"
+    assert {:ok, publish_sid} = Gnat.sub(:gnat, self(), publish_subject)
+    assert {:ok, lookup_sid} = Gnat.sub(:gnat, self(), lookup_subject)
+    {publish_subject, lookup_subject, [publish_sid, lookup_sid]}
+  end
+
+  # Waits for a request on `subject`, publishes `response` to its reply inbox and
+  # returns the request body.
+  defp reply_to_request(subject, response) do
+    assert_receive {:msg, %{topic: ^subject, reply_to: reply_to, body: body}}
+    :ok = Gnat.pub(:gnat, reply_to, response)
+    body
   end
 
   def pause_request(_event, _measurements, %{topic: topic}, {caller, parent, topic})
