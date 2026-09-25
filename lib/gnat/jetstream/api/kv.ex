@@ -99,16 +99,19 @@ defmodule Gnat.Jetstream.API.KV do
 
   Deleted and purged keys can be recreated. Creation is conditional on the
   key's revision, so concurrent creators can't overwrite each other. Returns
-  `:ok` after a valid publish acknowledgement or `{:error, reason}`, including
-  the server's error map when a live key already exists.
+  `:ok` after a valid publish acknowledgement, `{:error, :key_exists}` when a
+  live value already exists for the key, or `{:error, reason}` for any other
+  failure.
 
   ## Options
 
   * `:timeout` - receive timeout for each request, including tombstone lookup and recreation
+  * `:domain` - JetStream domain used for the tombstone lookup (default: nil)
 
   ## Examples
 
       iex> :ok = Jetstream.API.KV.create_key(:gnat, "my_bucket", "my_key", "my_value")
+      iex> {:error, :key_exists} = Jetstream.API.KV.create_key(:gnat, "my_bucket", "my_key", "other")
   """
   @spec create_key(
           conn :: Gnat.t(),
@@ -117,13 +120,14 @@ defmodule Gnat.Jetstream.API.KV do
           value :: binary(),
           opts :: keyword()
         ) ::
-          :ok | {:error, any()}
+          :ok | {:error, :key_exists | any()}
   def create_key(conn, bucket_name, key, value, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, 5_000)
+    domain = Keyword.get(opts, :domain)
 
     case create_at_revision(conn, bucket_name, key, value, 0, timeout) do
-      {:error, %{"err_code" => code}} = conflict when code in [10071, 10164] ->
-        case deleted_revision(conn, bucket_name, key, timeout) do
+      {:error, :key_exists} = conflict ->
+        case deleted_revision(conn, bucket_name, key, domain, timeout) do
           {:ok, revision} when is_integer(revision) ->
             create_at_revision(conn, bucket_name, key, value, revision, timeout)
 
@@ -139,6 +143,11 @@ defmodule Gnat.Jetstream.API.KV do
     end
   end
 
+  # A failed `Nats-Expected-Last-Subject-Sequence` check is reported as 10071
+  # (`JSStreamWrongLastSequenceErrF`) by single-replica streams and as 10164
+  # (`JSStreamWrongLastSequenceConstantErr`) by replicated streams.
+  @wrong_last_sequence_codes [10071, 10164]
+
   defp create_at_revision(conn, bucket_name, key, value, revision, timeout) do
     stream = stream_name(bucket_name)
 
@@ -148,6 +157,9 @@ defmodule Gnat.Jetstream.API.KV do
              receive_timeout: timeout
            ) do
       case Jason.decode(body) do
+        {:ok, %{"error" => %{"err_code" => code}}} when code in @wrong_last_sequence_codes ->
+          {:error, :key_exists}
+
         {:ok, %{"error" => error}} ->
           {:error, error}
 
@@ -160,13 +172,13 @@ defmodule Gnat.Jetstream.API.KV do
     end
   end
 
-  defp deleted_revision(conn, bucket_name, key, timeout) do
+  defp deleted_revision(conn, bucket_name, key, domain, timeout) do
     subject = key_name(bucket_name, key)
 
     with {:ok, %{body: body}} <-
            Gnat.request(
              conn,
-             "$JS.API.STREAM.MSG.GET.#{stream_name(bucket_name)}",
+             "#{js_api(domain)}.STREAM.MSG.GET.#{stream_name(bucket_name)}",
              Jason.encode!(%{last_by_subj: subject}),
              receive_timeout: timeout
            ) do
@@ -475,6 +487,10 @@ defmodule Gnat.Jetstream.API.KV do
   def stream_name(bucket_name) do
     "#{@stream_prefix}#{bucket_name}"
   end
+
+  defp js_api(nil), do: "$JS.API"
+  defp js_api(""), do: "$JS.API"
+  defp js_api(domain), do: "$JS.#{domain}.API"
 
   defp stream_subjects(bucket_name) do
     ["#{@subject_prefix}#{bucket_name}.>"]

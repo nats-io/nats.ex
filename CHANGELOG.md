@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+* **Behavior change:** `Gnat.Jetstream.API.KV.create_key/5` now only creates a key when one doesn't already exist. Previously it behaved like `put_value/5` and silently overwrote existing keys, and it returned `:ok` even when the server rejected the write. This aligns the library with the NATS server and the official clients: the publish is conditional on the key's current revision (`Nats-Expected-Last-Subject-Sequence`), so concurrent creators can't overwrite each other, and keys that were deleted or purged can be recreated. If you relied on `create_key` overwriting an existing key, use `put_value/5` instead. Thanks to @ericmj for #234
+  * Returns `{:error, :key_exists}` when a live value already exists for the key.
+  * Validates the publish acknowledgement and returns `{:error, reason}` when the server rejects the write.
+  * Accepts a `:domain` option so the tombstone lookup works on JetStream domains.
+
 ## 1.17.0
 
 * Adds support for `PullConsumer` with `ack_policy: :explicit` that pull in batch mode. This makes durable and multi-client consumers strongly consistent. Big thanks to @ericmj for #230
