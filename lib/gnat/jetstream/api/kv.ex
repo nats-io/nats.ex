@@ -150,8 +150,6 @@ defmodule Gnat.Jetstream.API.KV do
   @wrong_last_sequence_codes [10071, 10164]
 
   defp create_at_revision(conn, bucket_name, key, value, revision, timeout) do
-    stream = stream_name(bucket_name)
-
     with {:ok, %{body: body}} <-
            Gnat.request(conn, key_name(bucket_name, key), value,
              headers: [{"Nats-Expected-Last-Subject-Sequence", Integer.to_string(revision)}],
@@ -161,15 +159,39 @@ defmodule Gnat.Jetstream.API.KV do
         {:ok, %{"error" => %{"err_code" => code}}} when code in @wrong_last_sequence_codes ->
           {:error, :key_exists}
 
-        {:ok, %{"error" => error}} ->
-          {:error, error}
-
-        {:ok, %{"stream" => ^stream, "seq" => seq}} when is_integer(seq) and seq > 0 ->
-          :ok
-
-        _ ->
-          {:error, :invalid_publish_ack}
+        decoded ->
+          validate_publish_ack(decoded, bucket_name)
       end
+    end
+  end
+
+  # Validates a JetStream publish acknowledgement decoded from a write reply.
+  # Returns `{:error, map}` with the server's error map for rejected writes,
+  # `:ok` for an ack naming the bucket's stream with a positive sequence, and
+  # `{:error, :invalid_publish_ack}` for malformed or unrelated acks.
+  defp validate_publish_ack(decoded, bucket_name) do
+    stream = stream_name(bucket_name)
+
+    case decoded do
+      {:ok, %{"error" => error}} ->
+        {:error, error}
+
+      {:ok, %{"stream" => ^stream, "seq" => seq}} when is_integer(seq) and seq > 0 ->
+        :ok
+
+      _ ->
+        {:error, :invalid_publish_ack}
+    end
+  end
+
+  # Publishes a KV write and validates the resulting publish acknowledgement,
+  # so server-side rejections surface as errors instead of a bare `:ok`.
+  defp write_and_validate(conn, bucket_name, key, value, headers, timeout) do
+    opts = [receive_timeout: timeout]
+    opts = if headers == [], do: opts, else: [{:headers, headers} | opts]
+
+    with {:ok, %{body: body}} <- Gnat.request(conn, key_name(bucket_name, key), value, opts) do
+      validate_publish_ack(Jason.decode(body), bucket_name)
     end
   end
 
@@ -212,6 +234,10 @@ defmodule Gnat.Jetstream.API.KV do
   @doc """
   Delete a Key from a K/V Bucket
 
+  Returns `:ok` after a valid publish acknowledgement, `{:error, reason}` with
+  the server's error map when the write is rejected, and
+  `{:error, :invalid_publish_ack}` for a malformed or unrelated ack.
+
   ## Examples
 
       iex> :ok = Jetstream.API.KV.delete_key(:gnat, "my_bucket", "my_key")
@@ -226,20 +252,15 @@ defmodule Gnat.Jetstream.API.KV do
   def delete_key(conn, bucket_name, key, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, 5_000)
 
-    reply =
-      Gnat.request(conn, key_name(bucket_name, key), "",
-        headers: [{"KV-Operation", "DEL"}],
-        receive_timeout: timeout
-      )
-
-    case reply do
-      {:ok, _} -> :ok
-      error -> error
-    end
+    write_and_validate(conn, bucket_name, key, "", [{"KV-Operation", "DEL"}], timeout)
   end
 
   @doc """
   Purge a Key from a K/V bucket. This will remove any revision history the key had
+
+  Returns `:ok` after a valid publish acknowledgement, `{:error, reason}` with
+  the server's error map when the write is rejected, and
+  `{:error, :invalid_publish_ack}` for a malformed or unrelated ack.
 
   ## Examples
 
@@ -255,20 +276,23 @@ defmodule Gnat.Jetstream.API.KV do
   def purge_key(conn, bucket_name, key, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, 5_000)
 
-    reply =
-      Gnat.request(conn, key_name(bucket_name, key), "",
-        headers: [{"KV-Operation", "PURGE"}, {"Nats-Rollup", "sub"}],
-        receive_timeout: timeout
-      )
-
-    case reply do
-      {:ok, _} -> :ok
-      error -> error
-    end
+    write_and_validate(
+      conn,
+      bucket_name,
+      key,
+      "",
+      [{"KV-Operation", "PURGE"}, {"Nats-Rollup", "sub"}],
+      timeout
+    )
   end
 
   @doc """
   Put a value into a Key in a K/V Bucket
+
+  Returns `:ok` after a valid publish acknowledgement, `{:error, reason}` with
+  the server's error map when the write is rejected (for example a value larger
+  than the bucket's `max_value_size`), and `{:error, :invalid_publish_ack}` for
+  a malformed or unrelated ack.
 
   ## Examples
 
@@ -285,12 +309,7 @@ defmodule Gnat.Jetstream.API.KV do
   def put_value(conn, bucket_name, key, value, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, 5_000)
 
-    reply = Gnat.request(conn, key_name(bucket_name, key), value, receive_timeout: timeout)
-
-    case reply do
-      {:ok, _} -> :ok
-      error -> error
-    end
+    write_and_validate(conn, bucket_name, key, value, [], timeout)
   end
 
   @doc """
