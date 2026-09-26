@@ -61,11 +61,13 @@ defmodule Gnat.ProtocolValidationTest do
   end
 
   test "subscribe rejects protocol delimiters before contacting the connection" do
-    for topic <- @invalid_subjects do
+    for topic <- @invalid_subjects, subscribe <- [&Gnat.sub/3, &Gnat.sub_async/3] do
       assert_raise ArgumentError, ~r/invalid subscription subject/, fn ->
-        Gnat.sub(self(), self(), topic)
+        subscribe.(self(), self(), topic)
       end
     end
+
+    refute_received {:"$gen_call", _, _}
   end
 
   test "subscribe rejects non-binary queue groups and protocol delimiters" do
@@ -142,6 +144,7 @@ defmodule Gnat.ProtocolValidationTest do
           fn -> Gnat.pub(conn, "bad\r\nPING\r\n", "data") end,
           fn -> Gnat.pub(conn, "good", "data", reply_to: "bad\r\nPING\r\n") end,
           fn -> Gnat.sub(conn, self(), "bad\r\nPING\r\n") end,
+          fn -> Gnat.sub_async(conn, self(), "bad\r\nPING\r\n") end,
           fn -> Gnat.sub(conn, self(), "good", queue_group: "bad\r\nPING\r\n") end,
           fn -> Gnat.request(conn, "bad\r\nPING\r\n", "data") end,
           fn -> Gnat.request_multi(conn, "bad\r\nPING\r\n", "data") end
@@ -154,6 +157,18 @@ defmodule Gnat.ProtocolValidationTest do
     {:ok, sid} = Gnat.sub(conn, self(), topic)
     assert :ok = Gnat.pub(conn, topic, ["binary", <<0, 13, 10, 255>>])
     assert_receive {:msg, %{sid: ^sid, body: <<"binary", 0, 13, 10, 255>>}}
+    assert :ok = Gnat.stop(conn)
+  end
+
+  test "async wildcard subscriptions receive replies and deliveries" do
+    {:ok, conn} = Gnat.start_link()
+    prefix = "validation.#{System.unique_integer([:positive])}"
+    request = Gnat.sub_async(conn, self(), prefix <> ".*")
+    assert_receive response
+    assert {:reply, {:ok, sid}} = Gnat.subscription_response(response, request)
+
+    assert :ok = Gnat.pub(conn, prefix <> ".orders", "data")
+    assert_receive {:msg, %{sid: ^sid, body: "data"}}
     assert :ok = Gnat.stop(conn)
   end
 
