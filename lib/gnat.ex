@@ -63,8 +63,9 @@ defmodule Gnat do
     because the token can then appear in supervisor crash reports.
 
   A function is called while the CONNECT message is built, during each connection handshake.
-  The `nkey_seed`, `password` and `token` settings are redacted from the connection's process
-  status, its crash reports and the connection supervisor's log.
+  The `nkey_seed`, `password`, `token`, `jwt` and `ssl_opts` settings are redacted from
+  formatted process status, crash reports and connection supervisor logs. See
+  `start_link/2` for the limits of diagnostic redaction.
   """
   @type connection_settings :: %{
           optional(:connection_timeout) => non_neg_integer(),
@@ -187,6 +188,13 @@ defmodule Gnat do
 
   The `:inbox_prefix` must be a binary without spaces, tabs, carriage returns or
   line feeds. Invalid values raise `ArgumentError` before connecting.
+
+  Credentials are redacted from connection configuration logs and formatted OTP
+  status and crash reports. Exceptions raised during connection initialization
+  report their class and stack locations, with details and arguments redacted.
+  Raw debugging interfaces still have access to the original settings, including
+  `:sys.get_state/1`, tracing, and the raw debug history returned by
+  `:sys.get_status/1` when `:sys.log/2` is enabled.
 
   The final `opts` argument will be passed to the `GenServer.start_link` call so you can pass things like `[name: :gnat_connection]`.
   """
@@ -486,14 +494,8 @@ defmodule Gnat do
     GenServer.call(name, :server_info)
   end
 
-  # GenServer declares format_status/1 from Elixir 1.17; OTP calls it on every supported version.
-  if Version.match?(System.version(), ">= 1.17.0"), do: @impl(GenServer)
-
-  def format_status(%{state: %{connection_settings: settings} = state} = status) do
-    %{status | state: %{state | connection_settings: Gnat.Handshake.redact_settings(settings)}}
-  end
-
-  def format_status(status), do: status
+  @impl {:format_status, 1} in GenServer.behaviour_info(:callbacks)
+  def format_status(status), do: Gnat.Redaction.redact(status)
 
   @impl GenServer
   def init(connection_settings) do
@@ -526,6 +528,9 @@ defmodule Gnat do
       {:error, reason} ->
         {:stop, reason}
     end
+  rescue
+    exception ->
+      Gnat.Redaction.reraise_connection_error(exception, __STACKTRACE__)
   end
 
   @impl GenServer
