@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.18.0
 
+* **Behavior change:** `Gnat.Jetstream.API.KV.put_value/5`, `delete_key/4`, and `purge_key/4` now validate the JetStream publish acknowledgement instead of reporting `:ok` for any reply. They share the same ack validation as `create_key/5`: a rejected write returns `{:error, reason}` with the server's error map, and a malformed or unrelated ack returns `{:error, :invalid_publish_ack}`. Previously a server-side rejection (for example a `put_value/5` larger than the bucket's `max_value_size`) was silently reported as `:ok`. See #235
 * **Behavior change:** `Gnat.Jetstream.API.KV.create_key/5` now only creates a key when one doesn't already exist. Previously it behaved like `put_value/5` and silently overwrote existing keys, and it returned `:ok` even when the server rejected the write. This aligns the library with the NATS server and the official clients: the publish is conditional on the key's current revision (`Nats-Expected-Last-Subject-Sequence`), so concurrent creators can't overwrite each other, and keys that were deleted or purged can be recreated. If you relied on `create_key` overwriting an existing key, use `put_value/5` instead. Thanks to @ericmj for #234
   * Returns `{:error, :key_exists}` when a live value already exists for the key.
   * Validates the publish acknowledgement and returns `{:error, reason}` when the server rejects the write.

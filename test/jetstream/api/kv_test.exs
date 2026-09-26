@@ -401,6 +401,42 @@ defmodule Gnat.Jetstream.API.KVTest do
     assert {:error, :timeout} = KV.put_value(:gnat, "KEY_PUT_TEST", "foo", "baz", timeout: 1)
   end
 
+  test "put_value returns server errors without reporting a successful write" do
+    assert {:ok, _} = KV.create_bucket(:gnat, "KEY_PUT_REJECT_TEST", max_value_size: 128)
+
+    assert {:error, %{"code" => 400, "err_code" => 10054}} =
+             KV.put_value(:gnat, "KEY_PUT_REJECT_TEST", "foo", String.duplicate("x", 256))
+
+    assert {:error, %{"code" => 404}} = KV.get_value(:gnat, "KEY_PUT_REJECT_TEST", "foo")
+    assert :ok = KV.delete_bucket(:gnat, "KEY_PUT_REJECT_TEST")
+  end
+
+  test "put_value, delete_key and purge_key reject malformed publish acknowledgements" do
+    subject = "$KV.INVALID_WRITE_ACK.foo"
+    assert {:ok, sid} = Gnat.sub(:gnat, self(), subject)
+
+    writes = [
+      fn -> KV.put_value(:gnat, "INVALID_WRITE_ACK", "foo", "value") end,
+      fn -> KV.delete_key(:gnat, "INVALID_WRITE_ACK", "foo") end,
+      fn -> KV.purge_key(:gnat, "INVALID_WRITE_ACK", "foo") end
+    ]
+
+    responses = [
+      "not json",
+      "{}",
+      ~s({"stream":"other","seq":1}),
+      ~s({"stream":"KV_INVALID_WRITE_ACK","seq":0})
+    ]
+
+    for write <- writes, response <- responses do
+      task = Task.async(write)
+      reply_to_request(subject, response)
+      assert {:error, :invalid_publish_ack} = Task.await(task)
+    end
+
+    :ok = Gnat.unsub(:gnat, sid)
+  end
+
   @tag :message_ttl
   test "detects key removed based on limit_marker_ttl" do
     assert {:ok, _} =
