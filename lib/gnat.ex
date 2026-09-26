@@ -68,10 +68,17 @@ defmodule Gnat do
   @typedoc """
   [Info Protocol](https://docs.nats.io/reference/reference-protocols/nats-protocol#info)
 
+  Supported top-level fields use atom keys. Unknown fields and all nested objects
+  retain string keys.
+
+  * `acc_is_sys` - Whether the client is connected to the system account
+  * `api_lvl` - The JetStream API level supported by the server
   * `client_id` - An optional unsigned integer (64 bits) representing the internal client identifier in the server. This can be used to filter client connections in monitoring, correlate with error logs, etc...
   * `client_ip` - The IP address the client is connecting from
   * `cluster` - The name of the cluster if any
   * `cluster_dynamic` - If the cluster is dynamic
+  * `connect_info` - Whether this INFO is a response to CONNECT
+  * `domain` - The configured JetStream domain
   * `connect_urls` - An optional list of server urls that a client can connect to.
   * `ws_connect_urls` - An optional list of server urls that a websocket client can connect to.
   * `git_commit` - The git commit associated with this NATS version
@@ -82,9 +89,11 @@ defmodule Gnat do
   * `max_payload` - Maximum payload size, in bytes, that the server will accept from the client
   * `port` - The port number the NATS server is configured to listen on
   * `proto` - An integer indicating the protocol version of the server. The server version 1.2.0 sets this to 1 to indicate that it supports the "Echo" feature.
+  * `remote_account` - The account the client is connected to
   * `server_id` - The unique identifier of the NATS server
   * `server_name` - A name for the server
   * `version` - The version of the NATS server
+  * `xkey` - The server's public X25519 key
   * `ldm` - If the server supports Lame Duck Mode notifications, and the current server has transitioned to lame duck, ldm will be set to true.
   * `auth_required` - If this is set, then the client should try to authenticate upon connect.
   * `tls_required` - If this is set, then the client must perform the TLS/1.2 handshake. Note, this used to be ssl_required and has been updated along with the protocol from SSL to TLS.
@@ -92,29 +101,38 @@ defmodule Gnat do
   * `tls_available` - If the server can use TLS
   """
   @type server_info :: %{
+          optional(:acc_is_sys) => boolean(),
+          optional(:api_lvl) => non_neg_integer(),
           :client_id => non_neg_integer(),
           :client_ip => binary(),
           optional(:ip) => binary(),
           optional(:cluster) => binary(),
           optional(:cluster_dynamic) => boolean(),
+          optional(:connect_info) => boolean(),
+          optional(:domain) => binary(),
           optional(:connect_urls) => list(binary()),
           optional(:ws_connect_urls) => list(binary()),
           optional(:git_commit) => binary(),
           :go => binary(),
           :headers => boolean(),
           :host => binary(),
-          optional(:jetstream) => binary(),
+          optional(:jetstream) => boolean(),
           :max_payload => integer(),
+          optional(:nonce) => binary(),
           :port => non_neg_integer(),
           :proto => integer(),
+          optional(:remote_account) => binary(),
           :server_id => binary(),
           :server_name => binary(),
           :version => binary(),
+          optional(:xkey) => binary(),
           optional(:ldm) => boolean(),
+          optional(:ssl_required) => boolean(),
           optional(:tls_verify) => boolean(),
           optional(:tls_available) => boolean(),
           optional(:tls_required) => boolean(),
-          optional(:auth_required) => boolean()
+          optional(:auth_required) => boolean(),
+          optional(binary()) => term()
         }
 
   @default_connection_settings %{
@@ -437,7 +455,10 @@ defmodule Gnat do
   end
 
   @doc """
-  Get information about the NATS server the connection is for
+  Get information about the NATS server the connection is for.
+
+  Supported top-level fields use atom keys. Unknown fields and all nested objects
+  retain string keys.
   """
   @spec server_info(t()) :: server_info()
   def server_info(name) do
