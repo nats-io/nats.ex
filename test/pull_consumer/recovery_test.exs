@@ -169,6 +169,55 @@ defmodule Gnat.Jetstream.PullConsumer.RecoveryTest do
     end
   end
 
+  for batch_size <- [1, 3],
+      {status, description} <- [{"404", "No Messages"}, {"409", "Leadership Change"}] do
+    @tag batch_size: batch_size, status: status, description: description
+    test "#{status} #{description} keeps the subscription at batch size #{batch_size}", %{
+      stream: stream,
+      batch_size: batch_size,
+      status: status,
+      description: description
+    } do
+      pid = start_consumer(stream, :ephemeral, batch_size: batch_size)
+      assert_receive {:connected, ^pid, name}
+
+      await(fn ->
+        {:ok, info} = Consumer.info(:gnat, stream, name)
+        info.num_waiting == 1
+      end)
+
+      %{mod_state: before} = :sys.get_state(pid)
+      {:ok, _} = Gnat.sub(:gnat, self(), "$JS.API.CONSUMER.MSG.NEXT.#{stream}.#{name}")
+
+      send(
+        pid,
+        {:msg,
+         %{
+           gnat: before.connection_pid,
+           sid: before.subscription_id,
+           status: status,
+           description: description,
+           body: ""
+         }}
+      )
+
+      assert_receive {:msg, %{reply_to: inbox}}
+      assert inbox == before.listening_topic
+      %{mod_state: after_status} = :sys.get_state(pid)
+      assert after_status.subscription_id == before.subscription_id
+      assert after_status.consumer_name == name
+      refute_received {:connected, ^pid, _}
+
+      for i <- 1..batch_size, do: publish(stream, Integer.to_string(i))
+
+      for i <- 1..batch_size do
+        body = Integer.to_string(i)
+        assert_receive {:handling, ^pid, ^i, %{body: ^body}}
+        send(pid, {:return, :ack})
+      end
+    end
+  end
+
   test "recreates an owned consumer only after the server deleted it", %{stream: stream} do
     pid = start_consumer(stream, :ephemeral)
     assert_receive {:connected, ^pid, name}

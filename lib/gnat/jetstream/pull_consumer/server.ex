@@ -303,11 +303,9 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
   end
 
   def handle_info(
-        {:msg, %{status: status, description: description} = message},
+        {:msg, %{status: "409", description: "Consumer Deleted"} = message},
         %__MODULE__{} = gen_state
-      )
-      when (status == "409" and description == "Consumer Deleted") or
-             (status == "404" and description == "Consumer Not Found") do
+      ) do
     gen_state = maybe_handle_status(message, gen_state)
     {:noreply, reset_to_disconnected(gen_state)}
   end

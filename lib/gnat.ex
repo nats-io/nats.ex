@@ -218,6 +218,7 @@ defmodule Gnat do
 
   @doc false
   def sub_async(pid, subscriber, topic) do
+    Validation.subject!(topic, :subscription)
     subscription_request(pid, {:sub, subscriber, topic, []}, :sub, %{topic: topic})
   end
 
