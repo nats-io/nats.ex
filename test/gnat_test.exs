@@ -365,6 +365,34 @@ defmodule GnatTest do
            end) =~ "Invalid Subject"
   end
 
+  test "connection secrets are redacted from the process status" do
+    secrets = %{password: "status-password", token: "status-token", nkey_seed: nkey_seed()}
+    {:ok, gnat} = Gnat.start_link(secrets)
+
+    status = inspect(:sys.get_status(gnat), limit: :infinity, printable_limit: :infinity)
+
+    assert status =~ "connection_settings"
+    Enum.each(Map.values(secrets), fn secret -> refute status =~ secret end)
+    assert Gnat.stop(gnat) == :ok
+  end
+
+  test "connection secrets are redacted from crash reports" do
+    import ExUnit.CaptureLog
+    Process.flag(:trap_exit, true)
+    secrets = %{password: "report-password", token: "report-token", nkey_seed: nkey_seed()}
+    {:ok, gnat} = Gnat.start_link(secrets)
+
+    log =
+      capture_log(fn ->
+        GenServer.stop(gnat, :crash_report_test)
+        assert_receive {:EXIT, ^gnat, :crash_report_test}
+      end)
+
+    assert log =~ "crash_report_test"
+    assert log =~ "connection_settings"
+    Enum.each(Map.values(secrets), fn secret -> refute log =~ secret end)
+  end
+
   test "connection timeout" do
     start = System.monotonic_time(:millisecond)
     connection_settings = %{host: ~c"169.33.33.33", connection_timeout: 200}
@@ -389,4 +417,6 @@ defmodule GnatTest do
     assert Map.has_key?(info, :version)
     assert is_binary(info.version)
   end
+
+  defp nkey_seed, do: "test/fixtures/nkey_seed" |> File.read!() |> String.trim()
 end

@@ -54,6 +54,9 @@ defmodule Gnat do
   * `nkey_seed` - The nkey seed used to sign the server's nonce. It can be a binary or a zero-arity
     function that returns the seed. A function is called during each connection handshake, so the
     seed is only held for as long as it takes to sign.
+
+  The `nkey_seed`, `password` and `token` settings are redacted from the connection's process
+  status and crash reports.
   """
   @type connection_settings :: %{
           optional(:connection_timeout) => non_neg_integer(),
@@ -383,6 +386,15 @@ defmodule Gnat do
   def server_info(name) do
     GenServer.call(name, :server_info)
   end
+
+  # GenServer declares format_status/1 from Elixir 1.17; OTP calls it on every supported version.
+  if Version.match?(System.version(), ">= 1.17.0"), do: @impl(GenServer)
+
+  def format_status(%{state: %{connection_settings: settings} = state} = status) do
+    %{status | state: %{state | connection_settings: Gnat.Handshake.redact_settings(settings)}}
+  end
+
+  def format_status(status), do: status
 
   @impl GenServer
   def init(connection_settings) do

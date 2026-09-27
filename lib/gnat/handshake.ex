@@ -15,6 +15,20 @@ defmodule Gnat.Handshake do
     end
   end
 
+  @secret_settings [:nkey_seed, :password, :token]
+
+  @doc """
+  Replaces the secrets in connection settings so they can be shown in process status and
+  crash reports.
+  """
+  def redact_settings(settings) when is_map(settings) do
+    Enum.reduce(@secret_settings, settings, fn key, acc ->
+      if Map.has_key?(acc, key), do: Map.put(acc, key, :redacted), else: acc
+    end)
+  end
+
+  def redact_settings(settings), do: settings
+
   def negotiate_settings(server_settings, user_settings) do
     auth_required = server_settings[:auth_required] || user_settings[:auth_required] || false
 
