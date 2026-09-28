@@ -4,6 +4,14 @@ defmodule Gnat.Parsec do
 
   import NimbleParsec
 
+  @info_keys Map.new(
+               ~w(acc_is_sys api_lvl auth_required client_id client_ip cluster cluster_dynamic
+                  connect_info connect_urls domain git_commit go headers host ip jetstream ldm
+                  max_payload nonce port proto remote_account server_id server_name ssl_required
+                  tls_available tls_required tls_verify version ws_connect_urls xkey)a,
+               &{Atom.to_string(&1), &1}
+             )
+
   subject = ascii_string([?!..?~], min: 1)
   length = integer(min: 1)
   sid = integer(min: 1)
@@ -217,7 +225,12 @@ defmodule Gnat.Parsec do
         {:ok, atom, rest}
 
       {:ok, [:info, json], rest, _, _, _} ->
-        {:ok, {:info, Jason.decode!(json, keys: :atoms)}, rest}
+        info =
+          Map.new(Jason.decode!(json), fn {key, value} ->
+            {Map.get(@info_keys, key, key), value}
+          end)
+
+        {:ok, {:info, info}, rest}
 
       {:ok, [:err, msg], rest, _, _, _} ->
         {:ok, {:error, msg}, rest}
