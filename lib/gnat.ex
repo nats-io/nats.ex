@@ -51,6 +51,20 @@ defmodule Gnat do
   * `inbox_prefix` - Prefix to use for the message inbox of this connection
   * `no_responders` - Enable the no responders behavior (see `Gnat.request/4`)
   * `name` - The client name reported by NATS monitoring endpoints
+  * `nkey_seed` - The nkey seed used to sign the server's nonce: a zero-arity function that
+    returns the nkey seed as a binary. A binary is also accepted for backward compatibility, but
+    is not recommended, because the seed can then appear in supervisor crash reports.
+  * `username` - The user name for user/password authentication
+  * `password` - The password for user/password authentication: a zero-arity function that
+    returns the password as a binary. A binary is also accepted for backward compatibility, but
+    is not recommended, because the password can then appear in supervisor crash reports.
+  * `token` - The token for token authentication: a zero-arity function that returns the token
+    as a binary. A binary is also accepted for backward compatibility, but is not recommended,
+    because the token can then appear in supervisor crash reports.
+
+  A function is called while the CONNECT message is built, during each connection handshake.
+  The `nkey_seed`, `password` and `token` settings are redacted from the connection's process
+  status, its crash reports and the connection supervisor's log.
   """
   @type connection_settings :: %{
           optional(:connection_timeout) => non_neg_integer(),
@@ -62,7 +76,11 @@ defmodule Gnat do
           optional(:tcp_opts) => list(),
           optional(:tls) => boolean(),
           optional(:no_responders) => boolean(),
-          optional(:name) => binary()
+          optional(:name) => binary(),
+          optional(:nkey_seed) => binary() | (-> binary()),
+          optional(:username) => binary(),
+          optional(:password) => binary() | (-> binary()),
+          optional(:token) => binary() | (-> binary())
         }
 
   @typedoc """
@@ -467,6 +485,15 @@ defmodule Gnat do
   def server_info(name) do
     GenServer.call(name, :server_info)
   end
+
+  # GenServer declares format_status/1 from Elixir 1.17; OTP calls it on every supported version.
+  if Version.match?(System.version(), ">= 1.17.0"), do: @impl(GenServer)
+
+  def format_status(%{state: %{connection_settings: settings} = state} = status) do
+    %{status | state: %{state | connection_settings: Gnat.Handshake.redact_settings(settings)}}
+  end
+
+  def format_status(status), do: status
 
   @impl GenServer
   def init(connection_settings) do

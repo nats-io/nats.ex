@@ -15,6 +15,20 @@ defmodule Gnat.Handshake do
     end
   end
 
+  @secret_settings [:nkey_seed, :password, :token]
+
+  @doc """
+  Replaces the secrets in connection settings so they can be shown in process status and
+  crash reports.
+  """
+  def redact_settings(settings) when is_map(settings) do
+    Enum.reduce(@secret_settings, settings, fn key, acc ->
+      if Map.has_key?(acc, key), do: Map.put(acc, key, :redacted), else: acc
+    end)
+  end
+
+  def redact_settings(settings), do: settings
+
   def negotiate_settings(server_settings, user_settings) do
     auth_required = server_settings[:auth_required] || user_settings[:auth_required] || false
 
@@ -53,11 +67,11 @@ defmodule Gnat.Handshake do
          %{username: username, password: password} = _user,
          true = _auth_required
        ) do
-    Map.merge(settings, %{user: username, pass: password})
+    Map.merge(settings, %{user: username, pass: resolve_secret(password)})
   end
 
   defp negotiate_auth(settings, _server, %{token: token} = _user, true = _auth_required) do
-    Map.merge(settings, %{auth_token: token})
+    Map.merge(settings, %{auth_token: resolve_secret(token)})
   end
 
   defp negotiate_auth(
@@ -66,7 +80,7 @@ defmodule Gnat.Handshake do
          %{nkey_seed: seed, jwt: jwt} = _user,
          true = _auth_required
        ) do
-    {:ok, nkey} = NKEYS.from_seed(seed)
+    {:ok, nkey} = seed |> resolve_secret() |> NKEYS.from_seed()
     signature = NKEYS.sign(nkey, nonce) |> Base.url_encode64() |> String.replace("=", "")
 
     Map.merge(settings, %{sig: signature, protocol: 1, jwt: jwt})
@@ -78,7 +92,7 @@ defmodule Gnat.Handshake do
          %{nkey_seed: seed} = _user,
          true = _auth_required
        ) do
-    {:ok, nkey} = NKEYS.from_seed(seed)
+    {:ok, nkey} = seed |> resolve_secret() |> NKEYS.from_seed()
     signature = NKEYS.sign(nkey, nonce) |> Base.url_encode64() |> String.replace("=", "")
     public = NKEYS.public_nkey(nkey)
 
@@ -88,6 +102,9 @@ defmodule Gnat.Handshake do
   defp negotiate_auth(settings, _server, _user, _auth_required) do
     settings
   end
+
+  defp resolve_secret(secret) when is_function(secret, 0), do: secret.()
+  defp resolve_secret(secret), do: secret
 
   defp negotiate_headers(settings, %{headers: true} = _server, user_settings) do
     if Map.get(user_settings, :headers, true) do

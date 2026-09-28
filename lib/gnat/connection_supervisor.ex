@@ -19,7 +19,7 @@ defmodule Gnat.ConnectionSupervisor do
   }
   ```
 
-  The connection settings can specify all of the same values that you pass to `Gnat.start_link/1`. Each time a connection is attempted we will use one of the provided connection settings to open the connection. This is a simplistic way of load balancing your connections across a cluster of nats nodes and allowing failover to other nodes in the cluster if one goes down.
+  The connection settings can specify all of the same values that you pass to `Gnat.start_link/1`. Their secrets are redacted from this process's status and crash reports. Each time a connection is attempted we will use one of the provided connection settings to open the connection. This is a simplistic way of load balancing your connections across a cluster of nats nodes and allowing failover to other nodes in the cluster if one goes down.
 
   To use this in your supervision tree add an entry like this:
 
@@ -58,7 +58,7 @@ defmodule Gnat.ConnectionSupervisor do
   @impl GenServer
   def handle_info(:attempt_connection, state) do
     connection_config = random_connection_config(state)
-    Logger.debug("connecting to #{inspect(connection_config)}")
+    Logger.debug("connecting to #{inspect(Gnat.Handshake.redact_settings(connection_config))}")
 
     case Gnat.start_link(connection_config, name: state.name) do
       {:ok, gnat} ->
@@ -88,6 +88,17 @@ defmodule Gnat.ConnectionSupervisor do
     Logger.error("#{__MODULE__} received unexpected message #{inspect(msg)}")
     {:noreply, state}
   end
+
+  # GenServer declares format_status/1 from Elixir 1.17; OTP calls it on every supported version.
+  if Version.match?(System.version(), ">= 1.17.0"), do: @impl(GenServer)
+
+  def format_status(%{state: %{connection_settings: settings} = state} = status)
+      when is_list(settings) do
+    redacted = Enum.map(settings, &Gnat.Handshake.redact_settings/1)
+    %{status | state: %{state | connection_settings: redacted}}
+  end
+
+  def format_status(status), do: status
 
   defp random_connection_config(%{connection_settings: connection_settings}) do
     connection_settings |> Enum.random()

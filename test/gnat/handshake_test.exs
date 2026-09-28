@@ -69,6 +69,31 @@ defmodule Gnat.HandshakeTest do
       assert result[:protocol] == 1
     end
 
+    test "accepts an nkey seed function" do
+      seed = "SUAIBDPBAUTWCWBKIO6XHQNINK5FWJW4OHLXC3HQ2KFE4PEJUA44CNHTC4"
+      server_settings = %{nonce: "test-nonce-value", auth_required: true}
+
+      from_binary = Handshake.negotiate_settings(server_settings, %{nkey_seed: seed})
+      from_function = Handshake.negotiate_settings(server_settings, %{nkey_seed: fn -> seed end})
+
+      assert from_function == from_binary
+      assert Map.has_key?(from_function, :sig)
+      assert Map.has_key?(from_function, :nkey)
+    end
+
+    test "accepts password and token functions" do
+      server_settings = %{auth_required: true}
+
+      assert %{user: "test", pass: "secret"} =
+               Handshake.negotiate_settings(server_settings, %{
+                 username: "test",
+                 password: fn -> "secret" end
+               })
+
+      assert %{auth_token: "my-secret-token"} =
+               Handshake.negotiate_settings(server_settings, %{token: fn -> "my-secret-token" end})
+    end
+
     test "works with JWT+nkey authentication when client forces auth" do
       nonce = "test-nonce-value"
       server_settings = %{nonce: nonce}
