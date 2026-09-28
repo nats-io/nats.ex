@@ -81,6 +81,19 @@ defmodule Gnat.HandshakeTest do
       assert Map.has_key?(from_function, :nkey)
     end
 
+    test "accepts password and token functions" do
+      server_settings = %{auth_required: true}
+
+      assert %{user: "test", pass: "secret"} =
+               Handshake.negotiate_settings(server_settings, %{
+                 username: "test",
+                 password: fn -> "secret" end
+               })
+
+      assert %{auth_token: "my-secret-token"} =
+               Handshake.negotiate_settings(server_settings, %{token: fn -> "my-secret-token" end})
+    end
+
     test "works with JWT+nkey authentication when client forces auth" do
       nonce = "test-nonce-value"
       server_settings = %{nonce: nonce}

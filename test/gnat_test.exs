@@ -38,6 +38,36 @@ defmodule GnatTest do
   end
 
   @tag :multi_server
+  test "connect to a server with user/pass authentication and a password function" do
+    connection_settings = %{
+      host: "localhost",
+      port: 4223,
+      tcp_opts: [:binary],
+      username: "bob",
+      password: fn -> "alice" end
+    }
+
+    {:ok, pid} = Gnat.start_link(connection_settings)
+    assert Process.alive?(pid)
+    :ok = Gnat.stop(pid)
+  end
+
+  @tag :multi_server
+  test "connect to a server with token authentication and a token function" do
+    connection_settings = %{
+      host: "localhost",
+      port: 4226,
+      tcp_opts: [:binary],
+      token: fn -> "SpecialToken" end,
+      auth_required: true
+    }
+
+    {:ok, pid} = Gnat.start_link(connection_settings)
+    assert Process.alive?(pid)
+    :ok = Gnat.stop(pid)
+  end
+
+  @tag :multi_server
   test "connect to a server with token authentication" do
     connection_settings = %{
       host: "localhost",

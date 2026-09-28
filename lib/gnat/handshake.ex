@@ -67,11 +67,11 @@ defmodule Gnat.Handshake do
          %{username: username, password: password} = _user,
          true = _auth_required
        ) do
-    Map.merge(settings, %{user: username, pass: password})
+    Map.merge(settings, %{user: username, pass: resolve_secret(password)})
   end
 
   defp negotiate_auth(settings, _server, %{token: token} = _user, true = _auth_required) do
-    Map.merge(settings, %{auth_token: token})
+    Map.merge(settings, %{auth_token: resolve_secret(token)})
   end
 
   defp negotiate_auth(
@@ -80,7 +80,7 @@ defmodule Gnat.Handshake do
          %{nkey_seed: seed, jwt: jwt} = _user,
          true = _auth_required
        ) do
-    {:ok, nkey} = seed |> resolve_seed() |> NKEYS.from_seed()
+    {:ok, nkey} = seed |> resolve_secret() |> NKEYS.from_seed()
     signature = NKEYS.sign(nkey, nonce) |> Base.url_encode64() |> String.replace("=", "")
 
     Map.merge(settings, %{sig: signature, protocol: 1, jwt: jwt})
@@ -92,7 +92,7 @@ defmodule Gnat.Handshake do
          %{nkey_seed: seed} = _user,
          true = _auth_required
        ) do
-    {:ok, nkey} = seed |> resolve_seed() |> NKEYS.from_seed()
+    {:ok, nkey} = seed |> resolve_secret() |> NKEYS.from_seed()
     signature = NKEYS.sign(nkey, nonce) |> Base.url_encode64() |> String.replace("=", "")
     public = NKEYS.public_nkey(nkey)
 
@@ -103,8 +103,8 @@ defmodule Gnat.Handshake do
     settings
   end
 
-  defp resolve_seed(seed) when is_function(seed, 0), do: seed.()
-  defp resolve_seed(seed), do: seed
+  defp resolve_secret(secret) when is_function(secret, 0), do: secret.()
+  defp resolve_secret(secret), do: secret
 
   defp negotiate_headers(settings, %{headers: true} = _server, user_settings) do
     if Map.get(user_settings, :headers, true) do

@@ -69,7 +69,10 @@ defmodule Gnat do
           optional(:tls) => boolean(),
           optional(:no_responders) => boolean(),
           optional(:name) => binary(),
-          optional(:nkey_seed) => binary() | (-> binary())
+          optional(:nkey_seed) => binary() | (-> binary()),
+          optional(:username) => binary(),
+          optional(:password) => binary() | (-> binary()),
+          optional(:token) => binary() | (-> binary())
         }
 
   @typedoc """
