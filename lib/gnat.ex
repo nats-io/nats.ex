@@ -51,12 +51,20 @@ defmodule Gnat do
   * `inbox_prefix` - Prefix to use for the message inbox of this connection
   * `no_responders` - Enable the no responders behavior (see `Gnat.request/4`)
   * `name` - The client name reported by NATS monitoring endpoints
-  * `nkey_seed` - The nkey seed used to sign the server's nonce. It can be a binary or a zero-arity
-    function that returns the seed. A function is called during each connection handshake, so the
-    seed is only held for as long as it takes to sign.
+  * `nkey_seed` - The nkey seed used to sign the server's nonce: a zero-arity function that
+    returns the nkey seed as a binary. A binary is also accepted for backward compatibility, but
+    is not recommended, because the seed can then appear in supervisor crash reports.
+  * `username` - The user name for user/password authentication
+  * `password` - The password for user/password authentication: a zero-arity function that
+    returns the password as a binary. A binary is also accepted for backward compatibility, but
+    is not recommended, because the password can then appear in supervisor crash reports.
+  * `token` - The token for token authentication: a zero-arity function that returns the token
+    as a binary. A binary is also accepted for backward compatibility, but is not recommended,
+    because the token can then appear in supervisor crash reports.
 
+  A function is called while the CONNECT message is built, during each connection handshake.
   The `nkey_seed`, `password` and `token` settings are redacted from the connection's process
-  status and crash reports.
+  status, its crash reports and the connection supervisor's log.
   """
   @type connection_settings :: %{
           optional(:connection_timeout) => non_neg_integer(),
