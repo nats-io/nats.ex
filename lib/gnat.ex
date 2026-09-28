@@ -271,6 +271,9 @@ defmodule Gnat do
   tabs, carriage returns or line feeds. Invalid values raise `ArgumentError` in
   the caller before sending. The server validates the subject grammar.
 
+  Operations issued by one process retain their order on the connection.
+  Operations from different processes can interleave.
+
   Headers must be passed as a `t:headers()` value (a list of tuples).
   Sending and parsing headers has more overhead than typical nats messages
   (see [the Nats 2.2 release notes for details](https://docs.nats.io/whats_new_22#message-headers)),
@@ -465,7 +468,8 @@ defmodule Gnat do
           parser: parser,
           request_receivers: %{},
           request_inbox_prefix: request_inbox_prefix,
-          waiting_on_pong: false
+          waiting_on_pong: false,
+          pending_pubs: []
         }
 
         state = create_request_subscription(state)
@@ -477,6 +481,14 @@ defmodule Gnat do
   end
 
   @impl GenServer
+  def handle_info(:timeout, state) do
+    {:noreply, flush_pubs(state)}
+  end
+
+  def handle_info(message, %{pending_pubs: [_ | _]} = state) do
+    handle_info(message, flush_pubs(state))
+  end
+
   def handle_info(:ping_check, %{waiting_on_pong: true} = state) do
     error_message =
       "Closing connection because we did not receive a PONG back within #{state.connection_settings.ping_interval}ms"
@@ -535,6 +547,22 @@ defmodule Gnat do
   end
 
   @impl GenServer
+  def handle_call({:pub, topic, message, opts}, from, state) do
+    command = Command.build(:pub, topic, message, opts)
+    state = %{state | pending_pubs: [{command, from} | state.pending_pubs]}
+
+    if length(state.pending_pubs) == 11 do
+      {:noreply, flush_pubs(state)}
+    else
+      # A zero timeout flushes when the mailbox is empty without bypassing queued operations.
+      {:noreply, state, 0}
+    end
+  end
+
+  def handle_call(request, from, %{pending_pubs: [_ | _]} = state) do
+    handle_call(request, from, flush_pubs(state))
+  end
+
   def handle_call(:stop, _from, state) do
     socket_close(state)
     {:stop, :normal, :ok, state}
@@ -549,15 +577,6 @@ defmodule Gnat do
       add_subscription_to_state(state, sid, receiver, ref) |> Map.put(:next_sid, sid + 1)
 
     {:reply, {:ok, sid}, next_state}
-  end
-
-  def handle_call({:pub, topic, message, opts}, from, state) do
-    commands = [Command.build(:pub, topic, message, opts)]
-    froms = [from]
-    {commands, froms} = receive_additional_pubs(commands, froms, 10)
-    :ok = socket_write(state, commands)
-    Enum.each(froms, fn from -> GenServer.reply(from, :ok) end)
-    {:noreply, state}
   end
 
   def handle_call({:request, request}, _from, state) do
@@ -770,17 +789,13 @@ defmodule Gnat do
     state
   end
 
-  defp receive_additional_pubs(commands, froms, 0), do: {commands, froms}
+  defp flush_pubs(%{pending_pubs: []} = state), do: state
 
-  defp receive_additional_pubs(commands, froms, how_many_more) do
-    receive do
-      {:"$gen_call", from, {:pub, topic, message, opts}} ->
-        commands = [Command.build(:pub, topic, message, opts) | commands]
-        froms = [from | froms]
-        receive_additional_pubs(commands, froms, how_many_more - 1)
-    after
-      0 -> {commands, froms}
-    end
+  defp flush_pubs(state) do
+    {commands, froms} = state.pending_pubs |> Enum.reverse() |> Enum.unzip()
+    :ok = socket_write(state, commands)
+    Enum.each(froms, &GenServer.reply(&1, :ok))
+    %{state | pending_pubs: []}
   end
 
   defp receive_additional_tcp_data(_socket, packets, 0), do: Enum.reverse(packets)
