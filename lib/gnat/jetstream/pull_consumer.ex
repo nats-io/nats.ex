@@ -85,7 +85,8 @@ defmodule Gnat.Jetstream.PullConsumer do
   * `:connection_retries` - a number of attempts the PullConsumer will make to establish the NATS
     connection. When this value is exceeded, the pull consumer stops with the `:timeout` reason,
     defaults to `10`
-  * `:inbox_prefix` - allows the default `_INBOX.` prefix to be customized. Should end with a dot.
+  * `:inbox_prefix` - the prefix of the inbox the consumer listens on. Defaults to the
+    connection's inbox prefix. Should end with a dot.
   * `:domain` - use a JetStream domain, this is mostly used on leaf nodes.
   * `:batch_size` - when set to a value greater than 1, enables batch mode. Messages are
     buffered until the batch is full or the pull request ends, then passed individually

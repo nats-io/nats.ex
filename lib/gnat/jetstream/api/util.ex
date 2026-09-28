@@ -47,6 +47,12 @@ defmodule Gnat.Jetstream.API.Util do
   def decode_base64(nil), do: nil
   def decode_base64(data), do: Base.decode64!(data)
 
+  @doc """
+  A new inbox under `prefix`, or under the connection's own inbox prefix when `prefix` is `nil`.
+  """
+  def inbox(conn, nil), do: reply_inbox(Gnat.inbox_prefix(conn))
+  def inbox(_conn, prefix), do: reply_inbox(prefix)
+
   def reply_inbox(prefix \\ @default_inbox_prefix)
   def reply_inbox(nil), do: reply_inbox()
   def reply_inbox(prefix), do: prefix <> nuid()

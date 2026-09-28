@@ -75,6 +75,10 @@ defmodule Gnat.Jetstream.API.Object do
       deadline, in milliseconds, starting after consumer creation. Each wait is
       limited by both this deadline and `:timeout`. Callback time counts toward
       the deadline, but callbacks aren't interrupted. Defaults to `:infinity`.
+
+    * `:inbox_prefix` - (string) the prefix of the subject the chunks are delivered to.
+      Defaults to the connection's inbox prefix, so a user whose subscriptions are
+      restricted to it can read objects.
   """
   @spec get(Gnat.t(), String.t(), String.t(), (binary -> any()), keyword()) ::
           :ok | {:error, any}
@@ -106,6 +110,7 @@ defmodule Gnat.Jetstream.API.Object do
           {:show_deleted, boolean()}
           | {:timeout, non_neg_integer()}
           | {:total_timeout, non_neg_integer() | :infinity}
+          | {:inbox_prefix, String.t()}
 
   @doc """
   Lists object metadata in a bucket.
@@ -122,13 +127,17 @@ defmodule Gnat.Jetstream.API.Object do
     * `:total_timeout` - (non-negative integer or `:infinity`) the total receive
       deadline, in milliseconds, starting after consumer creation. Each wait is
       limited by both this deadline and `:timeout`. Defaults to `:infinity`.
+
+    * `:inbox_prefix` - (string) the prefix of the subject the metadata is delivered to.
+      Defaults to the connection's inbox prefix, so a user whose subscriptions are
+      restricted to it can list objects.
   """
   @spec list(Gnat.t(), String.t(), list(list_option())) :: {:error, any} | {:ok, list(Meta.t())}
   def list(conn, bucket_name, options \\ []) do
     with {:ok, %{config: stream}} <- Stream.info(conn, stream_name(bucket_name)) do
       consumer = %Consumer{
         stream_name: stream.name,
-        deliver_subject: Util.reply_inbox(),
+        deliver_subject: Util.inbox(conn, Keyword.get(options, :inbox_prefix)),
         deliver_policy: :last_per_subject,
         filter_subject: meta_stream_subject(bucket_name),
         ack_policy: :none,
@@ -316,7 +325,7 @@ defmodule Gnat.Jetstream.API.Object do
     else
       consumer = %Consumer{
         stream_name: stream_name(meta.bucket),
-        deliver_subject: Util.reply_inbox(),
+        deliver_subject: Util.inbox(conn, Keyword.get(opts, :inbox_prefix)),
         deliver_policy: :all,
         filter_subject: chunk_stream_topic(meta),
         ack_policy: :none,
