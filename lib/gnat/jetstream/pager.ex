@@ -22,6 +22,7 @@ defmodule Gnat.Jetstream.Pager do
   * `from_datetime` Only page through messages recorded on or after this datetime
   * `from_seq` Only page through messages with a sequence number equal or above this option
   * `headers_only` You can pass `true` to this if you only want to see the headers from each message. Can be useful to get metadata without having to receieve large body payloads.
+  * `inbox_prefix` The prefix of the inbox the pages are delivered to. Defaults to the connection's inbox prefix.
 
   """
   @type opt ::
@@ -30,6 +31,7 @@ defmodule Gnat.Jetstream.Pager do
           | {:from_datetime, DateTime.t()}
           | {:from_seq, non_neg_integer}
           | {:headers_only, boolean()}
+          | {:inbox_prefix, String.t()}
 
   @spec init(Gnat.t(), String.t(), opts()) :: {:ok, pager()} | {:error, term()}
   def init(conn, stream_name, opts) do
@@ -49,7 +51,7 @@ defmodule Gnat.Jetstream.Pager do
 
     consumer = apply_opts_to_consumer(consumer, opts)
 
-    inbox = Util.reply_inbox()
+    inbox = Util.inbox(conn, Keyword.get(opts, :inbox_prefix))
 
     with {:ok, consumer_info} <- Consumer.create(conn, consumer),
          {:ok, sub} <- Gnat.sub(conn, self(), inbox) do

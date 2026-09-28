@@ -1,0 +1,16 @@
+jetstream: {}
+accounts: {
+  INBOX_PREFIX: {
+    jetstream: enabled
+    users: [
+      {
+        user: inbox
+        password: prefix
+        permissions: {
+          publish: [">"]
+          subscribe: ["custom_inbox.>"]
+        }
+      }
+    ]
+  }
+}

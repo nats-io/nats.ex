@@ -444,6 +444,16 @@ defmodule Gnat do
     GenServer.call(name, :server_info)
   end
 
+  @doc """
+  Get the inbox prefix of a connection: its `inbox_prefix` setting, `"_INBOX."` by default.
+
+  Reply subjects and the deliver subjects of the push consumers Gnat creates start with it.
+  """
+  @spec inbox_prefix(t()) :: String.t()
+  def inbox_prefix(name) do
+    GenServer.call(name, :inbox_prefix)
+  end
+
   @impl GenServer
   def init(connection_settings) do
     connection_settings = Map.merge(@default_connection_settings, connection_settings)
@@ -605,6 +615,10 @@ defmodule Gnat do
   def handle_call(:active_subscriptions, _from, state) do
     active_subscriptions = Enum.count(state.receivers)
     {:reply, {:ok, active_subscriptions}, state}
+  end
+
+  def handle_call(:inbox_prefix, _from, state) do
+    {:reply, state.connection_settings.inbox_prefix, state}
   end
 
   def handle_call(:server_info, _from, state) do

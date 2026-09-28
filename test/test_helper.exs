@@ -237,6 +237,22 @@ defmodule CheckForExpectedNatsServers do
             "-c test/fixtures/nkey_config`."
         )
     end
+
+    case :gen_tcp.connect(~c"localhost", 4228, [:binary]) do
+      {:ok, socket} ->
+        :gen_tcp.close(socket)
+
+      {:error, reason} ->
+        Mix.raise(
+          "Cannot connect to nats-server" <>
+            " (tcp://localhost:4228):" <>
+            " #{:inet.format_error(reason)}\n" <>
+            "You probably need to start a nats-server " <>
+            "server that restricts subscriptions to a custom inbox prefix with " <>
+            "the following command `nats-server -p 4228 " <>
+            "-c test/fixtures/inbox_prefix_config`."
+        )
+    end
   end
 
   def check_for_tag(_), do: :ok

@@ -80,10 +80,8 @@ defmodule Gnat.Jetstream.PullConsumer.Server do
 
     # Each pull subscription has its own inbox so terminal statuses from an
     # abandoned request can't change the replacement request's accounting.
-    listening_topic =
-      Util.reply_inbox(gen_state.connection_options.inbox_prefix)
-
     with {:ok, conn} <- connection_pid(connection_name),
+         listening_topic = Util.inbox(conn, gen_state.connection_options.inbox_prefix),
          {:ok, consumer_info} <-
            ensure_consumer_exists(
              conn,

@@ -24,6 +24,7 @@ defmodule Gnat.Jetstream.API.KV.Watcher do
           {:conn, Gnat.t()}
           | {:bucket_name, String.t()}
           | {:handler, keywatch_handler()}
+          | {:inbox_prefix, String.t()}
 
   @spec start_link(opts :: [watcher_options()]) :: GenServer.on_start()
   def start_link(opts) do
@@ -35,7 +36,8 @@ defmodule Gnat.Jetstream.API.KV.Watcher do
   end
 
   def init(opts) do
-    {:ok, {sub, consumer_name}} = subscribe(opts[:conn], opts[:bucket_name])
+    {:ok, {sub, consumer_name}} =
+      subscribe(opts[:conn], opts[:bucket_name], Keyword.get(opts, :inbox_prefix))
 
     {:ok,
      %{
@@ -87,9 +89,9 @@ defmodule Gnat.Jetstream.API.KV.Watcher do
   defp action(:delete), do: :key_deleted
   defp action(:purge), do: :key_purged
 
-  defp subscribe(conn, bucket_name) do
+  defp subscribe(conn, bucket_name, inbox_prefix) do
     stream = KV.stream_name(bucket_name)
-    inbox = Util.reply_inbox()
+    inbox = Util.inbox(conn, inbox_prefix)
     consumer_name = "all_key_values_watcher_#{Util.nuid()}"
 
     with {:ok, sub} <- Gnat.sub(conn, self(), inbox),
