@@ -58,9 +58,7 @@ defmodule Gnat.ConnectionSupervisor do
   @impl GenServer
   def handle_info(:attempt_connection, state) do
     connection_config = random_connection_config(state)
-    host = Map.get(connection_config, :host, "localhost")
-    port = Map.get(connection_config, :port, 4222)
-    Logger.debug("connecting to #{host}:#{port}")
+    Logger.debug("connecting to #{inspect(Gnat.Handshake.redact_settings(connection_config))}")
 
     case Gnat.start_link(connection_config, name: state.name) do
       {:ok, gnat} ->

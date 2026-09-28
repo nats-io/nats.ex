@@ -21,14 +21,16 @@ defmodule Gnat.ConnectionSupervisorTest do
     GenServer.stop(supervisor)
   end
 
-  test "connection settings are not logged when connecting" do
+  test "connection settings are logged with their secrets redacted when connecting" do
     import ExUnit.CaptureLog
     secrets = %{password: "logged-password", token: "logged-token", nkey_seed: @nkey_seed}
 
     settings = %{
       name: :connection_supervisor_logging_test,
       backoff_period: 60_000,
-      connection_settings: [Map.merge(%{host: "127.0.0.1", port: 1}, secrets)]
+      connection_settings: [
+        Map.merge(%{host: "127.0.0.1", port: 1, username: "logged-user"}, secrets)
+      ]
     }
 
     log =
@@ -39,7 +41,12 @@ defmodule Gnat.ConnectionSupervisorTest do
         GenServer.stop(supervisor)
       end)
 
-    assert log =~ "connecting to 127.0.0.1:1"
+    assert log =~ "connecting to"
+    assert log =~ ~s(username: "logged-user")
+    assert log =~ ~s(host: "127.0.0.1")
+    assert log =~ "password: :redacted"
+    assert log =~ "token: :redacted"
+    assert log =~ "nkey_seed: :redacted"
     Enum.each(Map.values(secrets), fn secret -> refute log =~ secret end)
   end
 end
