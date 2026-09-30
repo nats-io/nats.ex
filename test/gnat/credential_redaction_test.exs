@@ -5,6 +5,8 @@ defmodule Gnat.CredentialRedactionTest do
 
   @moduletag capture_log: true
 
+  @tls_options %{tls_key: :key, tls_password: :password, tls_callback: :user_lookup_fun}
+
   setup do
     id = System.unique_integer([:positive])
 
@@ -161,18 +163,71 @@ defmodule Gnat.CredentialRedactionTest do
         end)
 
       assert_redacted(inspect(result, limit: :infinity) <> log, [secret])
+      tls_option = @tls_options[unquote(scenario)]
 
-      if unquote(mode) == :direct do
-        assert {:error, {%RuntimeError{message: message}, stacktrace}} = result
-        assert message =~ "connection initialization raised"
-        assert stacktrace != []
+      case unquote(mode) do
+        :direct when tls_option != nil ->
+          assert {:error, {:options, {^tls_option, :redacted}}} = result
 
-        assert Enum.all?(stacktrace, fn {_module, _function, arity, _location} ->
-                 is_integer(arity)
-               end)
-      else
-        assert log =~ "failed to connect"
-        assert log =~ "connection initialization raised"
+        :direct ->
+          assert {:error, {%RuntimeError{message: message}, stacktrace}} = result
+          assert message =~ "connection initialization raised"
+          assert stacktrace != []
+
+          assert Enum.all?(stacktrace, fn {_module, _function, arity, _location} ->
+                   is_integer(arity)
+                 end)
+
+        :supervised when tls_option != nil ->
+          assert log =~ "failed to connect {:options, {#{inspect(tls_option)}, :redacted}}"
+
+        :supervised ->
+          assert log =~ "failed to connect"
+          assert log =~ "connection initialization raised"
+      end
+
+      send(server, :stop)
+    end
+  end
+
+  for mode <- [:direct, :supervised] do
+    test "#{mode} startup errors keep the TLS alert for an expired server certificate" do
+      Process.flag(:trap_exit, true)
+      %{server_config: server_config, client_config: client_config} = expired_certificates()
+      {server, port} = start_wire_server("nonce", false, tls: server_config)
+
+      settings = %{
+        host: "127.0.0.1",
+        port: port,
+        tls: true,
+        ssl_opts: [verify: :verify_peer, cacerts: client_config[:cacerts]]
+      }
+
+      {result, log} = with_log(fn -> start_and_stop(unquote(mode), settings) end)
+
+      case unquote(mode) do
+        :direct -> assert {:error, {:tls_alert, {:certificate_expired, _}}} = result
+        :supervised -> assert log =~ "failed to connect {:tls_alert, {:certificate_expired"
+      end
+
+      send(server, :stop)
+    end
+
+    test "#{mode} startup errors keep the reason when the server lacks header support" do
+      Process.flag(:trap_exit, true)
+      {server, port} = start_wire_server("nonce", false, info: %{headers: false})
+      settings = %{host: "127.0.0.1", port: port, headers: true}
+
+      {result, log} = with_log(fn -> start_and_stop(unquote(mode), settings) end)
+      message = "NATS Server does not support headers"
+
+      case unquote(mode) do
+        :direct ->
+          assert {:error, reason} = result
+          assert reason =~ message
+
+        :supervised ->
+          assert log =~ "failed to connect \"#{message}"
       end
 
       send(server, :stop)
@@ -362,7 +417,29 @@ defmodule Gnat.CredentialRedactionTest do
     Base.encode32(<<bytes::binary, NKEYS.CRC.compute(bytes)::little-16>>)
   end
 
-  defp start_wire_server(nonce, expect_connect \\ true) do
+  defp start_and_stop(:direct, settings), do: Gnat.start_link(settings)
+
+  defp start_and_stop(:supervised, settings) do
+    supervisor = start_connection_supervisor(settings)
+    assert %{gnat: nil} = :sys.get_state(supervisor)
+    stop_supervised!(Gnat.ConnectionSupervisor)
+  end
+
+  # The default generated keys can't be negotiated by OTP's TLS defaults, so use RSA.
+  defp expired_certificates do
+    key = {:rsa, 2048, 65537}
+
+    :public_key.pkix_test_data(%{
+      server_chain: %{
+        root: [key: key],
+        intermediates: [],
+        peer: [key: key, validity: {{2020, 1, 1}, {2020, 1, 2}}]
+      },
+      client_chain: %{root: [key: key], intermediates: [], peer: [key: key]}
+    })
+  end
+
+  defp start_wire_server(nonce, expect_connect \\ true, opts \\ []) do
     {:ok, listener} = :gen_tcp.listen(0, [:binary, active: false, packet: :line])
     {:ok, {_, port}} = :inet.sockname(listener)
     owner = self()
@@ -374,8 +451,15 @@ defmodule Gnat.CredentialRedactionTest do
         :ok =
           :gen_tcp.send(
             socket,
-            "INFO " <> Jason.encode!(%{auth_required: true, nonce: nonce}) <> "\r\n"
+            "INFO " <>
+              Jason.encode!(Map.merge(%{auth_required: true, nonce: nonce}, opts[:info] || %{})) <>
+              "\r\n"
           )
+
+        if tls = opts[:tls] do
+          :ok = :inet.setopts(socket, packet: :raw)
+          :ssl.handshake(socket, tls, 1_000)
+        end
 
         if expect_connect do
           {:ok, "CONNECT " <> connect} = :gen_tcp.recv(socket, 0, 1_000)
