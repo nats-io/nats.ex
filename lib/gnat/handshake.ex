@@ -15,20 +15,6 @@ defmodule Gnat.Handshake do
     end
   end
 
-  @secret_settings [:nkey_seed, :password, :token]
-
-  @doc """
-  Replaces the secrets in connection settings so they can be shown in process status and
-  crash reports.
-  """
-  def redact_settings(settings) when is_map(settings) do
-    Enum.reduce(@secret_settings, settings, fn key, acc ->
-      if Map.has_key?(acc, key), do: Map.put(acc, key, :redacted), else: acc
-    end)
-  end
-
-  def redact_settings(settings), do: settings
-
   def negotiate_settings(server_settings, user_settings) do
     auth_required = server_settings[:auth_required] || user_settings[:auth_required] || false
 
@@ -43,10 +29,15 @@ defmodule Gnat.Handshake do
     receive do
       {:tcp, ^tcp, operation} ->
         {_, [{:info, server_settings}]} = Parsec.parse(Parsec.new(), operation)
-        {:ok, socket} = upgrade_connection(tcp, user_settings)
-        settings = negotiate_settings(server_settings, user_settings)
-        :ok = send_connect(user_settings, settings, socket)
-        {:ok, socket, server_settings}
+
+        # Expected failures are returned rather than raised, because exceptions raised during
+        # initialization are redacted and would hide the reason from operators.
+        with :ok <- check_headers(server_settings, user_settings),
+             {:ok, socket} <- upgrade_connection(tcp, user_settings),
+             settings = negotiate_settings(server_settings, user_settings),
+             :ok <- send_connect(user_settings, settings, socket) do
+          {:ok, socket, server_settings}
+        end
     after
       1000 ->
         {:error, "timed out waiting for info"}
@@ -114,10 +105,6 @@ defmodule Gnat.Handshake do
     end
   end
 
-  defp negotiate_headers(_settings, _server, %{headers: true} = _user) do
-    raise "NATS Server does not support headers, but your connection settings specify header support"
-  end
-
   defp negotiate_headers(settings, _server, _user) do
     settings
   end
@@ -140,10 +127,33 @@ defmodule Gnat.Handshake do
     settings
   end
 
+  defp check_headers(%{headers: true} = _server, _user), do: :ok
+
+  defp check_headers(_server, %{headers: true} = _user) do
+    {:error,
+     "NATS Server does not support headers, but your connection settings specify header support"}
+  end
+
+  defp check_headers(_server, _user), do: :ok
+
   defp upgrade_connection(tcp, %{tls: true, ssl_opts: opts}) do
     :ok = :inet.setopts(tcp, active: true)
-    :ssl.connect(tcp, opts, 1_000)
+
+    case :ssl.connect(tcp, opts, 1_000) do
+      {:ok, socket} -> {:ok, socket}
+      {:error, reason} -> {:error, tls_error(reason)}
+    end
   end
 
   defp upgrade_connection(tcp, _settings), do: {:ok, tcp}
+
+  # :ssl echoes the offending value in option errors, which can be a private key, password
+  # or callback state, so only the option name is kept. Alerts such as an expired or untrusted
+  # certificate are returned as-is.
+  defp tls_error({:options, detail}) when is_tuple(detail) and is_atom(elem(detail, 0)) do
+    {:options, {elem(detail, 0), :redacted}}
+  end
+
+  defp tls_error({:options, _detail}), do: {:options, :redacted}
+  defp tls_error(reason), do: reason
 end
