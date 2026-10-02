@@ -421,6 +421,7 @@ defmodule Gnat.Jetstream.PullConsumer.RecoveryTest do
       Process.sleep(5_100)
       :sys.resume(conn)
       assert_receive {:connected, ^pid, _}, 3_000
+      :sys.get_state(pid)
       assert {:ok, 2} = Gnat.active_subscriptions(conn)
       assert {:monitors, [{:process, ^conn}]} = Process.info(pid, :monitors)
     after
@@ -540,6 +541,7 @@ defmodule Gnat.Jetstream.PullConsumer.RecoveryTest do
       Process.exit(conn, :kill)
       assert_receive {:DOWN, ^ref, :process, ^conn, _}
       assert_receive {:connected, ^pid, ^name}, 3_000
+      :sys.get_state(pid)
       replacement = Process.whereis(:gnat)
       assert replacement != conn
       assert {:ok, 2} = Gnat.active_subscriptions(replacement)
