@@ -32,6 +32,8 @@ defmodule Gnat.Server do
 
   If your `request/1` function returned `{:error, term}`, then the `term` you returned will be passed as the second argument.
   If an exception was raised during your `request/1` function, then the exception will be passed as the second argument.
+  If publishing a reply returns `{:error, reason}`, then `reason` is passed to this callback.
+  Failures publishing a reply from this callback are logged without invoking it again.
   If your `request/1` function returned something other than the supported return types, then its return value will be passed as the second argument.
   """
   @callback error(message :: Gnat.message(), error :: term()) :: :ok | {:reply, iodata()}
@@ -61,10 +63,20 @@ defmodule Gnat.Server do
   def execute(module, message) do
     try do
       case apply(module, :request, [message]) do
-        :ok -> :done
-        {:reply, data} -> send_reply(message, data)
-        {:error, error} -> execute_error(module, message, error)
-        other -> execute_error(module, message, other)
+        :ok ->
+          :done
+
+        {:reply, data} ->
+          case send_reply(message, data) do
+            :ok -> :ok
+            {:error, reason} -> execute_error(module, message, reason)
+          end
+
+        {:error, error} ->
+          execute_error(module, message, error)
+
+        other ->
+          execute_error(module, message, other)
       end
     rescue
       e ->
@@ -80,7 +92,16 @@ defmodule Gnat.Server do
           :done
 
         {:reply, data} ->
-          send_reply(message, data)
+          case send_reply(message, data) do
+            :ok ->
+              :ok
+
+            {:error, reason} ->
+              Logger.error(
+                "error handler for #{module} could not send reply: #{inspect(reason)}",
+                type: :gnat_server_error
+              )
+          end
 
         other ->
           Logger.error(
