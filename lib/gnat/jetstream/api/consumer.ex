@@ -186,7 +186,8 @@ defmodule Gnat.Jetstream.API.Consumer do
           push_bound: nil | boolean(),
           stream_name: binary(),
           paused: boolean(),
-          pause_remaining: nil | Time.t() # TODO: Verify type here
+          # TODO: Verify type here
+          pause_remaining: nil | Time.t()
         }
 
   @type config :: %{
@@ -298,20 +299,21 @@ defmodule Gnat.Jetstream.API.Consumer do
 
   """
   @spec pause(
-    conn :: Gnat.t(),
-    stream_name :: binary(),
-    consumer_name :: binary(),
-    pause_until :: DateTime.t(),
-    opts :: [domain: nil | binary()]
-  ) ::
-    :ok | {:error, any()}
-def pause(conn, stream_name, consumer_name, pause_until, opts \\ []) do
-  topic = "#{js_api(opts[:domain])}.CONSUMER.PAUSE.#{stream_name}.#{consumer_name}"
-  payload = Jason.encode!(%{ pause_until: pause_until })
-  with {:ok, _response} <- request(conn, topic, payload) do
-    :ok
+          conn :: Gnat.t(),
+          stream_name :: binary(),
+          consumer_name :: binary(),
+          pause_until :: DateTime.t(),
+          opts :: [domain: nil | binary()]
+        ) ::
+          :ok | {:error, any()}
+  def pause(conn, stream_name, consumer_name, pause_until, opts \\ []) do
+    topic = "#{js_api(opts[:domain])}.CONSUMER.PAUSE.#{stream_name}.#{consumer_name}"
+    payload = Jason.encode!(%{pause_until: pause_until})
+
+    with {:ok, _response} <- request(conn, topic, payload) do
+      :ok
+    end
   end
-end
 
   @doc """
   Information about the consumer.
