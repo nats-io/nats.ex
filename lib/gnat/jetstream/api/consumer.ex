@@ -186,8 +186,7 @@ defmodule Gnat.Jetstream.API.Consumer do
           push_bound: nil | boolean(),
           stream_name: binary(),
           paused: boolean(),
-          # TODO: Verify type here
-          pause_remaining: nil | Time.t()
+          pause_remaining: nil | non_neg_integer()
         }
 
   @type config :: %{
@@ -545,7 +544,9 @@ defmodule Gnat.Jetstream.API.Consumer do
       num_redelivered: Map.get(raw, "num_redelivered"),
       num_waiting: Map.get(raw, "num_waiting"),
       push_bound: Map.get(raw, "push_bound"),
-      stream_name: Map.get(raw, "stream_name")
+      stream_name: Map.get(raw, "stream_name"),
+      paused: Map.get(raw, "paused", false),
+      pause_remaining: Map.get(raw, "pause_remaining")
     }
   end
 
