@@ -611,10 +611,10 @@ defmodule Gnat do
     {:stop, "tcp transport error #{inspect(reason)}", state}
   end
 
-  def handle_info({:DOWN, ref, :process, pid, _reason}, state) when is_reference(ref) do
-    case Enum.find(state.receivers, fn {_sid, receiver} ->
-           receiver.monitor_ref == ref and receiver.recipient == pid
-         end) do
+  # Match on the monitor ref alone: for a registered-name subscriber the DOWN carries
+  # `{name, node}` rather than the recipient.
+  def handle_info({:DOWN, ref, :process, _object, _reason}, state) when is_reference(ref) do
+    case Enum.find(state.receivers, fn {_sid, receiver} -> receiver.monitor_ref == ref end) do
       {sid, _receiver} -> {:noreply, unsub_sid(sid, [], state)}
       nil -> {:noreply, state}
     end

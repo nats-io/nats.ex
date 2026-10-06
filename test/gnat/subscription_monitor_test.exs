@@ -20,6 +20,26 @@ defmodule Gnat.SubscriptionMonitorTest do
     assert {:ok, 1} = Gnat.active_subscriptions(gnat)
   end
 
+  test "registered name subscriber death removes its subscription", %{gnat: gnat} do
+    topic = "monitors.named"
+    name = :"monitors_named_#{System.unique_integer([:positive])}"
+    subscriber = start_subscriber()
+    Process.register(subscriber, name)
+    {:ok, sid} = Gnat.sub(gnat, name, topic)
+    ref = monitor_ref(gnat, sid)
+
+    with_suspended(gnat, fn ->
+      Process.exit(subscriber, :kill)
+      assert_queued_down(gnat, ref, {name, node()})
+    end)
+
+    refute Map.has_key?(:sys.get_state(gnat).receivers, sid)
+    assert {:ok, 1} = Gnat.active_subscriptions(gnat)
+    assert {:monitors, []} = Process.info(gnat, :monitors)
+    :ok = Gnat.pub(gnat, topic, "after death")
+    assert {:ok, 1} = Gnat.active_subscriptions(gnat)
+  end
+
   test "explicit unsubscribe flushes a queued subscriber DOWN", %{gnat: gnat} do
     subscriber = start_subscriber()
     {:ok, sid} = Gnat.sub(gnat, subscriber, "monitors.queued")

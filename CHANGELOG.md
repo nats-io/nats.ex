@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.18.1
+
+* `Gnat.pub/4`, `Gnat.request/4`, and `Gnat.request_multi/4` now return `{:error, :max_payload_exceeded}` without sending when the body plus encoded headers is larger than the server's `max_payload`.
+  * Previously these message was sent and the server would close the connection with a `Maximum Payload Violation`, disrupting every subscription on it. This matches the official Go client's `ErrMaxPayload`. See #245
+  * `Gnat.Server` and `Gnat.Services.Server` now pass `:max_payload_exceeded` to your `error/2` callback when a reply is rejected. If the reply returned from `error/2` is also rejected, it is logged instead of calling `error/2` again. Services count a rejected reply as an endpoint error instead of a successful request.
+  * JetStream APIs built on `Gnat.request/4` (KV, Object store, and so on) can now return `{:error, :max_payload_exceeded}`.
+* Fixed subscription cleanup when a subscriber process exits. See #244
+  * A subscriber exit that no longer matched a subscription used to crash the connection. It's now ignored.
+  * A process with several subscriptions could leave one behind when it exited. Each subscription is now matched by its own monitor.
+  * A subscription with `Gnat.unsub/3`'s `max_messages` option is now removed, and an `UNSUB` is sent, if the subscriber exits before the last message. Previously the subscription leaked.
+
 ## 1.18.0
 
 * Supervised PullConsumers will now only attempt to re-create the consumer on disconnect/reconnect for ephemeral consumers. Any durable consumer will just register a new pull request for its durable name. See #233 for details.
