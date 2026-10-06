@@ -105,7 +105,7 @@ defmodule Gnat do
   * `headers` - If messages can have headers in them
   * `host` - The IP address used to start the NATS server, by default this will be 0.0.0.0 and can be configured with -client_advertise host:port
   * `jetstream` - If the server is using JetStream features
-  * `max_payload` - Maximum payload size, in bytes, that the server will accept from the client
+  * `max_payload` - Maximum payload size, in bytes, that the server will accept from the client. A value of `-1` means unlimited.
   * `port` - The port number the NATS server is configured to listen on
   * `proto` - An integer indicating the protocol version of the server. The server version 1.2.0 sets this to 1 to indicate that it supports the "Echo" feature.
   * `remote_account` - The account the client is connected to
@@ -318,12 +318,17 @@ defmodule Gnat do
   Operations issued by one process retain their order on the connection.
   Operations from different processes can interleave.
 
+  Returns `{:error, :max_payload_exceeded}` without sending when the body plus
+  encoded headers exceed the current server-advertised `max_payload` limit.
+  The header size includes the NATS version line and header delimiters.
+  A `max_payload` value of `-1` disables the size limit.
+
   Headers must be passed as a `t:headers()` value (a list of tuples).
   Sending and parsing headers has more overhead than typical nats messages
   (see [the Nats 2.2 release notes for details](https://docs.nats.io/whats_new_22#message-headers)),
   so only use them when they are really valuable.
   """
-  @spec pub(t(), String.t(), binary(), keyword()) :: :ok
+  @spec pub(t(), String.t(), iodata(), keyword()) :: :ok | {:error, :max_payload_exceeded}
   def pub(pid, topic, message, opts \\ []) do
     start = :erlang.monotonic_time()
     Validation.subject!(topic, :publish)
@@ -347,6 +352,9 @@ defmodule Gnat do
 
   The topic follows the same rules as `pub/4`. Invalid topics raise `ArgumentError`
   in the caller before registering or sending the request.
+  Requests exceeding the current server-advertised `max_payload` limit return
+  `{:error, :max_payload_exceeded}` without registering or sending the request.
+  Encoded headers count toward the limit as described in `pub/4`.
 
   Supported options:
     * `receive_timeout` - An integer number of milliseconds to wait for a response. Defaults to 60_000
@@ -367,8 +375,8 @@ defmodule Gnat do
   your Gnat connection with the `no_responders: true` option and this function will return very quickly with
   an `{:error, :no_responders}` value. This behavior also works with `request_multi/4`
   """
-  @spec request(t(), String.t(), binary(), keyword()) ::
-          {:ok, message} | {:error, :timeout} | {:error, :no_responders}
+  @spec request(t(), String.t(), iodata(), keyword()) ::
+          {:ok, message} | {:error, :timeout | :no_responders | :max_payload_exceeded}
   def request(pid, topic, body, opts \\ []) do
     start = :erlang.monotonic_time()
     Validation.subject!(topic, :publish)
@@ -382,9 +390,17 @@ defmodule Gnat do
         headers -> Map.put(req, :headers, headers)
       end
 
-    {:ok, subscription} = GenServer.call(pid, {:request, req})
-    response = receive_request_response(subscription, receive_timeout)
-    :ok = unsub(pid, subscription)
+    response =
+      case GenServer.call(pid, {:request, req}) do
+        {:ok, subscription} ->
+          response = receive_request_response(subscription, receive_timeout)
+          :ok = unsub(pid, subscription)
+          response
+
+        {:error, _} = error ->
+          error
+      end
+
     latency = :erlang.monotonic_time() - start
     :telemetry.execute([:gnat, :request], %{latency: latency}, %{topic: topic})
     response
@@ -398,6 +414,9 @@ defmodule Gnat do
 
   The topic follows the same rules as `pub/4`. Invalid topics raise `ArgumentError`
   in the caller before registering or sending the request.
+  Requests exceeding the current server-advertised `max_payload` limit return
+  `{:error, :max_payload_exceeded}` without registering or sending the request.
+  Encoded headers count toward the limit as described in `pub/4`.
 
   Supported options:
     * `receive_timeout` - An integer number of milliseconds to wait for responses. Defaults to 60_000
@@ -410,8 +429,8 @@ defmodule Gnat do
   Enum.count(responses) #=> 5
   ```
   """
-  @spec request_multi(t(), String.t(), binary(), keyword()) ::
-          {:ok, list(message())} | {:error, :no_responders}
+  @spec request_multi(t(), String.t(), iodata(), keyword()) ::
+          {:ok, list(message())} | {:error, :no_responders | :max_payload_exceeded}
   def request_multi(pid, topic, body, opts \\ []) do
     start = :erlang.monotonic_time()
     Validation.subject!(topic, :publish)
@@ -428,15 +447,22 @@ defmodule Gnat do
         headers -> Map.put(req, :headers, headers)
       end
 
-    {:ok, subscription} = GenServer.call(pid, {:request, req})
-
     result =
-      case receive_multi_request_responses(subscription, expiration, max_messages) do
-        {:error, :no_responders} -> {:error, :no_responders}
-        responses when is_list(responses) -> {:ok, responses}
+      case GenServer.call(pid, {:request, req}) do
+        {:ok, subscription} ->
+          result =
+            case receive_multi_request_responses(subscription, expiration, max_messages) do
+              {:error, :no_responders} -> {:error, :no_responders}
+              responses when is_list(responses) -> {:ok, responses}
+            end
+
+          :ok = unsub(pid, subscription)
+          result
+
+        {:error, _} = error ->
+          error
       end
 
-    :ok = unsub(pid, subscription)
     latency = :erlang.monotonic_time() - start
     :telemetry.execute([:gnat, :request_multi], %{latency: latency}, %{topic: topic})
     result
@@ -601,14 +627,21 @@ defmodule Gnat do
 
   @impl GenServer
   def handle_call({:pub, topic, message, opts}, from, state) do
-    command = Command.build(:pub, topic, message, opts)
-    state = %{state | pending_pubs: [{command, from} | state.pending_pubs]}
+    case validate_publish_size(message, opts, state.server_info.max_payload) do
+      :ok ->
+        command = Command.build(:pub, topic, message, opts)
+        state = %{state | pending_pubs: [{command, from} | state.pending_pubs]}
 
-    if length(state.pending_pubs) == 11 do
-      {:noreply, flush_pubs(state)}
-    else
-      # A zero timeout flushes when the mailbox is empty without bypassing queued operations.
-      {:noreply, state, 0}
+        if length(state.pending_pubs) == 11 do
+          {:noreply, flush_pubs(state)}
+        else
+          # A zero timeout flushes when the mailbox is empty without bypassing queued operations.
+          {:noreply, state, 0}
+        end
+
+      {:error, _} = error ->
+        # Keep the idle flush scheduled for any accepted publishes in the batch.
+        {:reply, error, state, 0}
     end
   end
 
@@ -633,24 +666,24 @@ defmodule Gnat do
   end
 
   def handle_call({:request, request}, _from, state) do
-    inbox = make_new_inbox(state)
+    opts = request |> Map.take([:headers]) |> Map.to_list()
 
-    new_state = %{
-      state
-      | request_receivers: Map.put(state.request_receivers, inbox, request.recipient)
-    }
+    case validate_publish_size(request.body, opts, state.server_info.max_payload) do
+      :ok ->
+        inbox = make_new_inbox(state)
 
-    pub =
-      case request do
-        %{headers: headers} ->
-          Command.build(:pub, request.topic, request.body, headers: headers, reply_to: inbox)
+        new_state = %{
+          state
+          | request_receivers: Map.put(state.request_receivers, inbox, request.recipient)
+        }
 
-        _ ->
-          Command.build(:pub, request.topic, request.body, reply_to: inbox)
-      end
+        pub = Command.build(:pub, request.topic, request.body, opts ++ [reply_to: inbox])
+        :ok = socket_write(new_state, [pub])
+        {:reply, {:ok, inbox}, new_state}
 
-    :ok = socket_write(new_state, [pub])
-    {:reply, {:ok, inbox}, new_state}
+      {:error, _} = error ->
+        {:reply, error, state}
+    end
   end
 
   # When the SID is a string, it's a topic, which is used as a key in the request receiver map.
@@ -840,6 +873,18 @@ defmodule Gnat do
     )
 
     state
+  end
+
+  defp validate_publish_size(_payload, _opts, -1), do: :ok
+
+  defp validate_publish_size(payload, opts, max_payload) do
+    size =
+      case Keyword.fetch(opts, :headers) do
+        {:ok, headers} -> IO.iodata_length(["NATS/1.0\r\n", headers, "\r\n", payload])
+        :error -> IO.iodata_length(payload)
+      end
+
+    if size > max_payload, do: {:error, :max_payload_exceeded}, else: :ok
   end
 
   defp flush_pubs(%{pending_pubs: []} = state), do: state

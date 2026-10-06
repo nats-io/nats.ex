@@ -49,6 +49,8 @@ defmodule Gnat.Services.Server do
 
   If your `request/1` function returned `{:error, term}`, then the `term` you returned will be passed as the second argument.
   If an exception was raised during your `request/1` function, then the exception will be passed as the second argument.
+  If publishing a reply returns `{:error, reason}`, then `reason` is passed to this callback.
+  Failures publishing a reply from this callback are logged without invoking it again.
   If your `request/1` function returned something other than the supported return types, then its return value will be passed as the second argument.
   """
   @callback error(message :: Gnat.message(), error :: term()) :: :ok | {:reply, iodata()}
@@ -125,15 +127,27 @@ defmodule Gnat.Services.Server do
           :done
 
         {elapsed_micros, {:reply, data}} ->
-          send_reply(message, data)
+          case send_reply(message, data) do
+            :ok ->
+              :telemetry.execute(
+                [:gnat, :service_request],
+                %{latency: elapsed_micros},
+                telemetry_tags
+              )
 
-          :telemetry.execute(
-            [:gnat, :service_request],
-            %{latency: elapsed_micros},
-            telemetry_tags
-          )
+              Service.record_request(endpoint, elapsed_micros)
 
-          Service.record_request(endpoint, elapsed_micros)
+            {:error, reason} ->
+              execute_error(module, message, reason)
+
+              :telemetry.execute(
+                [:gnat, :service_error],
+                %{latency: elapsed_micros},
+                telemetry_tags
+              )
+
+              Service.record_error(endpoint, elapsed_micros)
+          end
 
         {elapsed_micros, {:error, error}} ->
           execute_error(module, message, error)
@@ -157,7 +171,16 @@ defmodule Gnat.Services.Server do
           :done
 
         {:reply, data} ->
-          send_reply(message, data)
+          case send_reply(message, data) do
+            :ok ->
+              :ok
+
+            {:error, reason} ->
+              Logger.error(
+                "error handler for #{module} could not send reply: #{inspect(reason)}",
+                type: :gnat_server_error
+              )
+          end
 
         other ->
           Logger.error(

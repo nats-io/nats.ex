@@ -236,7 +236,7 @@ defmodule Gnat.PublishOrderingTest do
     acceptor =
       Task.async(fn ->
         {:ok, socket} = :gen_tcp.accept(listener)
-        :ok = :gen_tcp.send(socket, "INFO {}\r\n")
+        :ok = :gen_tcp.send(socket, ~s(INFO {"max_payload":1048576}\r\n))
         :ok = :gen_tcp.controlling_process(socket, parent)
         socket
       end)
