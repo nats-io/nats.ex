@@ -173,35 +173,76 @@ defmodule Gnat.PublishSizeTest do
     assert {:error, :timeout} = :gen_tcp.recv(socket, 0, 20)
   end
 
+  test "an unlimited limit accepts empty, binary, iodata and header messages" do
+    {conn, socket} = wire_connection(-1)
+
+    for body <- [
+          "",
+          String.duplicate("x", 128),
+          [String.duplicate("x", 64), [String.duplicate("x", 64)]]
+        ] do
+      assert :ok = Gnat.pub(conn, "size", body)
+      assert_wire_publish(socket, IO.iodata_length(body))
+    end
+
+    body = String.duplicate("x", 128)
+    assert :ok = Gnat.pub(conn, "size", body, headers: [])
+    assert {:ok, "HPUB size 12 140\r\n"} = :gen_tcp.recv(socket, 0, 1_000)
+    assert {:ok, "NATS/1.0\r\n"} = :gen_tcp.recv(socket, 0, 1_000)
+    assert {:ok, "\r\n"} = :gen_tcp.recv(socket, 0, 1_000)
+    assert {:ok, body <> "\r\n"} == :gen_tcp.recv(socket, 0, 1_000)
+
+    for request <- [&Gnat.request/4, &Gnat.request_multi/4] do
+      task = Task.async(fn -> request.(conn, "size", body, headers: [], max_messages: 1) end)
+      assert {:ok, line} = :gen_tcp.recv(socket, 0, 1_000)
+      assert ["HPUB", "size", inbox, "12", "140"] = String.split(line)
+      assert {:ok, "NATS/1.0\r\n"} = :gen_tcp.recv(socket, 0, 1_000)
+      assert {:ok, "\r\n"} = :gen_tcp.recv(socket, 0, 1_000)
+      assert {:ok, body <> "\r\n"} == :gen_tcp.recv(socket, 0, 1_000)
+      :ok = :gen_tcp.send(socket, ["MSG ", inbox, " 0 2\r\nok\r\n"])
+
+      case Task.await(task) do
+        {:ok, %{body: "ok"}} -> :ok
+        {:ok, [%{body: "ok"}]} -> :ok
+      end
+    end
+
+    assert :sys.get_state(conn).request_receivers == %{}
+    assert {:error, :timeout} = :gen_tcp.recv(socket, 0, 20)
+  end
+
   test "INFO updates change the limit used by subsequent publishes and requests" do
     {conn, socket} = wire_connection(32)
     assert :ok = Gnat.pub(conn, "size", String.duplicate("x", 32))
     assert_wire_publish(socket, 32)
 
-    for limit <- [16, 64] do
+    for limit <- [16, -1, 64] do
       info = %{max_payload: limit, headers: true}
       :ok = :gen_tcp.send(socket, ["INFO ", Jason.encode!(info), "\r\nPING\r\n"])
       assert {:ok, "PONG\r\n"} = :gen_tcp.recv(socket, 0, 1_000)
       assert Gnat.server_info(conn).max_payload == limit
 
-      for operation <- [&Gnat.pub/4, &Gnat.request/4, &Gnat.request_multi/4] do
-        assert {:error, :max_payload_exceeded} =
-                 operation.(conn, "size", String.duplicate("x", limit + 1), [])
+      if limit != -1 do
+        for operation <- [&Gnat.pub/4, &Gnat.request/4, &Gnat.request_multi/4] do
+          assert {:error, :max_payload_exceeded} =
+                   operation.(conn, "size", String.duplicate("x", limit + 1), [])
+        end
       end
 
-      assert :ok = Gnat.pub(conn, "size", String.duplicate("x", limit))
-      assert_wire_publish(socket, limit)
+      size = if limit == -1, do: 128, else: limit
+      assert :ok = Gnat.pub(conn, "size", String.duplicate("x", size))
+      assert_wire_publish(socket, size)
 
       for request <- [&Gnat.request/4, &Gnat.request_multi/4] do
         task =
           Task.async(fn ->
-            request.(conn, "size", String.duplicate("x", limit), max_messages: 1)
+            request.(conn, "size", String.duplicate("x", size), max_messages: 1)
           end)
 
         assert {:ok, line} = :gen_tcp.recv(socket, 0, 1_000)
-        assert ["PUB", "size", inbox, size] = String.split(line)
-        assert String.to_integer(size) == limit
-        assert {:ok, String.duplicate("x", limit) <> "\r\n"} == :gen_tcp.recv(socket, 0, 1_000)
+        assert ["PUB", "size", inbox, wire_size] = String.split(line)
+        assert String.to_integer(wire_size) == size
+        assert {:ok, String.duplicate("x", size) <> "\r\n"} == :gen_tcp.recv(socket, 0, 1_000)
         :ok = :gen_tcp.send(socket, ["MSG ", inbox, " 0 2\r\nok\r\n"])
 
         case Task.await(task) do

@@ -105,7 +105,7 @@ defmodule Gnat do
   * `headers` - If messages can have headers in them
   * `host` - The IP address used to start the NATS server, by default this will be 0.0.0.0 and can be configured with -client_advertise host:port
   * `jetstream` - If the server is using JetStream features
-  * `max_payload` - Maximum payload size, in bytes, that the server will accept from the client
+  * `max_payload` - Maximum payload size, in bytes, that the server will accept from the client. A value of `-1` means unlimited.
   * `port` - The port number the NATS server is configured to listen on
   * `proto` - An integer indicating the protocol version of the server. The server version 1.2.0 sets this to 1 to indicate that it supports the "Echo" feature.
   * `remote_account` - The account the client is connected to
@@ -321,6 +321,7 @@ defmodule Gnat do
   Returns `{:error, :max_payload_exceeded}` without sending when the body plus
   encoded headers exceed the current server-advertised `max_payload` limit.
   The header size includes the NATS version line and header delimiters.
+  A `max_payload` value of `-1` disables the size limit.
 
   Headers must be passed as a `t:headers()` value (a list of tuples).
   Sending and parsing headers has more overhead than typical nats messages
@@ -873,6 +874,8 @@ defmodule Gnat do
 
     state
   end
+
+  defp validate_publish_size(_payload, _opts, -1), do: :ok
 
   defp validate_publish_size(payload, opts, max_payload) do
     size =
