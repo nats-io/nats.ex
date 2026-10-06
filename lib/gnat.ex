@@ -611,13 +611,13 @@ defmodule Gnat do
     {:stop, "tcp transport error #{inspect(reason)}", state}
   end
 
-  def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
-    {sid, _receiver} =
-      Enum.find(state.receivers, fn {_sid, receiver} -> receiver.recipient == pid end)
-
-    state = unsub_sid(sid, [], state)
-
-    {:noreply, state}
+  def handle_info({:DOWN, ref, :process, pid, _reason}, state) when is_reference(ref) do
+    case Enum.find(state.receivers, fn {_sid, receiver} ->
+           receiver.monitor_ref == ref and receiver.recipient == pid
+         end) do
+      {sid, _receiver} -> {:noreply, unsub_sid(sid, [], state)}
+      nil -> {:noreply, state}
+    end
   end
 
   def handle_info(other, state) do
@@ -721,10 +721,9 @@ defmodule Gnat do
       nil ->
         state
 
-      %{monitor_ref: ref} ->
+      _receiver ->
         command = Command.build(:unsub, sid, opts)
         :ok = socket_write(state, command)
-        Process.demonitor(ref, [:flush])
         state = cleanup_subscription_from_state(state, sid, opts)
         state
     end
@@ -768,7 +767,12 @@ defmodule Gnat do
   end
 
   defp cleanup_subscription_from_state(%{receivers: receivers} = state, sid, []) do
-    receivers = Map.delete(receivers, sid)
+    {receiver, receivers} = Map.pop!(receivers, sid)
+
+    if is_reference(receiver.monitor_ref) do
+      Process.demonitor(receiver.monitor_ref, [:flush])
+    end
+
     %{state | receivers: receivers}
   end
 
@@ -908,14 +912,11 @@ defmodule Gnat do
   end
 
   defp update_subscriptions_after_delivering_message(%{receivers: receivers} = state, sid) do
-    receivers =
-      case get_in(receivers, [sid, :unsub_after]) do
-        :infinity -> receivers
-        1 -> Map.delete(receivers, sid)
-        n -> put_in(receivers, [sid, :unsub_after], n - 1)
-      end
-
-    %{state | receivers: receivers}
+    case get_in(receivers, [sid, :unsub_after]) do
+      :infinity -> state
+      1 -> cleanup_subscription_from_state(state, sid, [])
+      n -> put_in(state, [:receivers, sid, :unsub_after], n - 1)
+    end
   end
 
   defp receive_multi_request_responses(_sub, _exp, 0), do: []
