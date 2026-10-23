@@ -730,7 +730,7 @@ defmodule Gnat do
   end
 
   defp create_request_subscription(%{request_inbox_prefix: request_inbox_prefix} = state) do
-    # Example: "_INBOX.Jhf7AcTGP3x4dAV9.*"
+    # Example: "_INBOX.9f3a61c0d2e84b7a5c19e6f0.*"
     wildcard_inbox_topic = request_inbox_prefix <> "*"
     sub = Command.build(:sub, wildcard_inbox_topic, @request_sid, [])
     :ok = socket_write(state, [sub])
@@ -739,7 +739,9 @@ defmodule Gnat do
 
   defp make_new_inbox(%{request_inbox_prefix: prefix}), do: prefix <> nuid()
 
-  defp nuid(), do: :crypto.strong_rand_bytes(12) |> Base.encode64()
+  # Letters and digits only: Base64's "+" and "/" are refused as subject
+  # characters by some servers, which then reject the inbox subscription.
+  defp nuid(), do: :crypto.strong_rand_bytes(12) |> Base.encode16(case: :lower)
 
   defp prepare_headers(opts) do
     if Keyword.has_key?(opts, :headers) do
