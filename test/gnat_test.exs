@@ -449,19 +449,17 @@ defmodule GnatTest do
     assert "custom._INBOX." <> _ = msg.topic
   end
 
-  test "inbox subjects use only letters and digits" do
-    topic = "req-resp"
-    {:ok, pid} = Gnat.start_link(%{inbox_prefix: "custom._INBOX."})
+  test "a connection with inbox: false makes no inbox subscription and refuses requests" do
+    topic = "no-inbox"
+    {:ok, pid} = Gnat.start_link(%{inbox: false})
 
-    # Twenty inboxes, each with its own random part, so a "+" or "/" would
-    # almost certainly show if one could appear.
-    for _ <- 1..20 do
-      spin_up_echo_server_on_topic(self(), pid, topic)
-      assert_receive(true, 100)
-      {:ok, msg} = Gnat.request(pid, topic, "ohai", receive_timeout: 500)
-      assert "custom._INBOX." <> inbox = msg.topic
-      assert inbox =~ ~r/\A[0-9A-Za-z]+\.[0-9A-Za-z]+\z/
-    end
+    assert {:ok, 0} = Gnat.active_subscriptions(pid)
+    assert {:error, :no_inbox} = Gnat.request(pid, topic, "ohai", receive_timeout: 100)
+    assert {:error, :no_inbox} = Gnat.request_multi(pid, topic, "ohai", receive_timeout: 100)
+
+    {:ok, _sid} = Gnat.sub(pid, self(), topic)
+    :ok = Gnat.pub(pid, topic, "still works")
+    assert_receive {:msg, %{topic: ^topic, body: "still works"}}
   end
 
   test "server_info/1 returns server info" do
