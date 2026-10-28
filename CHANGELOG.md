@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+* New `inbox` connection setting, `true` by default. With `inbox: false` a connection makes no request-inbox subscription when it connects, and `Gnat.request/4` and `Gnat.request_multi/4` return `{:error, :no_inbox}` without sending. This is for connections that only publish and subscribe, including servers that refuse the inbox subscription, such as Fly.io's log feed. See #131
+
 ## 1.18.1
 
 * `Gnat.pub/4`, `Gnat.request/4`, and `Gnat.request_multi/4` now return `{:error, :max_payload_exceeded}` without sending when the body plus encoded headers is larger than the server's `max_payload`.

@@ -449,6 +449,19 @@ defmodule GnatTest do
     assert "custom._INBOX." <> _ = msg.topic
   end
 
+  test "a connection with inbox: false makes no inbox subscription and refuses requests" do
+    topic = "no-inbox"
+    {:ok, pid} = Gnat.start_link(%{inbox: false})
+
+    assert {:ok, 0} = Gnat.active_subscriptions(pid)
+    assert {:error, :no_inbox} = Gnat.request(pid, topic, "ohai", receive_timeout: 100)
+    assert {:error, :no_inbox} = Gnat.request_multi(pid, topic, "ohai", receive_timeout: 100)
+
+    {:ok, _sid} = Gnat.sub(pid, self(), topic)
+    :ok = Gnat.pub(pid, topic, "still works")
+    assert_receive {:msg, %{topic: ^topic, body: "still works"}}
+  end
+
   test "server_info/1 returns server info" do
     {:ok, pid} = Gnat.start_link()
     info = Gnat.server_info(pid)

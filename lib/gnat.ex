@@ -49,6 +49,9 @@ defmodule Gnat do
   * `tcp_opts` - Options for connecting over TCP
   * `tls` - If the server should use a TLS connection
   * `inbox_prefix` - Prefix to use for the message inbox of this connection
+  * `inbox` - Subscribe to the request inbox on connect. Defaults to `true`. Set it to `false` for a
+    connection that only publishes and subscribes, for example to a server that refuses the inbox
+    subscription; `request/4` and `request_multi/4` then return `{:error, :no_inbox}`
   * `no_responders` - Enable the no responders behavior (see `Gnat.request/4`)
   * `name` - The client name reported by NATS monitoring endpoints
   * `nkey_seed` - The nkey seed used to sign the server's nonce: a zero-arity function that
@@ -71,6 +74,7 @@ defmodule Gnat do
           optional(:connection_timeout) => non_neg_integer(),
           optional(:host) => binary(),
           optional(:inbox_prefix) => binary(),
+          optional(:inbox) => boolean(),
           optional(:ping_interval) => non_neg_integer(),
           optional(:port) => non_neg_integer(),
           optional(:ssl_opts) => list(),
@@ -163,6 +167,7 @@ defmodule Gnat do
     ssl_opts: [],
     tls: false,
     inbox_prefix: "_INBOX.",
+    inbox: true,
     no_responders: false
   }
 
@@ -179,6 +184,8 @@ defmodule Gnat do
   {:ok, gnat} = Gnat.start_link(%{tls: true, ssl_opts: [certfile: "client-cert.pem", keyfile: "client-key.pem"]})
   # you can customize default "_INBOX." inbox prefix with:
   {:ok, gnat} = Gnat.start_link(%{host: "127.0.0.1", port: 4222, inbox_prefix: "my_prefix._INBOX."})
+  # a connection that never makes requests can skip the request inbox:
+  {:ok, gnat} = Gnat.start_link(%{host: "127.0.0.1", port: 4222, inbox: false})
   # you can use IPv6 addresses too
   {:ok, gnat} = Gnat.start_link(%{host: "::1", port: 4222, tcp_opts: [:inet6, :binary]})
   ```
@@ -374,9 +381,14 @@ defmodule Gnat do
   right away, rather than waiting for a timeout to occur. In order to support this use-case, you can start
   your Gnat connection with the `no_responders: true` option and this function will return very quickly with
   an `{:error, :no_responders}` value. This behavior also works with `request_multi/4`
+
+  ## No Inbox
+
+  A connection started with `inbox: false` has no request inbox, so this function returns
+  `{:error, :no_inbox}` without sending the request. So does `request_multi/4`.
   """
   @spec request(t(), String.t(), iodata(), keyword()) ::
-          {:ok, message} | {:error, :timeout | :no_responders | :max_payload_exceeded}
+          {:ok, message} | {:error, :timeout | :no_responders | :max_payload_exceeded | :no_inbox}
   def request(pid, topic, body, opts \\ []) do
     start = :erlang.monotonic_time()
     Validation.subject!(topic, :publish)
@@ -430,7 +442,7 @@ defmodule Gnat do
   ```
   """
   @spec request_multi(t(), String.t(), iodata(), keyword()) ::
-          {:ok, list(message())} | {:error, :no_responders | :max_payload_exceeded}
+          {:ok, list(message())} | {:error, :no_responders | :max_payload_exceeded | :no_inbox}
   def request_multi(pid, topic, body, opts \\ []) do
     start = :erlang.monotonic_time()
     Validation.subject!(topic, :publish)
@@ -533,8 +545,6 @@ defmodule Gnat do
 
         parser = Parsec.new()
 
-        request_inbox_prefix = Map.fetch!(connection_settings, :inbox_prefix) <> "#{nuid()}."
-
         state = %{
           socket: socket,
           connection_settings: connection_settings,
@@ -543,7 +553,7 @@ defmodule Gnat do
           receivers: %{},
           parser: parser,
           request_receivers: %{},
-          request_inbox_prefix: request_inbox_prefix,
+          request_inbox_prefix: request_inbox_prefix(connection_settings),
           waiting_on_pong: false,
           pending_pubs: []
         }
@@ -665,6 +675,10 @@ defmodule Gnat do
     {:reply, {:ok, sid}, next_state}
   end
 
+  def handle_call({:request, _request}, _from, %{request_inbox_prefix: nil} = state) do
+    {:reply, {:error, :no_inbox}, state}
+  end
+
   def handle_call({:request, request}, _from, state) do
     opts = request |> Map.take([:headers]) |> Map.to_list()
 
@@ -729,8 +743,13 @@ defmodule Gnat do
     end
   end
 
+  defp request_inbox_prefix(%{inbox: false}), do: nil
+  defp request_inbox_prefix(%{inbox_prefix: prefix}), do: prefix <> "#{nuid()}."
+
+  defp create_request_subscription(%{request_inbox_prefix: nil} = state), do: state
+
   defp create_request_subscription(%{request_inbox_prefix: request_inbox_prefix} = state) do
-    # Example: "_INBOX.Jhf7AcTGP3x4dAV9.*"
+    # Example: "_INBOX.9f3a61c0d2e84b7a5c19e6f0.*"
     wildcard_inbox_topic = request_inbox_prefix <> "*"
     sub = Command.build(:sub, wildcard_inbox_topic, @request_sid, [])
     :ok = socket_write(state, [sub])
