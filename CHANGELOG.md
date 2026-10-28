@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.19.0
 
 * New `inbox` connection setting, `true` by default. With `inbox: false` a connection makes no request-inbox subscription when it connects, and `Gnat.request/4` and `Gnat.request_multi/4` return `{:error, :no_inbox}` without sending. This is for connections that only publish and subscribe, including servers that refuse the inbox subscription, such as Fly.io's log feed. See #131
 

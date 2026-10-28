@@ -749,7 +749,7 @@ defmodule Gnat do
   defp create_request_subscription(%{request_inbox_prefix: nil} = state), do: state
 
   defp create_request_subscription(%{request_inbox_prefix: request_inbox_prefix} = state) do
-    # Example: "_INBOX.9f3a61c0d2e84b7a5c19e6f0.*"
+    # Example: "_INBOX.Jhf7AcTGP3x4dAV9.*"
     wildcard_inbox_topic = request_inbox_prefix <> "*"
     sub = Command.build(:sub, wildcard_inbox_topic, @request_sid, [])
     :ok = socket_write(state, [sub])
