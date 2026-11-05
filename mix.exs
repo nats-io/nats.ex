@@ -34,7 +34,6 @@ defmodule Gnat.Mixfile do
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.36", only: :dev},
       {:jason, "~> 1.1"},
-      {:connection, "~> 1.1"},
       {:nimble_parsec, "~> 0.5 or ~> 1.0"},
       {:nkeys, "~> 0.2"},
       {:propcheck, "~> 1.0", only: :test},

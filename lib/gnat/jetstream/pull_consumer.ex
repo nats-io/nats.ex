@@ -301,7 +301,15 @@ defmodule Gnat.Jetstream.PullConsumer do
 
   `init_arg` is the argument term (second argument) passed to `start_link/3`.
 
-  See `c:Connection.init/1` for more details.
+  Returning `{:ok, state, connection_options}` makes `start_link/3` return `{:ok, pid}`.
+  The consumer then connects to NATS in the background, so `start_link/3` doesn't wait
+  for the connection. Failed connection attempts are retried as described by the
+  `:connection_retry_timeout` and `:connection_retries` options.
+
+  Returning `:ignore` makes `start_link/3` return `:ignore` and the process exits
+  normally. Returning `{:stop, reason}` makes `start_link/3` return `{:error, reason}`
+  and the process exits with `reason`. If the callback raises, `start_link/3` returns
+  `{:error, {exception, stacktrace}}`.
   """
   @callback init(init_arg :: term) ::
               {:ok, state :: term(), connection_options()}
@@ -485,11 +493,7 @@ defmodule Gnat.Jetstream.PullConsumer do
   @spec start_link(module(), init_arg :: term(), options :: GenServer.options()) ::
           GenServer.on_start()
   def start_link(module, init_arg, options \\ []) when is_atom(module) and is_list(options) do
-    Connection.start_link(
-      Gnat.Jetstream.PullConsumer.Server,
-      %{module: module, init_arg: init_arg},
-      options
-    )
+    Gnat.Jetstream.PullConsumer.Server.start_link(%{module: module, init_arg: init_arg}, options)
   end
 
   @doc """
@@ -500,11 +504,7 @@ defmodule Gnat.Jetstream.PullConsumer do
   @spec start(module(), init_arg :: term(), options :: GenServer.options()) ::
           GenServer.on_start()
   def start(module, init_arg, options \\ []) when is_atom(module) and is_list(options) do
-    Connection.start(
-      Gnat.Jetstream.PullConsumer.Server,
-      %{module: module, init_arg: init_arg},
-      options
-    )
+    Gnat.Jetstream.PullConsumer.Server.start(%{module: module, init_arg: init_arg}, options)
   end
 
   @doc """
@@ -529,6 +529,6 @@ defmodule Gnat.Jetstream.PullConsumer do
   """
   @spec close(consumer :: consumer()) :: :ok
   def close(consumer) do
-    Connection.call(consumer, :close)
+    :gen_statem.call(consumer, :close, 5_000)
   end
 end
