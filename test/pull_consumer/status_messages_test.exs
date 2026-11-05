@@ -283,7 +283,7 @@ defmodule Gnat.Jetstream.PullConsumer.StatusMessagesTest do
   end
 
   defp send_status(pid, status, description) do
-    %{mod_state: state} = :sys.get_state(pid)
+    {_, state} = :sys.get_state(pid)
 
     send(pid, {
       :msg,

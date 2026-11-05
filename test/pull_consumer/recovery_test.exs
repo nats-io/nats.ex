@@ -163,7 +163,7 @@ defmodule Gnat.Jetstream.PullConsumer.RecoveryTest do
       end
 
       # The state call runs after the queued watchdog check.
-      %{mod_state: state} = :sys.get_state(pid)
+      {_, state} = :sys.get_state(pid)
       assert state.consumer_name == name
       refute_receive {:connected, ^pid, _}, 100
     end
@@ -186,7 +186,7 @@ defmodule Gnat.Jetstream.PullConsumer.RecoveryTest do
         info.num_waiting == 1
       end)
 
-      %{mod_state: before} = :sys.get_state(pid)
+      {_, before} = :sys.get_state(pid)
       {:ok, _} = Gnat.sub(:gnat, self(), "$JS.API.CONSUMER.MSG.NEXT.#{stream}.#{name}")
 
       send(
@@ -203,7 +203,7 @@ defmodule Gnat.Jetstream.PullConsumer.RecoveryTest do
 
       assert_receive {:msg, %{reply_to: inbox}}
       assert inbox == before.listening_topic
-      %{mod_state: after_status} = :sys.get_state(pid)
+      {_, after_status} = :sys.get_state(pid)
       assert after_status.subscription_id == before.subscription_id
       assert after_status.consumer_name == name
       refute_received {:connected, ^pid, _}
@@ -321,7 +321,7 @@ defmodule Gnat.Jetstream.PullConsumer.RecoveryTest do
       publish(stream, "buffered")
 
       await(fn ->
-        %{mod_state: state} = :sys.get_state(pid)
+        {_, state} = :sys.get_state(pid)
         length(state.buffer) == 1
       end)
 
@@ -364,7 +364,7 @@ defmodule Gnat.Jetstream.PullConsumer.RecoveryTest do
   test "messages from a retired subscription can't change the replacement pull", %{stream: stream} do
     pid = start_consumer(stream, :ephemeral, batch_size: 3)
     assert_receive {:connected, ^pid, name}
-    %{mod_state: old} = :sys.get_state(pid)
+    {_, old} = :sys.get_state(pid)
     expire(pid)
     assert_receive {:connected, ^pid, ^name}
 
@@ -376,7 +376,7 @@ defmodule Gnat.Jetstream.PullConsumer.RecoveryTest do
     stale = %{gnat: old.connection_pid, sid: old.subscription_id, body: "ignored", topic: stream}
     send(pid, {:msg, stale})
     send(pid, {:msg, Map.merge(stale, %{status: "409", description: "Consumer Deleted"})})
-    %{mod_state: state} = :sys.get_state(pid)
+    {_, state} = :sys.get_state(pid)
     assert state.buffer == []
     assert state.consumer_name == name
     assert state.connection_pid == old.connection_pid
@@ -387,7 +387,7 @@ defmodule Gnat.Jetstream.PullConsumer.RecoveryTest do
   test "slow status callbacks don't expire the watchdog", %{stream: stream} do
     pid = start_consumer(stream, :ephemeral, idle_heartbeat: 100_000_000)
     assert_receive {:connected, ^pid, name}
-    %{mod_state: state} = :sys.get_state(pid)
+    {_, state} = :sys.get_state(pid)
 
     send(
       pid,
@@ -405,7 +405,7 @@ defmodule Gnat.Jetstream.PullConsumer.RecoveryTest do
     send(pid, :heartbeat_check)
     Process.sleep(250)
     send(pid, :release_status)
-    %{mod_state: state} = :sys.get_state(pid)
+    {_, state} = :sys.get_state(pid)
     assert state.consumer_name == name
     refute_receive {:connected, ^pid, _}, 100
   end
@@ -502,7 +502,7 @@ defmodule Gnat.Jetstream.PullConsumer.RecoveryTest do
 
       if timing == :recovery do
         await(fn ->
-          %{mod_state: state} = :sys.get_state(pid)
+          {_, state} = :sys.get_state(pid)
           length(state.buffer) == 3
         end)
 
@@ -522,7 +522,7 @@ defmodule Gnat.Jetstream.PullConsumer.RecoveryTest do
         assert pending_calls(conn, :pub) == 1
         :sys.resume(conn)
         assert_receive {:connected, ^pid, ^name}, 3_000
-        %{mod_state: state} = :sys.get_state(pid)
+        {_, state} = :sys.get_state(pid)
         assert {_, 3, _} = state.state
       after
         :sys.resume(conn)
@@ -701,8 +701,8 @@ defmodule Gnat.Jetstream.PullConsumer.RecoveryTest do
   defp publish(stream, body), do: assert({:ok, _} = Gnat.request(:gnat, stream, body))
 
   defp expire_state(pid) do
-    :sys.replace_state(pid, fn state ->
-      put_in(state.mod_state.last_response_at, System.monotonic_time(:millisecond) - 2_000)
+    :sys.replace_state(pid, fn {state, data} ->
+      {state, %{data | last_response_at: System.monotonic_time(:millisecond) - 2_000}}
     end)
   end
 

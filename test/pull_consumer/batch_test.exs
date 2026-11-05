@@ -146,15 +146,15 @@ defmodule Gnat.Jetstream.PullConsumer.BatchTest do
   end
 
   defp reconnect(pid, :heartbeat_expired) do
-    :sys.replace_state(pid, fn state ->
-      put_in(state.mod_state.last_response_at, System.monotonic_time(:millisecond) - 2_000)
+    :sys.replace_state(pid, fn {state, data} ->
+      {state, %{data | last_response_at: System.monotonic_time(:millisecond) - 2_000}}
     end)
 
     send(pid, :heartbeat_check)
   end
 
   defp await_buffer(pid, count, retries \\ 100) do
-    %{mod_state: %{buffer: buffer}} = :sys.get_state(pid)
+    {_, %{buffer: buffer}} = :sys.get_state(pid)
 
     if length(buffer) == count or retries == 0 do
       assert length(buffer) == count
@@ -687,7 +687,7 @@ defmodule Gnat.Jetstream.PullConsumer.BatchTest do
           end
         end
 
-        %{mod_state: %{consumer_name: name}} = :sys.get_state(pid)
+        {_, %{consumer_name: name}} = :sys.get_state(pid)
         info = await_pending(name, 0)
         assert info.ack_floor.stream_seq == count
         refute_receive {:msg, _}
