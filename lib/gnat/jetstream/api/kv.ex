@@ -414,17 +414,21 @@ defmodule Gnat.Jetstream.API.KV do
   Starts a monitor for key changes in a given bucket. Supply a handler that will receive
   key change notifications.
 
+  ## Opts
+  * `:inbox_prefix` - (default `"_INBOX."`) the prefix for the subject changes are delivered to, should end with a dot
+
   ## Examples
 
       iex> {:ok, _pid} = Jetstream.API.KV.watch(:gnat, "my_bucket", fn action, key, value ->
       ...>  IO.puts("#{action} taken on #{key}")
       ...> end)
   """
-  def watch(conn, bucket_name, handler) do
+  def watch(conn, bucket_name, handler, opts \\ []) do
     Gnat.Jetstream.API.KV.Watcher.start_link(
       conn: conn,
       bucket_name: bucket_name,
-      handler: handler
+      handler: handler,
+      inbox_prefix: Keyword.get(opts, :inbox_prefix)
     )
   end
 

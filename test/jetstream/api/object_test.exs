@@ -267,6 +267,22 @@ defmodule Gnat.Jetstream.API.ObjectTest do
 
       :ok = Object.delete_bucket(:gnat, nuid)
     end
+
+    test "delivers chunks under the inbox_prefix option" do
+      bucket = nuid()
+      assert {:ok, _} = Object.create_bucket(:gnat, bucket)
+      assert {:ok, meta} = put_binary("data", bucket, "prefixed")
+      {:ok, sub} = Gnat.sub(:gnat, self(), "custom_prefix.>")
+
+      assert :ok =
+               Object.get(:gnat, bucket, meta.name, fn _ -> :ok end,
+                 inbox_prefix: "custom_prefix."
+               )
+
+      assert_receive {:msg, %{sid: ^sub, body: "data"}}
+      :ok = Gnat.unsub(:gnat, sub)
+      assert :ok = Object.delete_bucket(:gnat, bucket)
+    end
   end
 
   describe "info/3" do
