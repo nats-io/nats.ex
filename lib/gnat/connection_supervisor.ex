@@ -13,8 +13,8 @@ defmodule Gnat.ConnectionSupervisor do
     name: :gnat, # (required) the registered named you want to give the Gnat connection
     backoff_period: 4_000, # number of milliseconds to wait between consecutive reconnect attempts (default: 2_000)
     connection_settings: [
-      %{host: '10.0.0.100', port: 4222},
-      %{host: '10.0.0.101', port: 4222},
+      %{host: ~c"10.0.0.100", port: 4222},
+      %{host: ~c"10.0.0.101", port: 4222},
     ]
   }
   ```
