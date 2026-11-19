@@ -212,6 +212,18 @@ defmodule Gnat.PublishOrderingTest do
 
   # Queue the connection's call protocol from one sender while it is suspended. Public pub/4
   # waits for its reply, so sequential public calls alone can't create a publish backlog.
+  @tag :capture_log
+  test "a missed PONG stops the connection with the timeout reason" do
+    {conn, _socket} = protocol_peer()
+    ref = Process.monitor(conn)
+
+    send(conn, :ping_check)
+    send(conn, :ping_check)
+
+    assert_receive {:DOWN, ^ref, :process, ^conn, reason}
+    assert reason == "Closing connection because we did not receive a PONG back within 60000ms"
+  end
+
   defp call_async(conn, request), do: :gen_server.send_request(conn, request)
 
   defp assert_reply(request, expected) do
