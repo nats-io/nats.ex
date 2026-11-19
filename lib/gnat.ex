@@ -583,7 +583,7 @@ defmodule Gnat do
       "Closing connection because we did not receive a PONG back within #{state.connection_settings.ping_interval}ms"
 
     Logger.error(error_message)
-    {:stop, error_message}
+    {:stop, error_message, state}
   end
 
   def handle_info(:ping_check, %{waiting_on_pong: false} = state) do
