@@ -97,6 +97,19 @@ defmodule Gnat.ProtocolValidationTest do
     end
   end
 
+  test "start_link rejects ports that are not integers in 0..65535" do
+    for port <- ["4222", ~c"4222", nil, :nats, 4222.0, -1, 65_536] do
+      assert_raise ArgumentError, ~r/invalid port/, fn ->
+        Gnat.start_link(%{host: "127.0.0.1", port: port})
+      end
+    end
+  end
+
+  test "Validation.port! accepts the boundaries of the port range" do
+    assert Gnat.Validation.port!(0) == :ok
+    assert Gnat.Validation.port!(65_535) == :ok
+  end
+
   test "publish leaves subject grammar and non-delimiter bytes to the server" do
     for topic <- @server_validated_subjects do
       assert_connection_call(

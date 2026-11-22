@@ -211,6 +211,8 @@ defmodule Gnat do
       Map.get(connection_settings, :inbox_prefix, @default_connection_settings.inbox_prefix)
     )
 
+    Validation.port!(Map.get(connection_settings, :port, @default_connection_settings.port))
+
     GenServer.start_link(__MODULE__, connection_settings, opts)
   end
 
