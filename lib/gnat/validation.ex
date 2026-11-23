@@ -25,6 +25,14 @@ defmodule Gnat.Validation do
     :ok
   end
 
+  def port!(port) do
+    unless is_integer(port) and port in 0..65_535 do
+      raise ArgumentError, "invalid port: #{inspect(port)}"
+    end
+
+    :ok
+  end
+
   defp valid_field?(value) when is_binary(value) do
     :binary.match(value, [" ", "\t", "\r", "\n"]) == :nomatch
   end
